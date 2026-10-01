@@ -499,6 +499,20 @@ PetscErrorCode loadVecFromInputFile(Vec& out,const string inputDir, const string
   return ierr;
 }
 
+// Split the contents of an input-file list "[a b c]" into whitespace-separated tokens.
+// Anything after ']' is ignored; if there is no ']', parsing stops at a '#' comment.
+static void splitInputFileList(const string& str,vector<string>& tokens)
+{
+  size_t first = str.find("[");
+  size_t start = (first == string::npos) ? 0 : first + 1;
+  size_t last = str.find("]",start);
+  if (last == string::npos) { last = str.find("#",start); }
+  string inner = str.substr(start, (last == string::npos) ? string::npos : last - start);
+  istringstream iss(inner);
+  string token;
+  while (iss >> token) { tokens.push_back(token); }
+}
+
 // loads a std library vector from a list in the input file
 PetscErrorCode loadVectorFromInputFile(const string& str,vector<double>& vec)
 {
@@ -507,21 +521,9 @@ PetscErrorCode loadVectorFromInputFile(const string& str,vector<double>& vec)
     ierr = PetscPrintf(PETSC_COMM_WORLD,"Starting loadVectorFromInputFile in genFuncs.cpp.\n");CHKERRQ(ierr);
   #endif
 
-  size_t pos = 0; // position of delimiter in string
-  string delim = " "; // delimiter between values in list (whitespace sensitive)
-  string remstr; // holds remaining string as str is parsed through
-  double val; // holds values
-
-  // holds remainder as str is parsed through (with beginning and ending brackets removed)
-  pos = str.find("]");
-  remstr = str.substr(1,pos-1);
-  pos = remstr.find(delim);
-  while (pos != remstr.npos) {
-    pos = remstr.find(delim);
-    val = atof( remstr.substr(0,pos).c_str() );
-    remstr = remstr.substr(pos + delim.length());
-    vec.push_back(val);
-  }
+  vector<string> tokens;
+  splitInputFileList(str,tokens);
+  for (size_t i = 0; i < tokens.size(); i++) { vec.push_back(atof(tokens[i].c_str())); }
 
   #if VERBOSE > 1
     ierr = PetscPrintf(PETSC_COMM_WORLD,"Ending loadVectorFromInputFile in genFuncs.cpp.\n");CHKERRQ(ierr);
@@ -534,30 +536,15 @@ PetscErrorCode loadVectorFromInputFile(const string& str,vector<int>& vec)
 {
   PetscErrorCode ierr = 0;
   #if VERBOSE > 1
-    ierr = PetscPrintf(PETSC_COMM_WORLD,"Starting Domain::loadVectorFromInputFile in domain.cpp.\n");CHKERRQ(ierr);
+    ierr = PetscPrintf(PETSC_COMM_WORLD,"Starting loadVectorFromInputFile in genFuncs.cpp.\n");CHKERRQ(ierr);
   #endif
 
-  size_t pos = 0; // position of delimiter in string
-  string delim = " "; // delimiter between values in list (whitespace sensitive)
-  string remstr; // holds remaining string as str is parsed through
-  int val; // holds values
-
-  // holds remainder as str is parsed through (with beginning and ending brackets removed)
-  pos = str.find("]");
-  remstr = str.substr(1,pos-1);
-  pos = remstr.find(delim);
-  val = atoi( remstr.substr(0,pos).c_str() );
-  vec.push_back(val);
-  remstr = remstr.substr(pos + delim.length());
-  while (pos != remstr.npos) {
-    pos = remstr.find(delim);
-    val = atoi( remstr.substr(0,pos).c_str() );
-    remstr = remstr.substr(pos + delim.length());
-    vec.push_back(val);
-  }
+  vector<string> tokens;
+  splitInputFileList(str,tokens);
+  for (size_t i = 0; i < tokens.size(); i++) { vec.push_back(atoi(tokens[i].c_str())); }
 
   #if VERBOSE > 1
-    ierr = PetscPrintf(PETSC_COMM_WORLD,"Ending Domain::loadVectorFromInputFile in domain.cpp.\n");CHKERRQ(ierr);
+    ierr = PetscPrintf(PETSC_COMM_WORLD,"Ending loadVectorFromInputFile in genFuncs.cpp.\n");CHKERRQ(ierr);
   #endif
   return ierr;
 }
@@ -567,30 +554,13 @@ PetscErrorCode loadVectorFromInputFile(const string& str,vector<string>& vec)
 {
   PetscErrorCode ierr = 0;
   #if VERBOSE > 1
-    ierr = PetscPrintf(PETSC_COMM_WORLD,"Starting Domain::loadVectorFromInputFile in domain.cpp.\n");CHKERRQ(ierr);
+    ierr = PetscPrintf(PETSC_COMM_WORLD,"Starting loadVectorFromInputFile in genFuncs.cpp.\n");CHKERRQ(ierr);
   #endif
 
-  size_t pos = 0; // position of delimiter in string
-  string delim = " "; // delimiter between values in list (whitespace sensitive)
-  string remstr; // holds remaining string as str is parsed through
-  string val; // holds values
-
-  // holds remainder as str is parsed through (with beginning and ending brackets removed)
-  pos = str.find("]");
-  remstr = str.substr(1,pos-1);
-  pos = remstr.find(delim);
-  val = remstr.substr(0,pos).c_str();
-  vec.push_back(val);
-  remstr = remstr.substr(pos + delim.length());
-  while (pos != remstr.npos) {
-    pos = remstr.find(delim);
-    val = remstr.substr(0,pos).c_str();
-    remstr = remstr.substr(pos + delim.length());
-    vec.push_back(val);
-  }
+  splitInputFileList(str,vec);
 
   #if VERBOSE > 1
-    ierr = PetscPrintf(PETSC_COMM_WORLD,"Ending Domain::loadVectorFromInputFile in domain.cpp.\n");CHKERRQ(ierr);
+    ierr = PetscPrintf(PETSC_COMM_WORLD,"Ending loadVectorFromInputFile in genFuncs.cpp.\n");CHKERRQ(ierr);
   #endif
   return ierr;
 }
