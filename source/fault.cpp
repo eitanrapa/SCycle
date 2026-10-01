@@ -1830,12 +1830,12 @@ PetscErrorCode Fault_fd::setPhi(const PetscScalar deltaT)
   ierr = VecRestoreArray(_an, &an);
   ierr = VecRestoreArray(_Phi, &Phi);
   ierr = VecRestoreArray(_fricPen, &fricPen);
-  ierr = VecGetArrayRead(_u, &u);
-  ierr = VecGetArrayRead(_uPrev, &uPrev);
-  ierr = VecGetArrayRead(_d2u, &d2u);
-  ierr = VecGetArrayRead(_rho, &rho);
-  ierr = VecGetArrayRead(_tau0, &tau0);
-  ierr = VecGetArrayRead(_alphay, &alphay);
+  ierr = VecRestoreArrayRead(_u, &u);
+  ierr = VecRestoreArrayRead(_uPrev, &uPrev);
+  ierr = VecRestoreArrayRead(_d2u, &d2u);
+  ierr = VecRestoreArrayRead(_rho, &rho);
+  ierr = VecRestoreArrayRead(_tau0, &tau0);
+  ierr = VecRestoreArrayRead(_alphay, &alphay);
 
   #if VERBOSE > 1
     PetscPrintf(PETSC_COMM_WORLD,"Ending %s in %s\n",funcName.c_str(),FILENAME);
