@@ -76,7 +76,7 @@ PowerLaw::~PowerLaw()
   delete _plastic; _plastic = NULL;
   delete _dp; _dp = NULL;
   delete _disl; _disl = NULL;
-  delete _disl2; _disl = NULL;
+  delete _disl2; _disl2 = NULL;
   delete _diff; _diff = NULL;
 
   // boundary conditions
@@ -93,7 +93,7 @@ PowerLaw::~PowerLaw()
   VecDestroy(&_rho);
   VecDestroy(&_cs);
   VecDestroy(&_effVisc);
-  VecDestroy(&_T); VecDestroy(&_grainSize);
+  VecDestroy(&_T); VecDestroy(&_grainSize); VecDestroy(&_wetDist);
   VecDestroy(&_u); VecDestroy(&_surfDisp);
   VecDestroy(&_sxy); VecDestroy(&_sxz); VecDestroy(&_sdev);
   VecDestroy(&_gTxy); VecDestroy(&_gVxy); VecDestroy(&_dgVxy);
@@ -1932,7 +1932,7 @@ double startTime = MPI_Wtime();
   }
   if (_wDislCreep2.compare("yes")==0) {
     ierr = PetscViewerHDF5PushGroup(viewer, "/momBal/dislocationCreep2");CHKERRQ(ierr);
-    ierr = VecLoad(_disl->_invEffVisc,viewer);                          CHKERRQ(ierr);
+    ierr = VecLoad(_disl2->_invEffVisc,viewer);                         CHKERRQ(ierr);
     ierr = PetscViewerHDF5PopGroup(viewer);                             CHKERRQ(ierr);
   }
   if (_wDiffCreep.compare("yes")==0) {
@@ -1943,6 +1943,8 @@ double startTime = MPI_Wtime();
   }
 
   ierr = PetscViewerHDF5PopGroup(viewer);                               CHKERRQ(ierr);
+  ierr = PetscViewerHDF5PopTimestepping(viewer);                        CHKERRQ(ierr);
+  ierr = PetscViewerDestroy(&viewer);                                   CHKERRQ(ierr);
 
 
   _writeTime += MPI_Wtime() - startTime;
