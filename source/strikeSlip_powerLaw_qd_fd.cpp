@@ -795,7 +795,7 @@ double startTime = MPI_Wtime();
   if (_evolveGrainSize == 1 && _grainDist->_grainSizeEvType == "transient") {
     PetscScalar maxDeltaT_grainSizeEv = 0;
     ierr =  _grainDist->computeMaxTimeStep(maxDeltaT_grainSizeEv,_material->_sdev,_material->_dgVdev_disl,_material->_T); CHKERRQ(ierr);
-    maxTimeStep_tot = min(_maxDeltaT,0.9*maxDeltaT_grainSizeEv);
+    maxTimeStep_tot = min(maxTimeStep_tot,0.9*maxDeltaT_grainSizeEv); // keep the Maxwell-time limit too
   }
 
 
