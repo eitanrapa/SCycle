@@ -1601,9 +1601,6 @@ PetscErrorCode StrikeSlip_PowerLaw_qd_fd::d_dt(const PetscScalar time,const map<
 
   // compute rates
   ierr = solveMomentumBalance(time,varEx,dvarEx); CHKERRQ(ierr);
-  if (varEx.find("pressure") != varEx.end() && _hydraulicCoupling.compare("no")!=0) {
-    _p->d_dt(time,varEx,dvarEx);
-  }
 
   // compute grain size rate, or value from either piezometric relation or steady-state
   if ( _evolveGrainSize==1 && varEx.find("grainSize") != varEx.end() ) {
@@ -1631,6 +1628,11 @@ PetscErrorCode StrikeSlip_PowerLaw_qd_fd::d_dt(const PetscScalar time,const map<
   else {
     VecSet(dvarEx["psi"],0.);
     VecSet(dvarEx["slip"],0.);
+  }
+
+  // pressure and permeability rates (after the fault, since dk_dt uses the slip rate in dvarEx["slip"])
+  if ((varEx.find("pressure") != varEx.end() || varEx.find("permeability") != varEx.end()) && _hydraulicCoupling.compare("no")!=0) {
+    ierr = _p->d_dt(time,varEx,dvarEx); CHKERRQ(ierr);
   }
 
   return ierr;
@@ -1697,9 +1699,6 @@ PetscErrorCode StrikeSlip_PowerLaw_qd_fd::d_dt(const PetscScalar time,const map<
 
   // compute rates
   ierr = solveMomentumBalance(time,varEx,dvarEx); CHKERRQ(ierr);
-  if ( varImo.find("pressure") != varImo.end() || varEx.find("pressure") != varEx.end()) {
-    _p->d_dt(time,varEx,dvarEx,varIm,varImo,dt);
-  }
 
   // update shear stress on fault from momentum balance computation
   Vec sxy,sxz,sdev;
@@ -1715,6 +1714,11 @@ PetscErrorCode StrikeSlip_PowerLaw_qd_fd::d_dt(const PetscScalar time,const map<
   else {
     VecSet(dvarEx["psi"],0.);
     VecSet(dvarEx["slip"],0.);
+  }
+
+  // pressure and permeability (after the fault, since dk_dt uses the slip rate in dvarEx["slip"])
+  if ( varImo.find("pressure") != varImo.end() || varEx.find("pressure") != varEx.end()) {
+    ierr = _p->d_dt(time,varEx,dvarEx,varIm,varImo,dt); CHKERRQ(ierr);
   }
 
 

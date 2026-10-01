@@ -1010,9 +1010,6 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::d_dt(const PetscScalar time,const map<str
 
   // 2. compute rates
   ierr = solveMomentumBalance(time,varEx,dvarEx); CHKERRQ(ierr);
-  if (varEx.find("pressure") != varEx.end() && _hydraulicCoupling.compare("no")!=0) {
-    _p->d_dt(time,varEx,dvarEx);
-  }
 
   // compute grain size rate, or value from either piezometric relation or steady-state
   if ( _grainSizeEvCoupling!="no" && varEx.find("grainSize") != varEx.end() && _grainDist->_grainSizeEvType != "steadyState" && _grainDist->_grainSizeEvType != "piezometer") {
@@ -1059,6 +1056,11 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::d_dt(const PetscScalar time,const map<str
   else {
     ierr = VecSet(dvarEx["psi"],0.); CHKERRQ(ierr);
     ierr = VecSet(dvarEx["slip"],0.); CHKERRQ(ierr);
+  }
+
+  // pressure and permeability rates (after the fault, since dk_dt uses the slip rate in dvarEx["slip"])
+  if ((varEx.find("pressure") != varEx.end() || varEx.find("permeability") != varEx.end()) && _hydraulicCoupling.compare("no")!=0) {
+    ierr = _p->d_dt(time,varEx,dvarEx); CHKERRQ(ierr);
   }
 
   return ierr;
@@ -1114,10 +1116,6 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::d_dt(const PetscScalar time,const map<str
   // 2. compute rates
   ierr = solveMomentumBalance(time,varEx,dvarEx); CHKERRQ(ierr);
 
-  if ( varImo.find("pressure") != varImo.end() || varEx.find("pressure") != varEx.end()) {
-    _p->d_dt(time,varEx,dvarEx,varIm,varImo,dt);
-  }
-
   // compute grain size rate, or value from either piezometric relation or steady-state
   if ( _grainSizeEvCoupling!="no" && varEx.find("grainSize") != varEx.end() && _grainDist->_grainSizeEvType != "steadyState" && _grainDist->_grainSizeEvType != "piezometer") {
     _grainDist->d_dt(dvarEx["grainSize"],varEx.find("grainSize")->second,_material->_sdev,_material->_dgVdev_disl,_material->_T);
@@ -1141,6 +1139,11 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::d_dt(const PetscScalar time,const map<str
   else {
     VecSet(dvarEx["psi"],0.);
     VecSet(dvarEx["slip"],0.);
+  }
+
+  // pressure and permeability (after the fault, since dk_dt uses the slip rate in dvarEx["slip"])
+  if ( varImo.find("pressure") != varImo.end() || varEx.find("pressure") != varEx.end()) {
+    ierr = _p->d_dt(time,varEx,dvarEx,varIm,varImo,dt); CHKERRQ(ierr);
   }
 
   // 3. implicitly integrated variables
