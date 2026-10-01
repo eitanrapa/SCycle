@@ -1337,8 +1337,9 @@ PetscErrorCode ComputeVel_qd::getResid(const PetscInt Jj,const PetscScalar vel,P
   PetscScalar A = _a[Jj]*_sN[Jj];
   PetscScalar B = exp(_psi[Jj]/_a[Jj]) / (2.*_v0);
 
-  // derivative with respect to slipVel
-  *J = A*vel/sqrt(B*B*vel*vel + 1.) + _eta[Jj];
+  // derivative with respect to slipVel: d/dV [A asinh(B V)] + eta
+  // (hypot avoids overflow of B*B when psi/a is large)
+  *J = A*B/hypot(1., B*vel) + _eta[Jj];
 
   if (PetscIsInfReal(*out)) {
     PetscPrintf(PETSC_COMM_WORLD,"Jj = %i\n",Jj);
