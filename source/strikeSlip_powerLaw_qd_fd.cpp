@@ -966,8 +966,9 @@ PetscErrorCode StrikeSlip_PowerLaw_qd_fd::writeCheckpoint()
   ierr = PetscViewerHDF5WriteAttribute(_viewer_chkpt, "time1D", "deltaT", PETSC_SCALAR, &_deltaT); CHKERRQ(ierr);
   ierr = PetscViewerHDF5WriteAttribute(_viewer_chkpt, "time1D", "cycleCount", PETSC_INT, &_cycleCount); CHKERRQ(ierr);
   ierr = PetscViewerHDF5WriteAttribute(_viewer_chkpt, "time1D", "phaseCount", PETSC_INT, &_phaseCount); CHKERRQ(ierr);
-  ierr = PetscViewerHDF5WriteAttribute(_viewer_chkpt, "time1D", "inDynamic", PETSC_INT, &_inDynamic); CHKERRQ(ierr);
-  ierr = PetscViewerHDF5WriteAttribute(_viewer_chkpt, "time1D", "allowed", PETSC_INT, &_allowed); CHKERRQ(ierr);
+  PetscInt inDynamic = _inDynamic, allowed = _allowed; // bool members are stored as PETSC_INT
+  ierr = PetscViewerHDF5WriteAttribute(_viewer_chkpt, "time1D", "inDynamic", PETSC_INT, &inDynamic); CHKERRQ(ierr);
+  ierr = PetscViewerHDF5WriteAttribute(_viewer_chkpt, "time1D", "allowed", PETSC_INT, &allowed); CHKERRQ(ierr);
   ierr = PetscViewerHDF5WriteAttribute(_viewer_chkpt, "time1D", "stepCount", PETSC_INT, &_stepCount); CHKERRQ(ierr);
   ierr = PetscViewerHDF5PopGroup(_viewer_chkpt);                        CHKERRQ(ierr);
 
@@ -1011,8 +1012,10 @@ PetscErrorCode StrikeSlip_PowerLaw_qd_fd::loadCheckpoint()
   ierr = PetscViewerHDF5ReadAttribute(viewer, "time1D", "stepCount", PETSC_INT, NULL, &_stepCount); CHKERRQ(ierr);
   ierr = PetscViewerHDF5ReadAttribute(viewer, "time1D", "cycleCount", PETSC_INT, NULL, &_cycleCount); CHKERRQ(ierr);
   ierr = PetscViewerHDF5ReadAttribute(viewer, "time1D", "phaseCount", PETSC_INT, NULL, &_phaseCount); CHKERRQ(ierr);
-  ierr = PetscViewerHDF5ReadAttribute(viewer, "time1D", "inDynamic", PETSC_INT, NULL, &_inDynamic); CHKERRQ(ierr);
-  ierr = PetscViewerHDF5ReadAttribute(viewer, "time1D", "allowed", PETSC_INT, NULL, &_allowed); CHKERRQ(ierr);
+  PetscInt inDynamic = 0, allowed = 0; // bool members are stored as PETSC_INT
+  ierr = PetscViewerHDF5ReadAttribute(viewer, "time1D", "inDynamic", PETSC_INT, NULL, &inDynamic); CHKERRQ(ierr);
+  ierr = PetscViewerHDF5ReadAttribute(viewer, "time1D", "allowed", PETSC_INT, NULL, &allowed); CHKERRQ(ierr);
+  _inDynamic = (inDynamic != 0); _allowed = (allowed != 0);
   ierr = PetscViewerHDF5PopGroup(viewer);                               CHKERRQ(ierr);
 
   ierr = PetscViewerHDF5PushGroup(viewer, "/time2D");                   CHKERRQ(ierr);
