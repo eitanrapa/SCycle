@@ -44,8 +44,23 @@ StrikeSlip_LinearElastic_fd::StrikeSlip_LinearElastic_fd(Domain&D)
 
   computeTimeStep(); // compute time step
 
+  // Vecs holding the current time and time step, written by writeStep1D/2D
+  VecCreateMPI(PETSC_COMM_WORLD, PETSC_DECIDE, 1, &_time1DVec);
+  VecSetBlockSize(_time1DVec, 1);
+  PetscObjectSetName((PetscObject) _time1DVec, "time1D");
+  VecSet(_time1DVec,_initTime);
+  VecDuplicate(_time1DVec,&_dtime1DVec);
+  PetscObjectSetName((PetscObject) _dtime1DVec, "dtime1D");
+  VecSet(_dtime1DVec,_deltaT);
+  VecDuplicate(_time1DVec,&_time2DVec);
+  PetscObjectSetName((PetscObject) _time2DVec, "time2D");
+  VecSet(_time2DVec,_initTime);
+  VecDuplicate(_time1DVec,&_dtime2DVec);
+  PetscObjectSetName((PetscObject) _dtime2DVec, "dtime2D");
+  VecSet(_dtime2DVec,_deltaT);
+
   #if VERBOSE > 1
-    PetscPrintf(PETSC_COMM_WORLD,"Starting %s in %s\n",funcName.c_str(),FILENAME);
+    PetscPrintf(PETSC_COMM_WORLD,"Ending %s in %s\n",funcName.c_str(),FILENAME);
   #endif
 }
 
