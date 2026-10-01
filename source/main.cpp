@@ -550,10 +550,14 @@ int runEqCycle(Domain& d)
   PetscPrintf(PETSC_COMM_WORLD,"Total number of processors: %i\n\n",numCores);
 
   if (d._bulkDeformationType == "linearElastic") {
-    ProblemContext *m;
+    ProblemContext *m = NULL;
     if (d._momentumBalanceType == "quasidynamic") { m = new StrikeSlip_LinearElastic_qd(d); }
-    if (d._momentumBalanceType == "dynamic") { m = new StrikeSlip_LinearElastic_fd(d); }
-    if (d._momentumBalanceType == "quasidynamic_and_dynamic") { m = new StrikeSlip_LinearElastic_qd_fd(d); }
+    else if (d._momentumBalanceType == "dynamic") { m = new StrikeSlip_LinearElastic_fd(d); }
+    else if (d._momentumBalanceType == "quasidynamic_and_dynamic") { m = new StrikeSlip_LinearElastic_qd_fd(d); }
+    else {
+      PetscPrintf(PETSC_COMM_WORLD,"momentumBalanceType = %s is not supported with bulkDeformationType = linearElastic\n",d._momentumBalanceType.c_str());
+      SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"unsupported momentumBalanceType");
+    }
 
     if (d._restartFromChkpt == 0) { ierr = m->writeContext(); CHKERRQ(ierr); }
     PetscPrintf(PETSC_COMM_WORLD,"\n\n\n");
@@ -562,10 +566,14 @@ int runEqCycle(Domain& d)
     delete m;
   }
 
-  if (d._bulkDeformationType == "powerLaw") {
-    ProblemContext *m;
+  else if (d._bulkDeformationType == "powerLaw") {
+    ProblemContext *m = NULL;
     if (d._momentumBalanceType == "quasidynamic") { m = new StrikeSlip_PowerLaw_qd(d); }
-    if (d._momentumBalanceType == "quasidynamic_and_dynamic") { m = new StrikeSlip_PowerLaw_qd_fd(d); }
+    else if (d._momentumBalanceType == "quasidynamic_and_dynamic") { m = new StrikeSlip_PowerLaw_qd_fd(d); }
+    else {
+      PetscPrintf(PETSC_COMM_WORLD,"momentumBalanceType = %s is not supported with bulkDeformationType = powerLaw\n",d._momentumBalanceType.c_str());
+      SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"unsupported momentumBalanceType");
+    }
 
     if (d._restartFromChkpt == 0) { ierr = m->writeContext(); CHKERRQ(ierr); }
     PetscPrintf(PETSC_COMM_WORLD,"\n\n\n");
@@ -579,6 +587,10 @@ int runEqCycle(Domain& d)
     ierr = m->view(); CHKERRQ(ierr);
     delete m;
   }
+  else {
+    PetscPrintf(PETSC_COMM_WORLD,"bulkDeformationType = %s is not supported\n",d._bulkDeformationType.c_str());
+    SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"unsupported bulkDeformationType");
+  }
 
   return ierr;
 }
@@ -587,7 +599,8 @@ int runEqCycle(Domain& d)
 int main(int argc,char **args)
 {
   PetscErrorCode ierr = 0;
-  PetscInitialize(&argc,&args,NULL,NULL);
+  ierr = PetscInitialize(&argc,&args,NULL,NULL);
+  if (ierr) { return 1; }
 
   const char * inputFile;
 
@@ -596,15 +609,15 @@ int main(int argc,char **args)
 
   {
     Domain d(inputFile);
-    if (d._isMMS) { runMMSTests(inputFile); }
-    else if (d._computeGreensFunction_fault) { computeGreensFunction_fault(inputFile); }
-    else if (d._computeGreensFunction_offFault) { computeGreensFunction_offFault(inputFile); }
-    else { runEqCycle(d); }
+    if (d._isMMS) { ierr = runMMSTests(inputFile); }
+    else if (d._computeGreensFunction_fault) { ierr = computeGreensFunction_fault(inputFile); }
+    else if (d._computeGreensFunction_offFault) { ierr = computeGreensFunction_offFault(inputFile); }
+    else { ierr = runEqCycle(d); }
     //~ testHDF5();
     //~ runTests(inputFile);
   }
 
 
   PetscFinalize();
-  return ierr;
+  return (ierr != 0); // nonzero exit status if the run reported a PETSc error
 }
