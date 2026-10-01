@@ -2608,7 +2608,9 @@ PetscScalar flashHeating_Vw(const PetscScalar& T, const PetscScalar& rho, const 
 // flash heating state evolution law
 PetscScalar flashHeating_psi(const PetscScalar& psi, const PetscScalar& slipVel, const PetscScalar& Vw, const PetscScalar& fw, const PetscScalar& Dc,const PetscScalar& a,const PetscScalar& b, const PetscScalar& f0, const PetscScalar& v0)
 {
-  //~ if (slipVel == 0) { return 0.0; }
+  // the rate -|V|/Dc*(f - fss) tends to 0 as V -> 0, but log(|V|/v0) below is -inf at V = 0
+  // (locked fault nodes have V = 0 exactly)
+  if (slipVel == 0) { return 0.0; }
 
   PetscScalar absV = abs(slipVel);
 
