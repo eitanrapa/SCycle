@@ -18,7 +18,7 @@ HeatEquation::HeatEquation(Domain& D)
   _linSolver("CG_PCAMG"),_kspTol(1e-11),
   _kspSS(NULL),_kspTrans(NULL),_pc(NULL),
   _I(NULL),_rcInv(NULL),_B(NULL),_pcMat(NULL),_D2ath(NULL),
-  _MapV(NULL),_Gw(NULL),_w(NULL),
+  _MapV(NULL),_Gw(NULL),_w(NULL),_wMax(0),_Lrad(10.),
   _linSolveTime(0),_factorTime(0),_beTime(0),_writeTime(0),_miscTime(0),
   _linSolveCount(0),
   _Tamb(NULL),_dT(NULL),_T(NULL),
