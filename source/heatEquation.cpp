@@ -524,7 +524,15 @@ PetscErrorCode HeatEquation::constructMapV()
   else { VecSet(_w,0.); }
   VecMax(_w,NULL,&_wMax);
 
-  if (_wVals.size() > 0 ) {
+  // w = 0 everywhere selects frictional heating as a heat flux through the fault boundary
+  // (see computeFrictionalShearHeating); a finite-width shear zone needs w > 0 at every depth
+  if (_wMax > 0) {
+    PetscScalar wMin = 0;
+    VecMin(_w,NULL,&wMin);
+    if (!(wMin > 0)) {
+      PetscPrintf(PETSC_COMM_WORLD,"Error: shear zone width wVals must be > 0 at all depths, or 0 at all depths (fault heat flux).\n");
+      assert(wMin > 0);
+    }
     PetscScalar const *y,*w;
     PetscScalar *g;
     VecGetOwnershipRange(_Gw,&Istart,&Iend);
