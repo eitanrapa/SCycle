@@ -466,7 +466,9 @@ PetscErrorCode LinearElastic::setMaterialParameters()
     CHKERRQ(ierr);
   #endif
 
-  ierr = setVec(_mu,*_y,_muVals,_muDepths);CHKERRQ(ierr);
+  // muVals/muDepths and rhoVals/rhoDepths are depth profiles: interpolate in z
+  // (as PowerLaw and Fault do, so the fault's radiation damping uses the same mu)
+  ierr = setVec(_mu,*_z,_muVals,_muDepths);CHKERRQ(ierr);
   ierr = setVec(_rho,*_z,_rhoVals,_rhoDepths);CHKERRQ(ierr);
   VecPointwiseDivide(_cs, _mu, _rho);
   VecSqrtAbs(_cs);
