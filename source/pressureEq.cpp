@@ -909,35 +909,37 @@ PetscErrorCode PressureEq::initiateIntegrand(const PetscScalar time, map<string,
     PetscPrintf(PETSC_COMM_WORLD, "Starting %s in %s\n", funcName.c_str(), FILENAME);
   #endif
 
-  // make shallow copy of pressure
-  Vec p;
-  VecDuplicate(_p, &p);
-  VecCopy(_p, p);
+  // The integrand maps take ownership of the Vecs inserted here; the problem class
+  // destroys them. If an entry already exists, copy into it instead of replacing it.
 
-  // put variable to be integrated explicitly into varEx
-  // pressure is explicitly integrated
-  if (_hydraulicTimeIntType.compare("explicit") == 0) {
-    varEx["pressure"] = p;
-  }
-
-  // put variable to be integrated implicity into varIm
-  // pressure is also implicitly integrated
-  else if (_hydraulicTimeIntType.compare("implicit") == 0) {
-    varIm["pressure"] = p;
+  // pressure is integrated explicitly (varEx) or implicitly (varIm)
+  map<string, Vec> *varP = NULL;
+  if (_hydraulicTimeIntType.compare("explicit") == 0) { varP = &varEx; }
+  else if (_hydraulicTimeIntType.compare("implicit") == 0) { varP = &varIm; }
+  if (varP != NULL) {
+    if (varP->find("pressure") != varP->end()) {
+      VecCopy(_p, (*varP)["pressure"]);
+    }
+    else {
+      Vec p;
+      VecDuplicate(_p, &p);
+      VecCopy(_p, p);
+      (*varP)["pressure"] = p;
+    }
   }
 
   // permeability is explicitly integrated
   if (_permSlipDependent.compare("yes") == 0 || _permPressureDependent.compare("yes") == 0) {
-    Vec k_p;
-    VecDuplicate(_p, &k_p);
-    VecCopy(_k_p, k_p);
-    varEx["permeability"] = k_p;
-    // free memory
-    VecDestroy(&k_p);
+    if (varEx.find("permeability") != varEx.end()) {
+      VecCopy(_k_p, varEx["permeability"]);
+    }
+    else {
+      Vec k_p;
+      VecDuplicate(_k_p, &k_p);
+      VecCopy(_k_p, k_p);
+      varEx["permeability"] = k_p;
+    }
   }
-
-  // free memory
-  VecDestroy(&p);
 
   #if VERBOSE > 1
     PetscPrintf(PETSC_COMM_WORLD, "Ending %s in %s\n", funcName.c_str(), FILENAME);
