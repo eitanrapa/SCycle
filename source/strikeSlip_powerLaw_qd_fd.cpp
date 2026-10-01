@@ -2042,6 +2042,7 @@ PetscErrorCode StrikeSlip_PowerLaw_qd_fd::computePenaltyVectors()
 
     if ( (Ii/_D->_Nz == 0) && ( _fd_bcLType.compare("outGoingCharacteristics") == 0 ||
       _fd_bcLType.compare("symmFault") == 0 || _fd_bcLType.compare("rigidFault") == 0 ) )
+    { ay[Jj] += 0.5 / h11y; }
     Jj++;
   }
   VecRestoreArray(_ay,&ay);
