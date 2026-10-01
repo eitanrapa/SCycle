@@ -62,11 +62,15 @@ for ex in $cases; do
   for f in "$ref/$ex"/*.h5; do
     name=$(basename "$f")
     if [[ ! -f "$out/$name" ]]; then echo "FAIL $ex/$name: missing from new run"; status=1; continue; fi
-    report=$(h5diff -r ${REGRESS_DELTA:+--delta=$REGRESS_DELTA} "$f" "$out/$name" 2>&1)
-    case $? in
+    # h5diff exits 0 even when datasets have different shapes (e.g. a run that stopped early);
+    # it only prints "not comparable", so treat that as a difference too
+    report=$(h5diff -r -c ${REGRESS_DELTA:+--delta=$REGRESS_DELTA} "$f" "$out/$name" 2>&1)
+    rc=$?
+    if (( rc == 0 )) && grep -qi "not comparable" <<< "$report"; then rc=1; fi
+    case $rc in
       0) echo "ok   $ex/$name" ;;
-      1) echo "DIFF $ex/$name"; echo "$report" | grep -E "differences found|not comparable" | head -20; status=1 ;;
-      *) echo "ERR  $ex/$name"; echo "$report" | head -5; status=1 ;;
+      1) echo "DIFF $ex/$name"; grep -E "differences found|not comparable|dimensions" <<< "$report" | head -20; status=1 ;;
+      *) echo "ERR  $ex/$name"; head -5 <<< "$report"; status=1 ;;
     esac
   done
 done
