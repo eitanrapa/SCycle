@@ -53,7 +53,7 @@ StrikeSlip_LinearElastic_qd::StrikeSlip_LinearElastic_qd(Domain &D)
 
   // pressure diffusion equation
   if (_hydraulicCoupling != "no") { _p = new PressureEq(D); }
-  else if (_hydraulicCoupling == "coupled") { _fault->setSNEff(_p->_p); }
+  if (_hydraulicCoupling == "coupled") { _fault->setSNEff(_p->_p); }
 
   // initiate momentum balance equation
   if (_guessSteadyStateICs == 1 && _computeSSMomBal==1 && _forcingType != "iceStream") {
