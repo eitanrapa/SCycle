@@ -1251,6 +1251,7 @@ PetscErrorCode HeatEquation::be_transient(const PetscScalar time,const Vec slipV
     ierr = _sbp->getCoordTrans(J,Jinv,qy,rz,yq,zr); CHKERRQ(ierr);
     ierr = MatMult(J,_Q,temp1);
   }
+  else { ierr = VecCopy(_Q,temp1); CHKERRQ(ierr); } // constant grid spacing: J = I
 
   Mat H; _sbp->getH(H);
   ierr = MatMultAdd(H,temp1,temp,temp); CHKERRQ(ierr);
