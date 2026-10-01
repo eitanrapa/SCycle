@@ -41,7 +41,11 @@ Domain::Domain(const char *file)
   #endif
 
   allocateFields();
+  // Restart from <outputDir>checkpoint.h5 if requested and present, otherwise from a previous
+  // steady-state iteration if requested and present, otherwise build the grid from the input.
+  // Each loader clears its flag when its files are missing.
   if (_restartFromChkpt) { loadCheckpoint(); }
+  if (_restartFromChkpt) { _restartFromChkptSS = 0; } // a full checkpoint supersedes a steady-state restart
   else if (_restartFromChkptSS) { loadCheckpointSS(); }
   if (!_restartFromChkpt && !_restartFromChkptSS) { setFields(); }
   setScatters();
@@ -62,7 +66,7 @@ Domain::Domain(const char *file,PetscInt Ny, PetscInt Nz)
   _order(4),_Ny(Ny),_Nz(Nz),_Ly(-1),_Lz(-1),_vL(1e-9),
   _q(NULL),_r(NULL),_y(NULL),_z(NULL),_y0(NULL),_z0(NULL),_dq(1),_dr(1),
   _bCoordTrans(-1),
-  _saveChkpts(1), _restartFromChkpt(1),_restartFromChkptSS(1),_outputFileMode(FILE_MODE_APPEND),_prevChkptTimeStep1D(0),_prevChkptTimeStep2D(0),
+  _saveChkpts(1), _restartFromChkpt(1),_restartFromChkptSS(0),_outputFileMode(FILE_MODE_WRITE),_prevChkptTimeStep1D(0),_prevChkptTimeStep2D(0),
   _outFileMode(FILE_MODE_WRITE)
 {
   #if VERBOSE > 1
@@ -89,9 +93,14 @@ Domain::Domain(const char *file,PetscInt Ny, PetscInt Nz)
     }
   #endif
 
+  // this constructor is used for MMS convergence runs (one Domain per resolution):
+  // always start fresh, never from a checkpoint written at another resolution
+  _restartFromChkpt = 0;
+  _restartFromChkptSS = 0;
+  _outputFileMode = FILE_MODE_WRITE;
+
   allocateFields();
-  if (_restartFromChkpt == 1) { loadCheckpoint(); }
-  if (_restartFromChkpt == 0) { setFields(); }
+  setFields();
   setScatters();
 
   #if VERBOSE > 1
@@ -530,7 +539,8 @@ PetscErrorCode Domain::loadCheckpoint()
   fileExists = doesFileExist(fileName);
   if (fileExists && _restartFromChkpt == 1) {
     _outputFileMode = FILE_MODE_APPEND;
-    PetscPrintf(PETSC_COMM_WORLD,"Note: will start simulation from previous checkpoint.\n");
+    PetscPrintf(PETSC_COMM_WORLD,"Note: RESTARTING from checkpoint %s and appending to existing output.\n"
+      "      Set restartFromChkpt = 0 or use a new outputDir to start a fresh simulation.\n",fileName.c_str());
 
     // load saved checkpoint data
     PetscViewer viewer_prev_checkpoint;
