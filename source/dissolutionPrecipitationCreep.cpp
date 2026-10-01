@@ -315,8 +315,8 @@ PetscErrorCode DissolutionPrecipitationCreep::computeInvEffVisc(const Vec& Temp,
     PetscScalar num = 3.0*std::sqrt(3.0)*1e3 *Vs[Jj]*s[Jj];
     PetscScalar RT = _R*T[Jj];
     PetscScalar expVal = exp(num/RT);
-    assert(~PetscIsNanReal(expVal));
-    assert(~PetscIsInfReal(expVal));
+    assert(!PetscIsNanReal(expVal));
+    assert(!PetscIsInfReal(expVal));
     invEffVisc[Jj] = 1e3 * 2.0 * std::sqrt(3.0) * B[Jj] * D[Jj] * c[Jj] * Vs[Jj] * pow(d[Jj],-m[Jj]) * wetDist[Jj] * (expVal - 1.0);
     Jj++;
   }
