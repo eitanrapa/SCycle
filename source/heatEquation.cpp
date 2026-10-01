@@ -841,7 +841,8 @@ PetscErrorCode HeatEquation::setupKSP(Mat& A)
   else if (_linSolver.compare("MUMPSLU")==0) { // direct LU from MUMPS
     // use direct LU from MUMPS
     ierr = KSPSetType(_kspTrans,KSPPREONLY); CHKERRQ(ierr);
-    ierr = KSPSetReusePreconditioner(_kspTrans,PETSC_TRUE); CHKERRQ(ierr);
+    // the operator I - dt*D2 changes with every time step, so the factorization must be redone
+    ierr = KSPSetReusePreconditioner(_kspTrans,PETSC_FALSE); CHKERRQ(ierr);
     ierr = KSPGetPC(_kspTrans,&_pc); CHKERRQ(ierr);
     ierr = PCSetType(_pc,PCLU); CHKERRQ(ierr);
     #if PETSC_VERSION_MINOR > 5
@@ -856,7 +857,8 @@ PetscErrorCode HeatEquation::setupKSP(Mat& A)
   else if (_linSolver.compare("MUMPSCHOLESKY")==0) { // direct Cholesky (RR^T) from MUMPS
     // use direct LL^T (Cholesky factorization) from MUMPS
     ierr = KSPSetType(_kspTrans,KSPPREONLY); CHKERRQ(ierr);
-    ierr = KSPSetReusePreconditioner(_kspTrans,PETSC_TRUE); CHKERRQ(ierr);
+    // the operator I - dt*D2 changes with every time step, so the factorization must be redone
+    ierr = KSPSetReusePreconditioner(_kspTrans,PETSC_FALSE); CHKERRQ(ierr);
     ierr = KSPGetPC(_kspTrans,&_pc); CHKERRQ(ierr);
     ierr = PCSetType(_pc,PCCHOLESKY); CHKERRQ(ierr);
     #if PETSC_VERSION_MINOR > 5
