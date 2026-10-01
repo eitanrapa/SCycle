@@ -218,6 +218,11 @@ PetscErrorCode BracketedNewton::findRoot(RootFinderContext *obj,const PetscInt i
 
   while ( (numIts <= _maxNumIts) && (abs(_f) >= _atol) ) {
 
+    // Stop once the bracket has shrunk to a few ulps: the root is then located to machine
+    // precision even if |f| is still above _atol, which happens when the round-off in the
+    // residual (about eps * |stress|) exceeds the absolute tolerance.
+    if (fabs(_right - _left) <= 4.0*PETSC_MACHINE_EPSILON*PetscMax(fabs(_left),fabs(_right))) { break; }
+
     // use bisection if Newton out of range or not converging quickly enough
     if ( ((_x-_right)*_fPrime-_f)*((_x-_left)*_fPrime-_f) > 0.0
   || fabs(2.0*_f) > fabs(dxOld*_fPrime) ) {
@@ -242,7 +247,8 @@ PetscErrorCode BracketedNewton::findRoot(RootFinderContext *obj,const PetscInt i
   }
 
   *out = _x;
-  if (abs(_f) > _atol) {
+  const bool bracketCollapsed = fabs(_right - _left) <= 4.0*PETSC_MACHINE_EPSILON*PetscMax(fabs(_left),fabs(_right));
+  if (abs(_f) > _atol && !bracketCollapsed) {
     ierr = PetscPrintf(PETSC_COMM_WORLD,"rootFinder BracketedNewton did not converge in %i iterations\n",numIts);
     PetscPrintf(PETSC_COMM_WORLD,"ind = %i, residual = %g\n",ind,_f);
     assert(abs(_f) < _atol);
