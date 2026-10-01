@@ -258,12 +258,13 @@ void kronConvert(const Spmat& left,const Spmat& right,Mat& mat,PetscInt diag,Pet
   MatGetOwnershipRange(mat,&Istart,&Iend);
   MatGetOwnershipRangeColumn(mat,&Jstart,&Jend);
   PetscInt m = Iend - Istart;
-  PetscInt d_nnz[m], o_nnz[m];
-  kronConvert_symbolic(left,right,mat,d_nnz,o_nnz);
+  // heap arrays: m (local rows) can exceed the stack size for large grids
+  std::vector<PetscInt> d_nnz(m > 0 ? m : 1, 0), o_nnz(m > 0 ? m : 1, 0);
+  kronConvert_symbolic(left,right,mat,d_nnz.data(),o_nnz.data());
 
   // allocate space for mat
-  MatMPIAIJSetPreallocation(mat,diag,d_nnz,offDiag,o_nnz); // arguments diag, offdiag will be ignored
-  MatSeqAIJSetPreallocation(mat,diag,d_nnz); // argument diag will be ignored
+  MatMPIAIJSetPreallocation(mat,diag,d_nnz.data(),offDiag,o_nnz.data()); // arguments diag, offdiag will be ignored
+  MatSeqAIJSetPreallocation(mat,diag,d_nnz.data()); // argument diag will be ignored
   MatSetUp(mat);
 
   // iterate over only nnz entries

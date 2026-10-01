@@ -883,8 +883,8 @@ PetscErrorCode repVec(Vec& out, const Vec& in, const PetscInt n)
   PetscErrorCode ierr = 0;
   PetscInt N,Istart,Iend,Ii;
   PetscScalar v = 0.0;
-  PetscScalar vals[n];
-  PetscInt    inds[n];
+  vector<PetscScalar> vals(n);
+  vector<PetscInt>    inds(n);
 
   VecGetSize(in,&N);
   VecGetOwnershipRange(in,&Istart,&Iend);
@@ -894,7 +894,7 @@ PetscErrorCode repVec(Vec& out, const Vec& in, const PetscInt n)
       vals[i] = v;
       inds[i] = Ii + i*N;
     }
-    ierr = VecSetValues(out,n,inds,vals,INSERT_VALUES);CHKERRQ(ierr);
+    ierr = VecSetValues(out,n,inds.data(),vals.data(),INSERT_VALUES);CHKERRQ(ierr);
   }
   ierr = VecAssemblyBegin(out);CHKERRQ(ierr);
   ierr = VecAssemblyEnd(out);CHKERRQ(ierr);
