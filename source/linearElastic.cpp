@@ -97,12 +97,11 @@ LinearElastic::~LinearElastic()
   VecDestroy(&_rho);
   VecDestroy(&_cs);
   VecDestroy(&_mu);
-  VecDestroy(&_rho);
-  VecDestroy(&_cs);
   VecDestroy(&_rhs);
   VecDestroy(&_u);
   VecDestroy(&_sxy);
   VecDestroy(&_sxz);
+  VecDestroy(&_sdev);
   VecDestroy(&_surfDisp);
 
   KSPDestroy(&_ksp);
@@ -443,7 +442,7 @@ PetscErrorCode LinearElastic::allocateFields()
   else { _sxz = NULL; }
   if (_computeSdev) {
     VecDuplicate(_rhs,&_sdev); VecSet(_sdev,0.0);
-    PetscObjectSetName((PetscObject) _sxz, "sxz");
+    PetscObjectSetName((PetscObject) _sdev, "sdev");
   }
   else { _sdev = NULL; }
   VecDuplicate(_bcT,&_surfDisp); PetscObjectSetName((PetscObject) _surfDisp, "surfDisp");
@@ -541,7 +540,7 @@ PetscErrorCode LinearElastic::loadCheckpoint()
   ierr = VecLoad(_u,viewer);                                            CHKERRQ(ierr);
   ierr = VecLoad(_sxy,viewer);                                          CHKERRQ(ierr);
   if (_computeSxz) {
-    ierr = VecLoad(_sxy,viewer);                                        CHKERRQ(ierr);
+    ierr = VecLoad(_sxz,viewer);                                        CHKERRQ(ierr);
   }
 
   ierr = PetscViewerHDF5PopGroup(viewer);                               CHKERRQ(ierr);
@@ -591,7 +590,7 @@ PetscErrorCode LinearElastic::loadCheckpointSS()
   ierr = VecLoad(_u,viewer);                                            CHKERRQ(ierr);
   ierr = VecLoad(_sxy,viewer);                                          CHKERRQ(ierr);
   if (_computeSxz) {
-    ierr = VecLoad(_sxy,viewer);                                        CHKERRQ(ierr);
+    ierr = VecLoad(_sxz,viewer);                                        CHKERRQ(ierr);
   }
   ierr = PetscViewerHDF5PopGroup(viewer);                               CHKERRQ(ierr);
   PetscViewerDestroy(&viewer);
@@ -906,7 +905,7 @@ PetscErrorCode LinearElastic::writeStep2D(PetscViewer& viewer)
   ierr = VecView(_u,viewer);                                            CHKERRQ(ierr);
   ierr = VecView(_sxy,viewer);                                          CHKERRQ(ierr);
   if (_computeSxz) {
-    ierr = VecView(_sxy,viewer);                                        CHKERRQ(ierr);
+    ierr = VecView(_sxz,viewer);                                        CHKERRQ(ierr);
   }
 
   ierr = PetscViewerHDF5PopTimestepping(viewer);                        CHKERRQ(ierr);
@@ -945,7 +944,7 @@ PetscErrorCode LinearElastic::writeCheckpoint(PetscViewer& viewer)
   ierr = VecView(_u,viewer);                                            CHKERRQ(ierr);
   ierr = VecView(_sxy,viewer);                                          CHKERRQ(ierr);
   if (_computeSxz) {
-    ierr = VecView(_sxy,viewer);                                        CHKERRQ(ierr);
+    ierr = VecView(_sxz,viewer);                                        CHKERRQ(ierr);
   }
 
   ierr = PetscViewerHDF5PopGroup(viewer);                               CHKERRQ(ierr);
