@@ -214,12 +214,14 @@ PetscErrorCode OdeSolver_WaveEq::loadCheckpoint(const std::string inputDir)
     ierr = PetscObjectSetName((PetscObject) _var[it->first], (it->first).c_str()); CHKERRQ(ierr);
     ierr = VecLoad(_var[it->first], viewer);                          CHKERRQ(ierr);
   }
+  ierr = PetscViewerHDF5PopGroup(viewer); CHKERRQ(ierr);
   ierr = PetscViewerHDF5PushGroup(viewer, "/odeSolver_WaveEq/varPrev"); CHKERRQ(ierr);
   for (map<string,Vec>::iterator it = _varPrev.begin(); it!=_varPrev.end(); it++ ) {
     ierr = PetscObjectSetName((PetscObject) _varPrev[it->first], (it->first).c_str()); CHKERRQ(ierr);
     ierr = VecLoad(_varPrev[it->first], viewer);                          CHKERRQ(ierr);
   }
   ierr = PetscViewerHDF5PopGroup(viewer); CHKERRQ(ierr);
+  ierr = PetscViewerDestroy(&viewer);                                    CHKERRQ(ierr);
 
   #if VERBOSE > 1
     PetscPrintf(PETSC_COMM_WORLD,"Ending OdeSolver_WaveEq::loadCheckpoint in odeSolver.cpp.\n");

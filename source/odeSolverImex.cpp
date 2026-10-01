@@ -541,6 +541,7 @@ PetscErrorCode RK32_WBE::loadCheckpoint(const std::string inputDir)
   ierr = PetscViewerHDF5ReadAttribute(viewer, "odeSolver_chkpt_data", "deltaT", PETSC_SCALAR, NULL, &_deltaT); CHKERRQ(ierr);
   ierr = PetscViewerHDF5ReadAttribute(viewer, "odeSolver_chkpt_data", "deltaT", PETSC_SCALAR, NULL, &_newDeltaT); CHKERRQ(ierr);
   ierr = PetscViewerHDF5PopGroup(viewer);                                                              CHKERRQ(ierr);
+  ierr = PetscViewerDestroy(&viewer);                                    CHKERRQ(ierr);
 
   #if VERBOSE > 1
     PetscPrintf(PETSC_COMM_WORLD,"Ending RK32_WBE::loadCheckpoint in odeSolver.cpp.\n");
@@ -1174,6 +1175,7 @@ PetscErrorCode RK43_WBE::loadCheckpoint(const std::string inputDir)
   ierr = PetscViewerHDF5ReadAttribute(viewer, "odeSolver_chkpt_data", "deltaT", PETSC_SCALAR, NULL, &_deltaT); CHKERRQ(ierr);
   ierr = PetscViewerHDF5ReadAttribute(viewer, "odeSolver_chkpt_data", "deltaT", PETSC_SCALAR, NULL, &_newDeltaT); CHKERRQ(ierr);
   ierr = PetscViewerHDF5PopGroup(viewer);                                                              CHKERRQ(ierr);
+  ierr = PetscViewerDestroy(&viewer);                                    CHKERRQ(ierr);
 
   #if VERBOSE > 1
     PetscPrintf(PETSC_COMM_WORLD,"Ending RK43_WBE::loadCheckpoint in odeSolver.cpp.\n");
