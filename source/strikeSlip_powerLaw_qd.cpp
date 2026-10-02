@@ -849,7 +849,7 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::writeContext()
   ierr = PetscViewerASCIIPrintf(viewer,"timeIntegrator = %s\n",_timeIntegrator.c_str());CHKERRQ(ierr);
   ierr = PetscViewerASCIIPrintf(viewer,"timeControlType = %s\n",_timeControlType.c_str());CHKERRQ(ierr);
   ierr = PetscViewerASCIIPrintf(viewer,"stride1D = %i\n",_stride1D);CHKERRQ(ierr);
-  ierr = PetscViewerASCIIPrintf(viewer,"stride2D = %i\n",_stride1D);CHKERRQ(ierr);
+  ierr = PetscViewerASCIIPrintf(viewer,"stride2D = %i\n",_stride2D);CHKERRQ(ierr);
   ierr = PetscViewerASCIIPrintf(viewer,"maxStepCount = %i\n",_maxStepCount);CHKERRQ(ierr);
   ierr = PetscViewerASCIIPrintf(viewer,"initTime = %.15e # (s)\n",_initTime);CHKERRQ(ierr);
   ierr = PetscViewerASCIIPrintf(viewer,"maxTime = %.15e # (s)\n",_maxTime);CHKERRQ(ierr);
@@ -882,8 +882,6 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::writeContext()
 
   // write non-ascii context
   string outFileName = _outputDir + "data_context.h5";
-  ierr = PetscViewerCreate(PETSC_COMM_WORLD, &_viewer_context); CHKERRQ(ierr);
-  ierr = PetscViewerSetType(_viewer_context, PETSCVIEWERBINARY); CHKERRQ(ierr);
   ierr = PetscViewerHDF5Open(PETSC_COMM_WORLD, outFileName.c_str(), FILE_MODE_WRITE, &_viewer_context);CHKERRQ(ierr);
 
   _D->write(_viewer_context);
@@ -894,9 +892,9 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::writeContext()
   if (_grainSizeEvCoupling != "no") { _grainDist->writeContext(_outputDir, _viewer_context); }
 
   if (_forcingType == "iceStream") {
-    ierr = PetscViewerHDF5PushGroup(viewer, "/momBal");                 CHKERRQ(ierr);
-    ierr = VecView(_forcingTermPlain, viewer);                          CHKERRQ(ierr);
-    ierr = PetscViewerHDF5PopGroup(viewer);                             CHKERRQ(ierr);
+    ierr = PetscViewerHDF5PushGroup(_viewer_context, "/momBal");        CHKERRQ(ierr);
+    ierr = VecView(_forcingTermPlain, _viewer_context);                 CHKERRQ(ierr);
+    ierr = PetscViewerHDF5PopGroup(_viewer_context);                    CHKERRQ(ierr);
   }
 
   #if VERBOSE > 1
@@ -1753,8 +1751,6 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::writeSS(const int Ii)
   if (_viewerSS == NULL) {
     // set up viewer for output of steady-state data
     string outFileName = _outputDir + "data_steadyState.h5";
-    ierr = PetscViewerCreate(PETSC_COMM_WORLD, &_viewerSS);             CHKERRQ(ierr);
-    ierr = PetscViewerSetType(_viewerSS, PETSCVIEWERBINARY);            CHKERRQ(ierr);
     ierr = PetscViewerHDF5Open(PETSC_COMM_WORLD, outFileName.c_str(), FILE_MODE_APPEND, &_viewerSS);CHKERRQ(ierr);
 
     ierr = PetscViewerHDF5PushGroup(_viewerSS, "/steadyState");         CHKERRQ(ierr);
@@ -1815,8 +1811,6 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::writeViscLoopSS(const int Ii)
   if (_viewerSS == NULL) {
     // set up viewer for output of steady-state data
     string outFileName = _outputDir + "data_viscLoop.h5";
-    ierr = PetscViewerCreate(PETSC_COMM_WORLD, &_viewerSS);             CHKERRQ(ierr);
-    ierr = PetscViewerSetType(_viewerSS, PETSCVIEWERBINARY);            CHKERRQ(ierr);
     ierr = PetscViewerHDF5Open(PETSC_COMM_WORLD, outFileName.c_str(), FILE_MODE_APPEND, &_viewerSS);CHKERRQ(ierr);
 
     ierr = PetscViewerHDF5PushGroup(_viewerSS, "/steadyState");         CHKERRQ(ierr);

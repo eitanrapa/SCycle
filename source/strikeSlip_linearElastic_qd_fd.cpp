@@ -1226,8 +1226,6 @@ PetscErrorCode StrikeSlip_LinearElastic_qd_fd::writeSS(const int Ii)
   if (_viewerSS == NULL) {
     // set up viewer for output of steady-state data
     string outFileName = _outputDir + "data_steadyState.h5";
-    ierr = PetscViewerCreate(PETSC_COMM_WORLD, &_viewerSS);             CHKERRQ(ierr);
-    ierr = PetscViewerSetType(_viewerSS, PETSCVIEWERBINARY);            CHKERRQ(ierr);
     ierr = PetscViewerHDF5Open(PETSC_COMM_WORLD, outFileName.c_str(), FILE_MODE_WRITE, &_viewerSS);CHKERRQ(ierr);
 
     ierr = PetscViewerHDF5PushGroup(_viewerSS, "/steadyState");         CHKERRQ(ierr);
@@ -1497,8 +1495,6 @@ PetscErrorCode StrikeSlip_LinearElastic_qd_fd::writeContext()
 
   // write non-ascii context
   string outFileName = _outputDir + "data_context.h5";
-  ierr = PetscViewerCreate(PETSC_COMM_WORLD, &_viewer_context); CHKERRQ(ierr);
-  ierr = PetscViewerSetType(_viewer_context, PETSCVIEWERBINARY); CHKERRQ(ierr);
   ierr = PetscViewerHDF5Open(PETSC_COMM_WORLD, outFileName.c_str(), FILE_MODE_APPEND, &_viewer_context);CHKERRQ(ierr);
 
   _D->write(_viewer_context);

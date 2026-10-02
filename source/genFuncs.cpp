@@ -1124,8 +1124,6 @@ PetscErrorCode initiate_writeVec_hdf5(map<string, pair<PetscViewer, string>> &vw
   PetscErrorCode ierr = 0;
 
   // initiate viewer
-  ierr = PetscViewerCreate(PETSC_COMM_WORLD, &vwL[key].first);        CHKERRQ(ierr);
-  ierr = PetscViewerSetType(vwL[key].first, PETSCVIEWERBINARY);       CHKERRQ(ierr);
   ierr = PetscViewerHDF5Open(PETSC_COMM_WORLD, filename.c_str(), mode, &vwL[key].first);CHKERRQ(ierr);
   ierr = PetscViewerHDF5PushTimestepping(vwL[key].first);             CHKERRQ(ierr);
 
@@ -1135,8 +1133,6 @@ PetscErrorCode initiate_writeVec_hdf5(map<string, pair<PetscViewer, string>> &vw
 
   // ensure that viewer mode switches to append if it isn't that already
   ierr = PetscViewerDestroy(&vwL[key].first);
-  ierr = PetscViewerCreate(PETSC_COMM_WORLD, &vwL[key].first);          CHKERRQ(ierr);
-  ierr = PetscViewerSetType(vwL[key].first, PETSCVIEWERBINARY);         CHKERRQ(ierr);
   ierr = PetscViewerHDF5Open(PETSC_COMM_WORLD, filename.c_str(), FILE_MODE_APPEND, &vwL[key].first);CHKERRQ(ierr);
   ierr = PetscViewerHDF5PushTimestepping(vwL[key].first);             CHKERRQ(ierr);
 
