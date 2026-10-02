@@ -976,8 +976,9 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::view()
 
   double totRunTime = MPI_Wtime() - _startTime;
 
-  if (_timeIntegrator.compare("IMEX")==0&& _quadImex!=NULL) { ierr = _quadImex->view(); }
-  if (_timeIntegrator.compare("RK32")==0 && _quadEx!=NULL) { ierr = _quadEx->view(); }
+  // the integrator's summary (step counts, rejected and inaccurate steps), whichever was used
+  if (_quadImex != NULL) { ierr = _quadImex->view(); CHKERRQ(ierr); }
+  if (_quadEx != NULL) { ierr = _quadEx->view(); CHKERRQ(ierr); }
 
   _material->view(_integrateTime);
   for (size_t i = 0; i < _faults.size(); i++) { _faults[i]->view(_integrateTime); }
