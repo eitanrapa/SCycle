@@ -366,7 +366,13 @@ PetscErrorCode PowerLaw::loadFieldsFromFiles()
 
   ierr = loadVecFromInputFile(_T,_inputDir,"T"); CHKERRQ(ierr);
   ierr = loadVecFromInputFile(_grainSize,_inputDir,"grainSizeEv_d"); CHKERRQ(ierr);
-  ierr = loadVecFromInputFile(_wetDist,_inputDir,"pl_wetDist"); CHKERRQ(ierr);
+  {
+    // fraction of each cell where dissolution-precipitation creep operates; wet everywhere unless a
+    // pl_wetDist file is given (it used to default to 0, which silently disabled the mechanism)
+    bool wetDistFromFile = 0;
+    ierr = loadVecFromInputFile(_wetDist,_inputDir,"pl_wetDist",wetDistFromFile); CHKERRQ(ierr);
+    if (!wetDistFromFile) { VecSet(_wetDist,1.0); }
+  }
 
   ierr = loadVecFromInputFile(_gVxy,_inputDir,"GVxy"); CHKERRQ(ierr);
   ierr = loadVecFromInputFile(_gVxz,_inputDir,"GVxz"); CHKERRQ(ierr);

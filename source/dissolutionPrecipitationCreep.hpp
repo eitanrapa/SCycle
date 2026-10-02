@@ -37,7 +37,7 @@ public:
   string          _delim;
   string          _inputDir;
   const Vec      *_y,*_z;
-  const float     _R; // (kJ/K/mol) gas constant
+  const PetscScalar _R; // (kJ/K/mol) gas constant
   Vec             _B,_D,_c,_Vs; // diffusion/shape, molar volume
   Vec             _m; // grain size exponent
   Vec             _invEffVisc; // 1 / (effective viscosity)

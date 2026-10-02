@@ -312,12 +312,14 @@ PetscErrorCode DissolutionPrecipitationCreep::computeInvEffVisc(const Vec& Temp,
   PetscInt Jj = 0;
   for (Ii=Istart;Ii<Iend;Ii++) {
     assert(!PetscIsNanReal(s[Jj]));
-    PetscScalar num = 3.0*std::sqrt(3.0)*1e3 *Vs[Jj]*s[Jj];
-    PetscScalar RT = _R*T[Jj];
-    PetscScalar expVal = exp(num/RT);
-    assert(!PetscIsNanReal(expVal));
-    assert(!PetscIsInfReal(expVal));
-    invEffVisc[Jj] = 1e3 * 2.0 * std::sqrt(3.0) * B[Jj] * D[Jj] * c[Jj] * Vs[Jj] * pow(d[Jj],-m[Jj]) * wetDist[Jj] * (expVal - 1.0);
+    // strain rate = 1e3*2*sqrt(3)*B*D*c*Vs*d^-m * (exp(k*s) - 1), with k = 3*sqrt(3)*1e3*Vs/(R*T);
+    // 1/effVisc = strain rate / s (see the class header), and (exp(k*s) - 1)/s -> k as s -> 0
+    PetscScalar k = 3.0*std::sqrt(3.0)*1e3*Vs[Jj]/(_R*T[Jj]);
+    PetscScalar expm1Val = expm1(k*s[Jj]);
+    assert(!PetscIsNanReal(expm1Val));
+    assert(!PetscIsInfReal(expm1Val));
+    PetscScalar expm1OverS = (s[Jj] > 0.) ? expm1Val/s[Jj] : k;
+    invEffVisc[Jj] = 1e3 * 2.0 * std::sqrt(3.0) * B[Jj] * D[Jj] * c[Jj] * Vs[Jj] * pow(d[Jj],-m[Jj]) * wetDist[Jj] * expm1OverS;
     Jj++;
   }
   VecRestoreArrayRead(sdev,&s);
