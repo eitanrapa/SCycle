@@ -170,6 +170,9 @@ PetscErrorCode StrikeSlip_LinearElastic_fd::checkInput()
     ierr = PetscPrintf(PETSC_COMM_WORLD,"Starting %s in %s\n",funcName.c_str(),FILENAME);
     CHKERRQ(ierr);
   #endif
+  if (_D->_Nz == 1) {
+    PetscPrintf(PETSC_COMM_WORLD,"Warning: fully dynamic simulations on 1D grids (Nz = 1) are untested; the fully dynamic phase of quasidynamic_and_dynamic runs diverges on them.\n");
+  }
   assert(_maxStepCount >= 0);
   assert(_initTime >= 0);
   assert(_maxTime >= 0 && _maxTime>=_initTime);

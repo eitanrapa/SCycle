@@ -284,6 +284,22 @@ PetscErrorCode StrikeSlip_PowerLaw_qd_fd::checkInput()
     CHKERRQ(ierr);
   #endif
 
+  // The fully dynamic phase diverges on 1D grids (Nz = 1): the slip rate grows without bound
+  // after the switch (seen in the original code too); 2D grids work.
+  if (_D->_Nz == 1) {
+    PetscPrintf(PETSC_COMM_WORLD,"Error: momentumBalanceType = quasidynamic_and_dynamic needs Nz > 1; the fully dynamic phase is not supported on 1D grids.\n");
+    assert(_D->_Nz > 1);
+  }
+  // switching from quasidynamic to fully dynamic is re-armed once max slip rate drops below limit_qd,
+  // so limit_qd must be below trigger_qd2fd; switching back is allowed once it exceeds limit_fd
+  if (_limit_fd < _trigger_qd2fd){
+    _limit_fd = 10 * _trigger_qd2fd;
+  }
+
+  if (_limit_qd > _trigger_qd2fd){
+    _limit_qd = _trigger_qd2fd / 10.0;
+  }
+
   assert(_guessSteadyStateICs == 0 || _guessSteadyStateICs == 1);
 
   assert(_thermalCoupling=="coupled" || _thermalCoupling=="uncoupled" || _thermalCoupling == "no" );
@@ -1378,7 +1394,7 @@ PetscErrorCode StrikeSlip_PowerLaw_qd_fd::integrate_fd(int isFirstPhase)
 
   // initialize time integrator
   _quadWaveEx = new OdeSolver_WaveEq(_maxStepCount,_currTime,_maxTime,_deltaT_fd);
-  _quadWaveEx->setInitialConds(_varFD);
+  _quadWaveEx->setInitialConds(_varFD,_varFDPrev); // n and n-1 levels prepared by prepare_qd2fd
   _quadWaveEx->setInitialStepCount(_stepCount);
 
   if (isFirstPhase == 1 && _D->_restartFromChkpt) { ierr = _quadWaveEx->loadCheckpoint(_outputDir); CHKERRQ(ierr); }
@@ -1523,13 +1539,13 @@ PetscErrorCode StrikeSlip_PowerLaw_qd_fd::integrate_singleQDTimeStep()
 
   // initialize time integrator
   if (_timeIntegrator.compare("FEuler")==0) {
-    quadEx = new FEuler(1,_maxTime,_deltaT_fd,_timeControlType);
+    quadEx = new FEuler(_stepCount+1,_maxTime,_deltaT_fd,_timeControlType); // one step after setInitialStepCount(_stepCount)
   }
   else if (_timeIntegrator.compare("RK32")==0) {
-    quadEx = new RK32(1,_maxTime,_deltaT_fd,_timeControlType);
+    quadEx = new RK32(_stepCount+1,_maxTime,_deltaT_fd,_timeControlType); // one step after setInitialStepCount(_stepCount)
   }
   else if (_timeIntegrator.compare("RK43")==0) {
-    quadEx = new RK43(1,_maxTime,_deltaT_fd,_timeControlType);
+    quadEx = new RK43(_stepCount+1,_maxTime,_deltaT_fd,_timeControlType); // one step after setInitialStepCount(_stepCount)
   }
   else if (_timeIntegrator.compare("RK32_WBE")==0) {
     quadImex = new RK32_WBE(1,_maxTime,_deltaT_fd,_timeControlType);
