@@ -563,6 +563,10 @@ double startTime = MPI_Wtime();
     if (_quadImex != NULL) { ierr = _quadImex->writeCheckpoint(_viewer_chkpt); CHKERRQ(ierr); }
     if (_grainDist != NULL) { ierr =  _grainDist->writeCheckpoint(_viewer_chkpt);CHKERRQ(ierr); }
     if (_hydraulicCoupling.compare("no")!=0) { ierr = _p->writeCheckpoint(_viewer_chkpt);  CHKERRQ(ierr); }
+    // output so far is made consistent on disk first, then the checkpoint replaces the old one
+    ierr = flushHDF5Viewer(_viewer1D); CHKERRQ(ierr);
+    ierr = flushHDF5Viewer(_viewer2D); CHKERRQ(ierr);
+    ierr = commitCheckpoint(_viewer_chkpt, _outputDir); CHKERRQ(ierr);
   }
 
   // ensure time step does not exceed limits: Maxwell time, and characteristic time step of grain size evolution
@@ -696,12 +700,10 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::writeCheckpoint()
     PetscPrintf(PETSC_COMM_WORLD,"Starting %s in %s\n",funcName.c_str(),FILENAME);
   #endif
 
-  if (_viewer_chkpt == NULL ) {
-    // initiate viewer
-    string outFileName = _outputDir + "checkpoint.h5";
-    ierr = PetscViewerHDF5Open(PETSC_COMM_WORLD, outFileName.c_str(), FILE_MODE_WRITE, &_viewer_chkpt);CHKERRQ(ierr);
-    ierr = PetscViewerHDF5SetBaseDimension2(_viewer_chkpt, PETSC_TRUE);CHKERRQ(ierr);
-  }
+  // each checkpoint goes to a fresh temporary file; commitCheckpoint renames it when complete
+  ierr = PetscViewerDestroy(&_viewer_chkpt); CHKERRQ(ierr);
+  ierr = PetscViewerHDF5Open(PETSC_COMM_WORLD, checkpointTmpName(_outputDir).c_str(), FILE_MODE_WRITE, &_viewer_chkpt);CHKERRQ(ierr);
+  ierr = PetscViewerHDF5SetBaseDimension2(_viewer_chkpt, PETSC_TRUE);CHKERRQ(ierr);
 
   if (_viewer1D != NULL) {
     ierr = PetscViewerHDF5PushTimestepping(_viewer1D);                  CHKERRQ(ierr);

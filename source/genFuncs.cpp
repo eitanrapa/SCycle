@@ -1,4 +1,5 @@
 #include "genFuncs.hpp"
+#include <cstdio>
 
 using namespace std;
 
@@ -1209,4 +1210,42 @@ PetscReal maxRelativeDiff(const Vec& a, const Vec& b)
   PetscReal globalMax = 0;
   MPI_Allreduce(&localMax,&globalMax,1,MPIU_REAL,MPIU_MAX,PetscObjectComm((PetscObject)b));
   return globalMax;
+}
+
+
+// make an open HDF5 file consistent on disk (PetscViewerFlush does nothing for HDF5 viewers)
+PetscErrorCode flushHDF5Viewer(PetscViewer viewer)
+{
+  PetscErrorCode ierr = 0;
+  if (viewer == NULL) { return ierr; }
+  hid_t fileId;
+  ierr = PetscViewerHDF5GetFileId(viewer, &fileId); CHKERRQ(ierr);
+  if (H5Fflush(fileId, H5F_SCOPE_GLOBAL) < 0) {
+    SETERRQ(PETSC_COMM_WORLD, PETSC_ERR_FILE_WRITE, "H5Fflush failed");
+  }
+  return ierr;
+}
+
+std::string checkpointTmpName(const std::string& outputDir)
+{
+  return outputDir + "checkpoint.h5.tmp";
+}
+
+// close the checkpoint written to the temporary file and move it over <outputDir>checkpoint.h5
+PetscErrorCode commitCheckpoint(PetscViewer& viewer, const std::string& outputDir)
+{
+  PetscErrorCode ierr = 0;
+  ierr = PetscViewerDestroy(&viewer); CHKERRQ(ierr); // collective: every rank has closed the file
+  PetscMPIInt rank;
+  ierr = MPI_Comm_rank(PETSC_COMM_WORLD, &rank); CHKERRQ(ierr);
+  int failed = 0;
+  if (rank == 0) {
+    const std::string tmp = checkpointTmpName(outputDir), final = outputDir + "checkpoint.h5";
+    failed = (rename(tmp.c_str(), final.c_str()) != 0);
+  }
+  ierr = MPI_Bcast(&failed, 1, MPI_INT, 0, PETSC_COMM_WORLD); CHKERRQ(ierr);
+  if (failed) {
+    SETERRQ(PETSC_COMM_WORLD, PETSC_ERR_FILE_WRITE, "could not rename checkpoint.h5.tmp to checkpoint.h5");
+  }
+  return ierr;
 }

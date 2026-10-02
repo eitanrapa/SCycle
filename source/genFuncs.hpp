@@ -84,6 +84,13 @@ double computeNormDiff_L2_scaleL2(const Vec& vec1,const Vec& vec2);
 double computeMaxDiff_scaleVec1(const Vec& vec1,const Vec& vec2);
 // max over entries of |a - b| / |b|, using |a - b| where b == 0
 PetscReal maxRelativeDiff(const Vec& a, const Vec& b);
+
+// Durable HDF5 output. PetscViewerFlush is a no-op for HDF5 viewers, so flush the file itself.
+PetscErrorCode flushHDF5Viewer(PetscViewer viewer);
+// Checkpoints are written to <outputDir>checkpoint.h5.tmp; commitCheckpoint closes that file and
+// renames it to <outputDir>checkpoint.h5, so a job killed while writing keeps the previous one.
+std::string checkpointTmpName(const std::string& outputDir);
+PetscErrorCode commitCheckpoint(PetscViewer& viewer, const std::string& outputDir);
 double computeNorm_Mat(const Mat& mat,const Vec& vec);
 
 // functions to make computing the energy much easier
