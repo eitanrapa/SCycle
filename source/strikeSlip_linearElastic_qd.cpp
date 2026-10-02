@@ -24,7 +24,7 @@ StrikeSlip_LinearElastic_qd::StrikeSlip_LinearElastic_qd(Domain &D)
   _miscTime(0),_viewer_context(NULL),_viewer1D(NULL),_viewer2D(NULL),_viewerSS(NULL),_viewer_chkpt(NULL),
   _forcingVal(0),
   _bcRType("remoteLoading"),_bcTType("freeSurface"),_bcLType("symmFault"),_bcBType("freeSurface"),
-  _quadEx(NULL),_quadImex(NULL),_fault(NULL),_material(NULL),_he(NULL),_p(NULL)
+  _quadEx(NULL),_quadImex(NULL),_fault(NULL),_interiorFaultKinkLift(1),_uContinuous(NULL),_material(NULL),_he(NULL),_p(NULL)
 {
   #if VERBOSE > 1
     std::string funcName = "StrikeSlip_LinearElastic_qd::StrikeSlip_LinearElastic_qd()";
@@ -46,19 +46,41 @@ StrikeSlip_LinearElastic_qd::StrikeSlip_LinearElastic_qd(Domain &D)
   if (_thermalCoupling != "no" || _evolveTemperature == 1 || _computeSSHeatEq == 1) { _he = new HeatEquation(D); }
 
   // fault
-  _fault = new Fault_qd(D,D._scatters["body2L"],_faultTypeScale); // the boundary fault at y = 0
-  _faults.push_back(_fault);
-  if (_thermalCoupling != "no" && _stateLaw == "flashHeating") {
-    _fault->setThermalFields(_he->_Tamb,_he->_k,_he->_c);
+  // the boundary fault at y = 0, unless the left boundary is loaded remotely (full domain)
+  if (_bcLType == "symmFault" || _bcLType == "rigidFault") {
+    _fault = new Fault_qd(D,D._scatters["body2L"],_faultTypeScale);
+    _faults.push_back(_fault);
+    _lifts.push_back(NULL);
+    if (_thermalCoupling != "no" && _stateLaw == "flashHeating") {
+      _fault->setThermalFields(_he->_Tamb,_he->_k,_he->_c);
+    }
+  }
+
+  // interior faults, each midway between two grid rows
+  for (size_t i = 0; i < _interiorFaultNames.size(); i++) {
+    const string& name = _interiorFaultNames[i];
+    PetscInt iRow = 0;
+    PetscScalar yMid = 0;
+    PetscErrorCode ierr = InteriorFaultLift::locate(D,_faultPositions[name],iRow,yMid); CHKERRABORT(PETSC_COMM_WORLD,ierr);
+    if (PetscAbsScalar(yMid - _faultPositions[name]) > 1e-9*PetscMax(1.0,PetscAbsScalar(yMid))) {
+      PetscPrintf(PETSC_COMM_WORLD,"Note: interior fault %s is placed at y = %.6g km, midway between grid rows %i and %i (%s_y = %g).\n",
+        name.c_str(),yMid,iRow,iRow+1,name.c_str(),_faultPositions[name]);
+    }
+    VecScatter *rows = NULL;
+    ierr = D.makeRowScatter(iRow,rows); CHKERRABORT(PETSC_COMM_WORLD,ierr);
+    Fault_qd *f = new Fault_qd(D,*rows,_faultTypeScale,name);
+    f->setEtaScale(0.5); // between two identical half-spaces: eta = sqrt(mu*rho)/2
+    _faults.push_back(f);
+    _lifts.push_back(new InteriorFaultLift(D,iRow,_interiorFaultKinkLift == 1));
   }
 
   // pressure diffusion equation
   if (_hydraulicCoupling != "no") {
     _p = new PressureEq(D);
     _p->addErrorControl(_timeIntInds,_scale);
-    _p->setSlipKey(_fault->_slipKey); // permeability follows the boundary fault's slip rate
+    if (_fault != NULL) { _p->setSlipKey(_fault->_slipKey); } // permeability follows the boundary fault's slip rate
   }
-  if (_hydraulicCoupling == "coupled") { _fault->setSNEff(_p->_p); }
+  if (_hydraulicCoupling == "coupled" && _fault != NULL) { _fault->setSNEff(_p->_p); }
 
   // initiate momentum balance equation
   if (_guessSteadyStateICs == 1 && _computeSSMomBal==1 && _forcingType != "iceStream") {
@@ -70,6 +92,13 @@ StrikeSlip_LinearElastic_qd::StrikeSlip_LinearElastic_qd(Domain &D)
   }
   else {
     _material = new LinearElastic(D,_mat_bcRType,_mat_bcTType,_mat_bcLType,_mat_bcBType);
+  }
+
+  // with interior faults, sxy is computed from u without their jumps
+  if (!_interiorFaultNames.empty()) {
+    VecDuplicate(_material->_u,&_uContinuous);
+    VecSet(_uContinuous,0.0);
+    _material->_uContinuous = _uContinuous;
   }
 
   // body forcing term for ice stream
@@ -115,6 +144,9 @@ StrikeSlip_LinearElastic_qd::~StrikeSlip_LinearElastic_qd()
   delete _material;    _material = NULL;
   for (size_t i = 0; i < _faults.size(); i++) { delete _faults[i]; }
   _faults.clear();     _fault = NULL;
+  for (size_t i = 0; i < _lifts.size(); i++) { delete _lifts[i]; }
+  _lifts.clear();
+  VecDestroy(&_uContinuous);
   delete _he;          _he = NULL;
   delete _p;           _p = NULL;
 
@@ -200,6 +232,10 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::loadSettings(const char *file)
     else if (var.compare("momBal_bcT_qd")==0) { _bcTType = rhs.c_str(); }
     else if (var.compare("momBal_bcL_qd")==0) { _bcLType = rhs.c_str(); }
     else if (var.compare("momBal_bcB_qd")==0) { _bcBType = rhs.c_str(); }
+    else if (var.compare("interiorFaults")==0) { _interiorFaultNames.clear(); loadVectorFromInputFile(rhsFull,_interiorFaultNames); }
+    else if (var.compare("interiorFaultKinkLift")==0) { _interiorFaultKinkLift = atoi( rhs.c_str() ); }
+    // interior fault positions <name>_y (km), matched with interiorFaults in checkInput
+    else if (var.size() > 2 && var.compare(var.size()-2,2,"_y")==0) { _faultPositions[var.substr(0,var.size()-2)] = atof( rhs.c_str() ); }
   }
 
   #if VERBOSE > 1
@@ -257,7 +293,45 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::checkInput()
   // check boundary condition types for momentum balance equation
   assert(_bcRType == "freeSurface" || _bcRType == "remoteLoading");
   assert(_bcTType == "freeSurface" || _bcTType == "remoteLoading");
-  assert(_bcLType == "symmFault"   || _bcLType == "rigidFault" );
+  assert(_bcLType == "symmFault"   || _bcLType == "rigidFault" || _bcLType == "remoteLoading");
+
+  // interior faults
+  for (size_t i = 0; i < _interiorFaultNames.size(); i++) {
+    const string& name = _interiorFaultNames[i];
+    if (_faultPositions.find(name) == _faultPositions.end()) {
+      PetscPrintf(PETSC_COMM_WORLD,"Error: interior fault %s needs its position %s_y (km).\n",name.c_str(),name.c_str());
+      assert(0);
+    }
+    for (size_t j = 0; j < i; j++) {
+      if (_interiorFaultNames[j] == name) { PetscPrintf(PETSC_COMM_WORLD,"Error: interior fault %s is listed twice.\n",name.c_str()); assert(0); }
+    }
+  }
+  if (!_interiorFaultNames.empty()) {
+    if (_bcLType != "remoteLoading") {
+      PetscPrintf(PETSC_COMM_WORLD,"Error: interior faults need the full domain, momBal_bcL_qd = remoteLoading. With symmFault the\n"
+        "       left boundary is a mirror plane, so every interior fault would get a mirror image (three faults for two);\n"
+        "       with rigidFault one side of the boundary fault is rigid.\n");
+      assert(0);
+    }
+    if (_guessSteadyStateICs == 1) {
+      PetscPrintf(PETSC_COMM_WORLD,"Error: guessSteadyStateICs = 1 needs a boundary fault. Give interior faults their initial state\n"
+        "       with <name>_stateVals and <name>_prestressScalar, or with the files <name>_psi and <name>_prestress.\n");
+      assert(0);
+    }
+    if (_thermalCoupling != "no" || _evolveTemperature == 1 || _computeSSHeatEq == 1 || _hydraulicCoupling != "no") {
+      PetscPrintf(PETSC_COMM_WORLD,"Error: heat and pore pressure are not yet coupled to interior faults (stage 4 of docs/TWO_FAULT_DESIGN.md).\n");
+      assert(0);
+    }
+    if (_isMMS || _forcingType != "no") {
+      PetscPrintf(PETSC_COMM_WORLD,"Error: interior faults do not support isMMS or a body forcing term.\n");
+      assert(0);
+    }
+  }
+  assert(_interiorFaultKinkLift == 0 || _interiorFaultKinkLift == 1);
+  if (_bcLType == "remoteLoading" && _interiorFaultNames.empty()) {
+    PetscPrintf(PETSC_COMM_WORLD,"Error: momBal_bcL_qd = remoteLoading leaves the model without a fault; declare interiorFaults.\n");
+    assert(0);
+  }
   assert(_bcBType == "freeSurface" || _bcBType == "remoteLoading");
   if (_bcTType == "remoteLoading" || _bcBType == "remoteLoading") {
     PetscPrintf(PETSC_COMM_WORLD,"Note: momBal_bcT_qd/momBal_bcB_qd = remoteLoading holds that boundary at its initial (steady-state) displacement;\n"
@@ -445,16 +519,25 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::initiateIntegrand()
     PetscPrintf(PETSC_COMM_WORLD,"Starting %s in %s\n",funcName.c_str(),FILENAME);
   #endif
 
-  Vec slip;
-  VecDuplicate(_material->_bcL,&slip);
-  VecCopy(_material->_bcL,slip);
-  if (_bcLType.compare("symmFault")==0) {
-    VecScale(slip,_faultTypeScale);
+  if (_fault != NULL) { // the boundary fault's slip is twice (symmFault) the displacement at y = 0
+    Vec slip;
+    VecDuplicate(_material->_bcL,&slip);
+    VecCopy(_material->_bcL,slip);
+    if (_bcLType.compare("symmFault")==0) {
+      VecScale(slip,_faultTypeScale);
+    }
+    if (!_D->_restartFromChkpt) {
+      ierr = loadVecFromInputFile(slip,_inputDir,_fault->_prefix + "slip"); CHKERRQ(ierr);
+    }
+    _varEx[_fault->_slipKey] = slip;
   }
-  if (!_D->_restartFromChkpt) {
-    ierr = loadVecFromInputFile(slip,_inputDir,_fault->_prefix + "slip"); CHKERRQ(ierr);
+  for (size_t i = 0; i < _faults.size(); i++) { // an interior fault's slip is its own (file, checkpoint or 0)
+    if (_lifts[i] == NULL) { continue; }
+    Vec slip;
+    VecDuplicate(_faults[i]->_slip,&slip);
+    VecCopy(_faults[i]->_slip,slip);
+    _varEx[_faults[i]->_slipKey] = slip;
   }
-  _varEx[_fault->_slipKey] = slip;
 
   if (_guessSteadyStateICs == 1) { solveSS(); }
 
@@ -922,6 +1005,15 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::writeContext()
   ierr = PetscViewerASCIIPrintf(viewer,"timeStepTol = %g\n",_timeStepTol);CHKERRQ(ierr);
 
   ierr = PetscViewerASCIIPrintf(viewer,"timeIntInds = %s\n",vector2str(_timeIntInds).c_str());CHKERRQ(ierr);
+  if (!_interiorFaultNames.empty()) {
+    ierr = PetscViewerASCIIPrintf(viewer,"interiorFaults = %s\n",vector2str(_interiorFaultNames).c_str());CHKERRQ(ierr);
+    ierr = PetscViewerASCIIPrintf(viewer,"interiorFaultKinkLift = %i # 1: B+ (second-order fault traction)\n",_interiorFaultKinkLift);CHKERRQ(ierr);
+    for (size_t i = 0; i < _faults.size(); i++) {
+      if (_lifts[i] == NULL) { continue; }
+      ierr = PetscViewerASCIIPrintf(viewer,"%s_y = %.15e # (km) midway between grid rows %i and %i\n",
+        _faults[i]->_name.c_str(),_lifts[i]->_yFault,_lifts[i]->_iRow,_lifts[i]->_iRow+1);CHKERRQ(ierr);
+    }
+  }
   if (_scale.size() > 0) {
     ierr = PetscViewerASCIIPrintf(viewer,"scale = %s\n",vector2str(_scale).c_str());CHKERRQ(ierr);
   }
@@ -1054,6 +1146,9 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::d_dt(const PetscScalar time,const ma
     ierr = VecCopy(varEx.find(_fault->_slipKey)->second,_material->_bcL);CHKERRQ(ierr);
     ierr = VecScale(_material->_bcL,1.0/_faultTypeScale);CHKERRQ(ierr);
   }
+  else if (_bcLType=="remoteLoading") { // full domain: the left side moves opposite to the right
+    ierr = VecSet(_material->_bcL,-_vL*time/_faultTypeScale);CHKERRQ(ierr);
+  }
   if (_bcRType=="remoteLoading") {
     ierr = VecSet(_material->_bcR,_vL*time/_faultTypeScale);CHKERRQ(ierr);
     ierr = VecAXPY(_material->_bcR,1.0,_material->_bcRShift);CHKERRQ(ierr);
@@ -1084,8 +1179,11 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::d_dt(const PetscScalar time,const ma
   ierr = _material->getStresses(sxy,sxz,sdev);
   for (size_t i = 0; i < _faults.size(); i++) {
     Fault_qd *f = _faults[i];
-    ierr = VecScatterBegin(*f->_body2fault, sxy, f->_tauQSP, INSERT_VALUES, SCATTER_FORWARD); CHKERRQ(ierr);
-    ierr = VecScatterEnd(*f->_body2fault, sxy, f->_tauQSP, INSERT_VALUES, SCATTER_FORWARD); CHKERRQ(ierr);
+    if (_lifts[i] == NULL) {
+      ierr = VecScatterBegin(*f->_body2fault, sxy, f->_tauQSP, INSERT_VALUES, SCATTER_FORWARD); CHKERRQ(ierr);
+      ierr = VecScatterEnd(*f->_body2fault, sxy, f->_tauQSP, INSERT_VALUES, SCATTER_FORWARD); CHKERRQ(ierr);
+    }
+    else { ierr = _lifts[i]->traction(sxy, _material->_mu, f->_tauQSP); CHKERRQ(ierr); } // average across the fault
     ierr = f->d_dt(time,varEx,dvarEx); CHKERRQ(ierr);
   }
 
@@ -1112,6 +1210,9 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::d_dt(const PetscScalar time,const ma
   if (_bcLType=="symmFault" || _bcLType=="rigidFault") {
     ierr = VecCopy(varEx.find(_fault->_slipKey)->second,_material->_bcL);CHKERRQ(ierr);
     ierr = VecScale(_material->_bcL,1.0/_faultTypeScale);CHKERRQ(ierr);
+  }
+  else if (_bcLType=="remoteLoading") { // full domain: the left side moves opposite to the right
+    ierr = VecSet(_material->_bcL,-_vL*time/_faultTypeScale);CHKERRQ(ierr);
   }
   if (_bcRType=="remoteLoading") {
     ierr = VecSet(_material->_bcR,_vL*time/_faultTypeScale);CHKERRQ(ierr);
@@ -1148,8 +1249,11 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::d_dt(const PetscScalar time,const ma
   ierr = _material->getStresses(sxy,sxz,sdev);
   for (size_t i = 0; i < _faults.size(); i++) {
     Fault_qd *f = _faults[i];
-    ierr = VecScatterBegin(*f->_body2fault, sxy, f->_tauQSP, INSERT_VALUES, SCATTER_FORWARD); CHKERRQ(ierr);
-    ierr = VecScatterEnd(*f->_body2fault, sxy, f->_tauQSP, INSERT_VALUES, SCATTER_FORWARD); CHKERRQ(ierr);
+    if (_lifts[i] == NULL) {
+      ierr = VecScatterBegin(*f->_body2fault, sxy, f->_tauQSP, INSERT_VALUES, SCATTER_FORWARD); CHKERRQ(ierr);
+      ierr = VecScatterEnd(*f->_body2fault, sxy, f->_tauQSP, INSERT_VALUES, SCATTER_FORWARD); CHKERRQ(ierr);
+    }
+    else { ierr = _lifts[i]->traction(sxy, _material->_mu, f->_tauQSP); CHKERRQ(ierr); } // average across the fault
     ierr = f->d_dt(time,varEx,dvarEx); CHKERRQ(ierr);
   }
 
@@ -1199,9 +1303,29 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::solveMomentumBalance(const PetscScal
   // add source term for driving the ice stream to rhs Vec
   if (_forcingType.compare("iceStream")==0) { VecAXPY(_material->_rhs,-1.0,_forcingTerm); }
 
+  // interior faults: each fault's slip enters through a correction to the right-hand side
+  if (_uContinuous != NULL) {
+    Mat A;
+    ierr = _material->_sbp->getA(A); CHKERRQ(ierr);
+    for (size_t i = 0; i < _faults.size(); i++) {
+      if (_lifts[i] == NULL) { continue; }
+      ierr = _lifts[i]->setSlip(varEx.find(_faults[i]->_slipKey)->second,_material->_sbp,_material->_mu); CHKERRQ(ierr);
+      ierr = _lifts[i]->addToRhs(A,_material->_rhs); CHKERRQ(ierr);
+    }
+  }
+
   // compute displacement and stresses
-  _material->computeU();
-  _material->computeStresses();
+  ierr = _material->computeU(); CHKERRQ(ierr);
+  if (_uContinuous != NULL) { // y-strains from u without the jumps (LinearElastic::_uContinuous)
+    ierr = VecCopy(_material->_u,_uContinuous); CHKERRQ(ierr);
+    for (size_t i = 0; i < _lifts.size(); i++) {
+      if (_lifts[i] != NULL) { ierr = _lifts[i]->subtractJump(_uContinuous); CHKERRQ(ierr); }
+    }
+  }
+  ierr = _material->computeStresses(); CHKERRQ(ierr);
+  for (size_t i = 0; i < _lifts.size(); i++) { // B+: the physical sxy includes mu dK/dy past each fault
+    if (_lifts[i] != NULL) { ierr = _lifts[i]->addKinkStress(_material->_sxy,_material->_mu); CHKERRQ(ierr); }
+  }
 
   return ierr;
 }

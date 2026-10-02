@@ -52,6 +52,7 @@ public:
   Vec             _mu, _rho, _cs;
   vector<double>  _muVals,_muDepths,_rhoVals,_rhoDepths;
   Vec             _surfDisp,_bcRShift,_bcTShift,_bcBShift;
+  Vec             _uContinuous; // if set: u without interior-fault jumps, used for the y-strain (sxy)
   Vec             _rhs,_u,_sxy,_sxz,_sdev;
   int             _computeSxz,_computeSdev; // 0 = no, 1 = yes
 

@@ -21,6 +21,7 @@
 #include "sbpOps_m_constGrid.hpp"
 #include "sbpOps_m_varGrid.hpp"
 #include "fault.hpp"
+#include "interiorFaultLift.hpp"
 #include "pressureEq.hpp"
 #include "heatEquation.hpp"
 #include "linearElastic.hpp"
@@ -116,6 +117,15 @@ public:
   // reading the body through its own scatter. This class owns and deletes the faults.
   Fault_qd               *_fault;
   std::vector<Fault_qd*>  _faults;
+
+  // Interior faults (docs/TWO_FAULT_DESIGN.md, Route B), declared by interiorFaults = [names] with
+  // positions <name>_y (km). Each has a lift that adds its slip to the momentum balance through the
+  // right-hand side; _lifts runs parallel to _faults, with NULL for the boundary fault.
+  std::vector<string>             _interiorFaultNames;
+  std::map<string,PetscScalar>    _faultPositions; // every <name>_y value in the input file
+  std::vector<InteriorFaultLift*> _lifts;
+  int                             _interiorFaultKinkLift; // 1 (default): B+, second-order fault traction
+  Vec                             _uContinuous; // u without the interior-fault jumps (NULL if none)
   LinearElastic    *_material; // linear elastic off-fault material properties
   HeatEquation     *_he;
   PressureEq       *_p;
