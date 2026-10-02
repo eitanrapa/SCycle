@@ -34,6 +34,7 @@ struct BulkInputs
   Vec dgVdev;      // viscous strain rate (1e-3/s, engineering shear)
   Vec dgVdev_disl; // its dislocation-creep part (1e-3/s)
   Vec T;           // temperature (K)
+  Vec Qfault;      // the faults' work spread into the body (kW/m^3), NULL where the mediator has none
 };
 
 class BulkStateField
@@ -68,6 +69,10 @@ public:
   virtual PetscErrorCode clamp();
   // the initial state when no <prefix><symbol>Vals are given (0 by default)
   virtual PetscErrorCode initialDefault(Vec& state);
+  // the law is driven by the total viscous strain rate rather than its dislocation-creep part
+  virtual bool usesTotalViscousRate() const { return false; }
+  // the law needs BulkInputs::Qfault (the mediator then spreads the faults' work before its rate)
+  virtual bool needsFaultWork() const { return false; }
 
   // life cycle, called by the mediator
   PetscErrorCode initiateIntegrand(const PetscScalar time, std::map<std::string,Vec>& varEx);

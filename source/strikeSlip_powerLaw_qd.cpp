@@ -119,6 +119,10 @@ StrikeSlip_PowerLaw_qd::StrikeSlip_PowerLaw_qd(Domain&D)
     if (h->_type == "off") { delete h; } else { _bulkStates.push_back(h); }
     WaterState *w = new WaterState(D,_material->_wetDist);
     if (w->_type == "off") { delete w; } else { _bulkStates.push_back(w); }
+    FabricState *fab = new FabricState(D);
+    if (fab->_type == "off") { delete fab; } else { _bulkStates.push_back(fab); }
+    CementState *cem = new CementState(D);
+    if (cem->_type == "off") { delete cem; } else { _bulkStates.push_back(cem); }
   }
   if (!_bulkStates.empty()) {
     if (_material->_wLinearMaxwell == "yes" || _isMMS) {
@@ -135,6 +139,7 @@ StrikeSlip_PowerLaw_qd::StrikeSlip_PowerLaw_qd(Domain&D)
           "       or pressure solution (wDissPrecCreep = yes); neither is on.\n");
         assert(0);
       }
+      if (_bulkStates[i]->needsFaultWork()) { setUpFaultWork(D,"the cement state (cement_type)"); }
       _bulkStates[i]->addErrorControl(_timeIntInds,_scale);
       _bulkStates[i]->pushToMaterial(*_material);
     }
@@ -151,19 +156,7 @@ StrikeSlip_PowerLaw_qd::StrikeSlip_PowerLaw_qd(Domain&D)
       PetscPrintf(PETSC_COMM_WORLD,"Error: the cataclastic sink (grainSizeEv_fCatVals) needs grainSizeEvCoupling = uncoupled or coupled.\n");
       assert(0);
     }
-    if (_he->_wFrictionalHeating != "yes" || !(_he->_wMax > 0)) {
-      PetscPrintf(PETSC_COMM_WORLD,"Error: the cataclastic sink spreads the faults' work over the frictional-heat kernel: it needs\n"
-        "       withFrictionalHeating = yes and wVals > 0.\n");
-      assert(0);
-    }
-    if (_Qfault == NULL) {
-      if (!_interiorFaultNames.empty()) {
-        PetscErrorCode ierr = _faultWork.setup(D,_material->_sbp,_he->_w,_faults,_lifts); CHKERRABORT(PETSC_COMM_WORLD,ierr);
-      }
-      VecDuplicate(D._y,&_Qfault);
-      VecSet(_Qfault,0.0);
-    }
-    if (_fault != NULL) { VecDuplicate(_fault->_slipVel,&_tauV); }
+    setUpFaultWork(D,"the cataclastic sink (grainSizeEv_fCatVals)");
     if (_grainDist->_QTest < 0) { _he->setFrictionalHeatSink(&_grainDist->_Qcat); } // QTest: the sink alone, a unit test
   }
 
@@ -1293,6 +1286,9 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::d_dt(const PetscScalar time,const map<str
 
   // rates of the bulk state fields (after the faults, for laws that use fault quantities)
   if (!_bulkStates.empty()) {
+    for (size_t i = 0; i < _bulkStates.size(); i++) {
+      if (_bulkStates[i]->needsFaultWork()) { ierr = computeFaultWork(); CHKERRQ(ierr); break; }
+    }
     const BulkInputs in = bulkInputs(time);
     for (size_t i = 0; i < _bulkStates.size(); i++) { ierr = _bulkStates[i]->d_dt(in,dvarEx); CHKERRQ(ierr); }
   }
@@ -1392,6 +1388,9 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::d_dt(const PetscScalar time,const map<str
 
   // rates of the bulk state fields (after the faults, for laws that use fault quantities)
   if (!_bulkStates.empty()) {
+    for (size_t i = 0; i < _bulkStates.size(); i++) {
+      if (_bulkStates[i]->needsFaultWork()) { ierr = computeFaultWork(); CHKERRQ(ierr); break; }
+    }
     const BulkInputs in = bulkInputs(time);
     for (size_t i = 0; i < _bulkStates.size(); i++) { ierr = _bulkStates[i]->d_dt(in,dvarEx); CHKERRQ(ierr); }
   }
@@ -1562,6 +1561,27 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::computeSurfVel()
 }
 
 
+// the faults' work spread into the body, for the cataclastic sink or the cement state (who): needs the
+// frictional-heat kernel (wVals > 0); allocates _Qfault, the interior faults' kernels (if heat has not)
+// and the boundary fault's work vector, once
+void StrikeSlip_PowerLaw_qd::setUpFaultWork(Domain& D, const std::string& who)
+{
+  if (_he->_wFrictionalHeating != "yes" || !(_he->_wMax > 0)) {
+    PetscPrintf(PETSC_COMM_WORLD,"Error: %s spreads the faults' work over the frictional-heat kernel: it needs\n"
+      "       withFrictionalHeating = yes and wVals > 0.\n",who.c_str());
+    assert(0);
+  }
+  if (_Qfault == NULL) {
+    if (!_interiorFaultNames.empty()) {
+      PetscErrorCode ierr = _faultWork.setup(D,_material->_sbp,_he->_w,_faults,_lifts); CHKERRABORT(PETSC_COMM_WORLD,ierr);
+    }
+    VecDuplicate(D._y,&_Qfault);
+    VecSet(_Qfault,0.0);
+  }
+  if (_fault != NULL && _tauV == NULL) { VecDuplicate(_fault->_slipVel,&_tauV); }
+}
+
+
 // the faults' work spread into the body (kW/m^3): the boundary fault's over the heat equation's half
 // Gaussian, as its frictional heat; interior faults' over their kernels (FaultWorkKernel)
 PetscErrorCode StrikeSlip_PowerLaw_qd::computeFaultWork()
@@ -1605,6 +1625,7 @@ BulkInputs StrikeSlip_PowerLaw_qd::bulkInputs(const PetscScalar time) const
   in.dgVdev = _material->_dgVdev;
   in.dgVdev_disl = _material->_dgVdev_disl;
   in.T = _material->_T;
+  in.Qfault = _Qfault;
   return in;
 }
 

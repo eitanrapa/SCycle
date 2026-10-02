@@ -5,6 +5,7 @@
 #include <string>
 #include <cmath>
 #include <vector>
+#include <map>
 #include <petscviewerhdf5.h>
 #include "genFuncs.hpp"
 #include "domain.hpp"
@@ -68,6 +69,7 @@ class PowerLaw
     std::string           _wDislWetDry; // yes: disl_ is the dry, disl2_ the wet end-member, mixed by the wetness
     std::string           _wetMix;      // log (default) or arithmetic
     Vec                   _wetChi;      // the wetness of the mix (WaterState), NULL: wetDist
+    std::map<std::string,Vec> _strengthFactors; // stress factors on every creep mechanism (fabric, cement), by name
     Vec                   _gTxz,_gVxz,_dgVxz; // total strain, viscous strain, and viscous strain rate
     Vec                   _dgVdev,_dgVdev_disl; // deviatoric strain rate
 
@@ -140,6 +142,11 @@ class PowerLaw
     PetscErrorCode applyHardening(Vec& invEffVisc, const Vec& n, const bool atGivenStress);
     PetscErrorCode updateWetDist(const Vec& chi, const PetscScalar chiC, const std::string& mix); // WaterState
     PetscErrorCode mixWetDry(); // disl_ (dry) and disl2_ (wet) into disl_, by the wetness
+    // a stress factor F on every creep mechanism, kept under its name (FabricState, CementState): at a
+    // given stress the strain rate of a mechanism with exponent n is divided by F^n, at a given strain
+    // rate its stress is multiplied by F; the factors of several names multiply
+    PetscErrorCode setStrengthFactor(const std::string& name, const Vec& F);
+    PetscErrorCode applyStrengthFactors(Vec& invEffVisc, const Vec* n, const bool atGivenStress);
     PetscErrorCode computeStresses();
     PetscErrorCode computeSDev();
     PetscErrorCode computeDevViscStrainRates(); // deviatoric strains and strain rates

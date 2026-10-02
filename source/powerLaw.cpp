@@ -74,6 +74,7 @@ PowerLaw::~PowerLaw()
 {
   VecDestroy(&_hardH);
   VecDestroy(&_wetChi);
+  for (std::map<std::string,Vec>::iterator it = _strengthFactors.begin(); it != _strengthFactors.end(); it++) { VecDestroy(&it->second); }
   #if VERBOSE > 1
     string funcName = "PowerLaw::~PowerLaw";
     PetscPrintf(PETSC_COMM_WORLD,"Starting %s in %s\n",funcName.c_str(),FILENAME);
@@ -1007,6 +1008,12 @@ PetscErrorCode PowerLaw::computeViscosity(const PetscScalar viscCap)
   }
   if (_wDislWetDry == "yes") { ierr = mixWetDry(); CHKERRQ(ierr); }
   if (_wDiffCreep.compare("yes")==0) { _diff->computeInvEffVisc(_T,_sdev,_grainSize); }
+  if (!_strengthFactors.empty()) { // fabric and cement: every creep mechanism at a given stress / F^n
+    if (_wDissPrecCreep.compare("yes")==0) { ierr = applyStrengthFactors(_dp->_invEffVisc,NULL,true); CHKERRQ(ierr); }
+    if (_wDislCreep.compare("yes")==0) { ierr = applyStrengthFactors(_disl->_invEffVisc,&_disl->_n,true); CHKERRQ(ierr); }
+    if (_wDislCreep2.compare("yes")==0) { ierr = applyStrengthFactors(_disl2->_invEffVisc,&_disl2->_n,true); CHKERRQ(ierr); }
+    if (_wDiffCreep.compare("yes")==0) { ierr = applyStrengthFactors(_diff->_invEffVisc,&_diff->_n,true); CHKERRQ(ierr); }
+  }
 
   // 1 / effVisc = 1/(plastic eff visc) + 1/(disl eff visc) + 1/(diff eff visc) + 1/(max eff visc)
   VecSet(_effVisc,1.0/_effViscCap);
@@ -1194,6 +1201,46 @@ PetscErrorCode PowerLaw::mixWetDry()
   ierr = VecRestoreArray(_disl->_invEffVisc,&dry); CHKERRQ(ierr);
   ierr = VecRestoreArray(_disl2->_invEffVisc,&wet); CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(_wetChi != NULL ? _wetChi : _wetDist,&chi); CHKERRQ(ierr);
+  return ierr;
+}
+
+
+// fabric and cement (FabricState, CementState): keep each one's stress factor under its name
+PetscErrorCode PowerLaw::setStrengthFactor(const std::string& name, const Vec& F)
+{
+  PetscErrorCode ierr = 0;
+  if (_strengthFactors.find(name) == _strengthFactors.end()) {
+    Vec f;
+    ierr = VecDuplicate(F,&f); CHKERRQ(ierr);
+    _strengthFactors[name] = f;
+  }
+  ierr = VecCopy(F,_strengthFactors[name]); CHKERRQ(ierr);
+  return ierr;
+}
+
+
+// invEffVisc *= F^-n at a given stress (n = 1 when not given, as for pressure solution), F^-1 at a
+// given strain rate, for the product F of the stored factors
+PetscErrorCode PowerLaw::applyStrengthFactors(Vec& invEffVisc, const Vec* n, const bool atGivenStress)
+{
+  PetscErrorCode ierr = 0;
+  PetscInt Istart, Iend;
+  ierr = VecGetOwnershipRange(invEffVisc,&Istart,&Iend); CHKERRQ(ierr);
+  PetscScalar *v;
+  const PetscScalar *nn = NULL;
+  ierr = VecGetArray(invEffVisc,&v); CHKERRQ(ierr);
+  if (n != NULL) { ierr = VecGetArrayRead(*n,&nn); CHKERRQ(ierr); }
+  for (std::map<std::string,Vec>::iterator it = _strengthFactors.begin(); it != _strengthFactors.end(); it++) {
+    const PetscScalar *F;
+    ierr = VecGetArrayRead(it->second,&F); CHKERRQ(ierr);
+    for (PetscInt Jj = 0; Jj < Iend - Istart; Jj++) {
+      const PetscScalar e = atGivenStress ? ((nn != NULL) ? nn[Jj] : 1.0) : 1.0;
+      v[Jj] *= pow(F[Jj],-e);
+    }
+    ierr = VecRestoreArrayRead(it->second,&F); CHKERRQ(ierr);
+  }
+  if (n != NULL) { ierr = VecRestoreArrayRead(*n,&nn); CHKERRQ(ierr); }
+  ierr = VecRestoreArray(invEffVisc,&v); CHKERRQ(ierr);
   return ierr;
 }
 
@@ -1444,6 +1491,11 @@ PetscErrorCode PowerLaw::guessSteadyStateEffVisc(const PetscScalar strainRate)
   }
   if (_wDislWetDry == "yes") { ierr = mixWetDry(); CHKERRQ(ierr); } // the same mix of the two guesses
   if (_wDiffCreep.compare("yes")==0) { _diff->guessInvEffVisc(_T,strainRate,_grainSize); }
+  if (!_strengthFactors.empty()) { // fabric and cement: at a given strain rate the stress is F times larger
+    if (_wDislCreep.compare("yes")==0) { ierr = applyStrengthFactors(_disl->_invEffVisc,&_disl->_n,false); CHKERRQ(ierr); }
+    if (_wDislCreep2.compare("yes")==0) { ierr = applyStrengthFactors(_disl2->_invEffVisc,&_disl2->_n,false); CHKERRQ(ierr); }
+    if (_wDiffCreep.compare("yes")==0) { ierr = applyStrengthFactors(_diff->_invEffVisc,&_diff->_n,false); CHKERRQ(ierr); }
+  }
 
   // 1 / effVisc = 1/(plastic eff visc) + 1/(disl eff visc) + 1/(diff eff visc) + 1/(max eff visc)
   VecSet(_effVisc,1.0/_effViscCap);

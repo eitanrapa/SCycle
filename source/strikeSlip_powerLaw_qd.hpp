@@ -24,6 +24,8 @@
 #include "multiFault.hpp"
 #include "hardeningState.hpp"
 #include "waterState.hpp"
+#include "fabricState.hpp"
+#include "cementState.hpp"
 #include "pressureEq.hpp"
 #include "heatEquation.hpp"
 #include "powerLaw.hpp"
@@ -146,6 +148,7 @@ public:
   Vec                             _Qfault;    // the faults' work spread into the body (kW/m^3): interior faults' heat source, cataclastic sink's input
   Vec                             _tauV;      // the boundary fault's tau V (fault size), for _Qfault
   PetscErrorCode computeFaultWork();          // _Qfault from the faults' current tau and V
+  void setUpFaultWork(Domain& D, const std::string& who); // allocate _Qfault and its kernels, once
   PetscErrorCode grainSizeRates(const map<string,Vec>& varEx, map<string,Vec>& dvarEx); // after the faults' rates
 
   // bulk state fields that feed back into the viscosity (docs/REVERSIBLE_STRENGTH_PLAN.md): strain

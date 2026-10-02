@@ -107,7 +107,7 @@ PetscErrorCode BulkStateField::drivingStrainRate(const BulkInputs& in)
     ierr = VecSet(_e,e); CHKERRQ(ierr);
   }
   else {
-    ierr = VecCopy(in.dgVdev_disl,_e); CHKERRQ(ierr);
+    ierr = VecCopy(usesTotalViscousRate() ? in.dgVdev : in.dgVdev_disl,_e); CHKERRQ(ierr);
     ierr = VecScale(_e,1e-3); CHKERRQ(ierr); // 1e-3/s -> 1/s
   }
   return ierr;
