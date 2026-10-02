@@ -46,8 +46,8 @@ StrikeSlip_LinearElastic_qd::StrikeSlip_LinearElastic_qd(Domain &D)
   if (_thermalCoupling != "no" || _evolveTemperature == 1 || _computeSSHeatEq == 1) { _he = new HeatEquation(D); }
 
   // fault
-  _body2fault = &(D._scatters["body2L"]); // pull out fault component of 2D fields
-  _fault = new Fault_qd(D,D._scatters["body2L"],_faultTypeScale);
+  _fault = new Fault_qd(D,D._scatters["body2L"],_faultTypeScale); // the boundary fault at y = 0
+  _faults.push_back(_fault);
   if (_thermalCoupling != "no" && _stateLaw == "flashHeating") {
     _fault->setThermalFields(_he->_Tamb,_he->_k,_he->_c);
   }
@@ -56,6 +56,7 @@ StrikeSlip_LinearElastic_qd::StrikeSlip_LinearElastic_qd(Domain &D)
   if (_hydraulicCoupling != "no") {
     _p = new PressureEq(D);
     _p->addErrorControl(_timeIntInds,_scale);
+    _p->setSlipKey(_fault->_slipKey); // permeability follows the boundary fault's slip rate
   }
   if (_hydraulicCoupling == "coupled") { _fault->setSNEff(_p->_p); }
 
@@ -112,7 +113,8 @@ StrikeSlip_LinearElastic_qd::~StrikeSlip_LinearElastic_qd()
   delete _quadImex;    _quadImex = NULL;
   delete _quadEx;      _quadEx = NULL;
   delete _material;    _material = NULL;
-  delete _fault;       _fault = NULL;
+  for (size_t i = 0; i < _faults.size(); i++) { delete _faults[i]; }
+  _faults.clear();     _fault = NULL;
   delete _he;          _he = NULL;
   delete _p;           _p = NULL;
 
@@ -450,9 +452,9 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::initiateIntegrand()
     VecScale(slip,_faultTypeScale);
   }
   if (!_D->_restartFromChkpt) {
-    ierr = loadVecFromInputFile(slip,_inputDir,"slip"); CHKERRQ(ierr);
+    ierr = loadVecFromInputFile(slip,_inputDir,_fault->_prefix + "slip"); CHKERRQ(ierr);
   }
-  _varEx["slip"] = slip;
+  _varEx[_fault->_slipKey] = slip;
 
   if (_guessSteadyStateICs == 1) { solveSS(); }
 
@@ -465,11 +467,11 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::initiateIntegrand()
   if (_isMMS) { _material->setMMSInitialConditions(_initTime); }
 
 
-  _fault->initiateIntegrand(_initTime,_varEx);
+  for (size_t i = 0; i < _faults.size(); i++) { ierr = _faults[i]->initiateIntegrand(_initTime,_varEx); CHKERRQ(ierr); }
 
   if (_evolveTemperature == 1) {
      _he->initiateIntegrand(_initTime,_varEx,_varIm);
-     _fault->updateTemperature(_he->_T);
+     for (size_t i = 0; i < _faults.size(); i++) { ierr = _faults[i]->updateTemperature(_he->_T); CHKERRQ(ierr); }
   }
 
   if (_hydraulicCoupling != "no") { _p->initiateIntegrand(_initTime,_varEx,_varIm); }
@@ -499,7 +501,7 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::timeMonitor(PetscScalar time, PetscS
   if ( (_stride1D > 0 && _currTime == _maxTime) || (_stride1D > 0 && stepCount % _stride1D == 0)) {
     ierr = writeStep1D(_stepCount, _currTime, _deltaT); CHKERRQ(ierr); // this initializes _viewer1D and must go first
     ierr = _material->writeStep1D(_viewer1D); CHKERRQ(ierr);
-    ierr = _fault->writeStep(_viewer1D); CHKERRQ(ierr);
+    for (size_t i = 0; i < _faults.size(); i++) { ierr = _faults[i]->writeStep(_viewer1D); CHKERRQ(ierr); }
     if (_hydraulicCoupling.compare("no")!=0) { _p->writeStep(_viewer1D); }
     if (_thermalCoupling.compare("no")!=0) { _he->writeStep1D(_viewer1D); }
   }
@@ -514,7 +516,7 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::timeMonitor(PetscScalar time, PetscS
     ierr = writeCheckpoint();                                           CHKERRQ(ierr);
     ierr = _D->writeCheckpoint(_viewer_chkpt);                          CHKERRQ(ierr);
     ierr = _material->writeCheckpoint(_viewer_chkpt);                   CHKERRQ(ierr);
-    ierr = _fault->writeCheckpoint(_viewer_chkpt);                      CHKERRQ(ierr);
+    for (size_t i = 0; i < _faults.size(); i++) { ierr = _faults[i]->writeCheckpoint(_viewer_chkpt); CHKERRQ(ierr); }
     if (_quadEx != NULL) { ierr = _quadEx->writeCheckpoint(_viewer_chkpt); CHKERRQ(ierr); }
     if (_quadImex != NULL) { ierr = _quadImex->writeCheckpoint(_viewer_chkpt); CHKERRQ(ierr); }
     if (_hydraulicCoupling.compare("no")!=0) { ierr = _p->writeCheckpoint(_viewer_chkpt);  CHKERRQ(ierr); }
@@ -528,8 +530,13 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::timeMonitor(PetscScalar time, PetscS
   _writeTime += MPI_Wtime() - startTime;
   #if VERBOSE > 0
     PetscScalar maxVel = 0, maxTau = 0;
-    VecMax(_fault->_slipVel,NULL,&maxVel);
-    VecMax(_fault->_strength,NULL,&maxTau);
+    for (size_t i = 0; i < _faults.size(); i++) {
+      PetscScalar v = 0, t = 0;
+      VecMax(_faults[i]->_slipVel,NULL,&v);
+      VecMax(_faults[i]->_strength,NULL,&t);
+      if (i == 0 || v > maxVel) { maxVel = v; }
+      if (i == 0 || t > maxTau) { maxTau = t; }
+    }
     ierr = PetscPrintf(PETSC_COMM_WORLD,"%i: t = %.15e s, dt = %.5e, maxVel = %.5e, maxTau = %.5e\n",stepCount,_currTime,_deltaT,maxVel,maxTau);CHKERRQ(ierr);
     //~ ierr = PetscPrintf(PETSC_COMM_WORLD,"%i: t = %.15e s, dt = %.5e, KSP its tot = %i, KSP its step = %i\n",stepCount,_currTime,_deltaT,_material->_myKspCtx._myKspItNumTot,_material->_myKspCtx._myKspItNumStep);CHKERRQ(ierr);
   #endif
@@ -679,7 +686,7 @@ bool needToDestroyJjSSVec = 0;
   ierr = PetscViewerHDF5PopGroup(_viewerSS);                            CHKERRQ(ierr);
 
   ierr = _material->writeStep1D(_viewerSS);                             CHKERRQ(ierr);
-  ierr = _fault->writeStep(_viewerSS);                                  CHKERRQ(ierr);
+  for (size_t i = 0; i < _faults.size(); i++) { ierr = _faults[i]->writeStep(_viewerSS); CHKERRQ(ierr); }
   if (_hydraulicCoupling.compare("no")!=0) { ierr = _p->writeStep(_viewerSS); CHKERRQ(ierr);}
   if (_he!=NULL) { ierr =  _he->writeStep1D(_viewerSS); CHKERRQ(ierr); }
 
@@ -713,7 +720,7 @@ bool needToDestroyJjSSVec = 0;
     ierr = VecView(_JjSSVec, _viewerSS);                                CHKERRQ(ierr);
 
     ierr = _material->writeStep1D(_viewerSS);                           CHKERRQ(ierr);
-    ierr = _fault->writeStep(_viewerSS);                                CHKERRQ(ierr);
+    for (size_t i = 0; i < _faults.size(); i++) { ierr = _faults[i]->writeStep(_viewerSS); CHKERRQ(ierr); }
     if (_thermalCoupling.compare("no")!=0) { ierr = _he->writeStep1D(_viewerSS); CHKERRQ(ierr); }
 
     ierr = _material->writeStep2D(_viewerSS);                           CHKERRQ(ierr);
@@ -731,7 +738,7 @@ bool needToDestroyJjSSVec = 0;
     ierr = PetscViewerHDF5PopGroup(_viewerSS);                          CHKERRQ(ierr);
 
     ierr = _material->writeStep1D(_viewerSS);                           CHKERRQ(ierr);
-    ierr = _fault->writeStep(_viewerSS);                                CHKERRQ(ierr);
+    for (size_t i = 0; i < _faults.size(); i++) { ierr = _faults[i]->writeStep(_viewerSS); CHKERRQ(ierr); }
     if (_hydraulicCoupling.compare("no")!=0) { _p->writeStep(_viewerSS); }
     if (_thermalCoupling.compare("no")!=0) { ierr =  _he->writeStep1D(_viewerSS); CHKERRQ(ierr); }
 
@@ -849,7 +856,7 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::view()
   double totRunTime = MPI_Wtime() - _startTime;
 
   _material->view(_integrateTime);
-  _fault->view(_integrateTime);
+  for (size_t i = 0; i < _faults.size(); i++) { _faults[i]->view(_integrateTime); }
   if ((_timeIntegrator.compare("RK32")==0 || _timeIntegrator.compare("RK43")==0) && _quadEx!=NULL) {
     ierr = _quadEx->view();
   }
@@ -936,7 +943,7 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::writeContext()
   ierr = PetscViewerHDF5Open(PETSC_COMM_WORLD, outFileName.c_str(), FILE_MODE_WRITE, &_viewer_context);CHKERRQ(ierr);
 
   _D->write(_viewer_context);
-  _fault->writeContext(_outputDir, _viewer_context);
+  for (size_t i = 0; i < _faults.size(); i++) { _faults[i]->writeContext(_outputDir, _viewer_context); }
   _material->writeContext(_outputDir, _viewer_context);
 
 
@@ -1044,7 +1051,7 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::d_dt(const PetscScalar time,const ma
 
   // update for momBal; var holds slip, bcL is displacement at y=0+
   if (_bcLType=="symmFault" || _bcLType=="rigidFault") {
-    ierr = VecCopy(varEx.find("slip")->second,_material->_bcL);CHKERRQ(ierr);
+    ierr = VecCopy(varEx.find(_fault->_slipKey)->second,_material->_bcL);CHKERRQ(ierr);
     ierr = VecScale(_material->_bcL,1.0/_faultTypeScale);CHKERRQ(ierr);
   }
   if (_bcRType=="remoteLoading") {
@@ -1060,7 +1067,7 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::d_dt(const PetscScalar time,const ma
     //~ ierr = VecAXPY(_material->_bcB,1.0,_material->_bcBShift);CHKERRQ(ierr);
   //~ }
 
-  _fault->updateFields(time,varEx);
+  for (size_t i = 0; i < _faults.size(); i++) { ierr = _faults[i]->updateFields(time,varEx); CHKERRQ(ierr); }
 
   if ((varEx.find("pressure") != varEx.end() || varEx.find("permeability") != varEx.end()) && _hydraulicCoupling.compare("no")!=0){
     _p->updateFields(time,varEx);
@@ -1072,14 +1079,15 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::d_dt(const PetscScalar time,const ma
   // 2. compute rates
   ierr = solveMomentumBalance(time,varEx,dvarEx); CHKERRQ(ierr);
 
-  // update fields on fault from other classes
+  // shear stress on each fault from the momentum balance, then the fault's slip and state rates
   Vec sxy,sxz,sdev;
   ierr = _material->getStresses(sxy,sxz,sdev);
-  ierr = VecScatterBegin(*_body2fault, sxy, _fault->_tauQSP, INSERT_VALUES, SCATTER_FORWARD); CHKERRQ(ierr);
-  ierr = VecScatterEnd(*_body2fault, sxy, _fault->_tauQSP, INSERT_VALUES, SCATTER_FORWARD); CHKERRQ(ierr);
-
-  // rates for fault
-  ierr = _fault->d_dt(time,varEx,dvarEx); // sets rates for slip and state
+  for (size_t i = 0; i < _faults.size(); i++) {
+    Fault_qd *f = _faults[i];
+    ierr = VecScatterBegin(*f->_body2fault, sxy, f->_tauQSP, INSERT_VALUES, SCATTER_FORWARD); CHKERRQ(ierr);
+    ierr = VecScatterEnd(*f->_body2fault, sxy, f->_tauQSP, INSERT_VALUES, SCATTER_FORWARD); CHKERRQ(ierr);
+    ierr = f->d_dt(time,varEx,dvarEx); CHKERRQ(ierr);
+  }
 
   if ((varEx.find("pressure") != varEx.end() || varEx.find("permeability") != varEx.end() ) && _hydraulicCoupling.compare("no")!=0 ){
     ierr = _p->d_dt(time,varEx,dvarEx); CHKERRQ(ierr);
@@ -1102,7 +1110,7 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::d_dt(const PetscScalar time,const ma
 
   // update for momBal; var holds slip, bcL is displacement at y=0+
   if (_bcLType=="symmFault" || _bcLType=="rigidFault") {
-    ierr = VecCopy(varEx.find("slip")->second,_material->_bcL);CHKERRQ(ierr);
+    ierr = VecCopy(varEx.find(_fault->_slipKey)->second,_material->_bcL);CHKERRQ(ierr);
     ierr = VecScale(_material->_bcL,1.0/_faultTypeScale);CHKERRQ(ierr);
   }
   if (_bcRType=="remoteLoading") {
@@ -1118,13 +1126,13 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::d_dt(const PetscScalar time,const ma
     //~ ierr = VecAXPY(_material->_bcB,1.0,_material->_bcBShift);CHKERRQ(ierr);
   //~ }
 
-  _fault->updateFields(time,varEx);
+  for (size_t i = 0; i < _faults.size(); i++) { ierr = _faults[i]->updateFields(time,varEx); CHKERRQ(ierr); }
 
   if ( _hydraulicCoupling!="no" ) {
     _p->updateFields(time,varEx,varImo);
   }
   if (varImo.find("Temp") != varImo.end() && _thermalCoupling == "coupled") {
-    _fault->updateTemperature(varImo.find("Temp")->second);
+    for (size_t i = 0; i < _faults.size(); i++) { ierr = _faults[i]->updateTemperature(varImo.find("Temp")->second); CHKERRQ(ierr); }
   }
 
   // update effective normal stress in fault using pore pressure
@@ -1135,14 +1143,15 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::d_dt(const PetscScalar time,const ma
   // 2. compute explicit rates
   ierr = solveMomentumBalance(time,varEx,dvarEx); CHKERRQ(ierr);
 
-  // update shear stress on fault from momentum balance computation
+  // shear stress on each fault from the momentum balance, then the fault's slip and state rates
   Vec sxy,sxz,sdev;
   ierr = _material->getStresses(sxy,sxz,sdev);
-  ierr = VecScatterBegin(*_body2fault, sxy, _fault->_tauQSP, INSERT_VALUES, SCATTER_FORWARD); CHKERRQ(ierr);
-  ierr = VecScatterEnd(*_body2fault, sxy, _fault->_tauQSP, INSERT_VALUES, SCATTER_FORWARD); CHKERRQ(ierr);
-
-  // rates for fault
-  ierr = _fault->d_dt(time,varEx,dvarEx); // sets rates for slip and state
+  for (size_t i = 0; i < _faults.size(); i++) {
+    Fault_qd *f = _faults[i];
+    ierr = VecScatterBegin(*f->_body2fault, sxy, f->_tauQSP, INSERT_VALUES, SCATTER_FORWARD); CHKERRQ(ierr);
+    ierr = VecScatterEnd(*f->_body2fault, sxy, f->_tauQSP, INSERT_VALUES, SCATTER_FORWARD); CHKERRQ(ierr);
+    ierr = f->d_dt(time,varEx,dvarEx); CHKERRQ(ierr);
+  }
 
   if ( _hydraulicCoupling != "no" ) {
     ierr = _p->d_dt(time,varEx,dvarEx,varIm,varImo,dt); CHKERRQ(ierr);
@@ -1152,7 +1161,7 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::d_dt(const PetscScalar time,const ma
   // heat equation
   // solve heat equation implicitly
   if (varIm.find("Temp") != varIm.end()) {
-    Vec V = dvarEx.find("slip")->second;
+    Vec V = dvarEx.find(_fault->_slipKey)->second; // heat source from the boundary fault
     Vec tau = _fault->_tauP;
     Vec Told = varImo.find("Temp")->second;
     // arguments: time, slipVel, txy, sigmadev, dgxy, dgxz, T, old T, dt
@@ -1167,7 +1176,7 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::d_dt(const PetscScalar time,const ma
   //    rates evaluated next (the integrator recomputes them before the next step) use T^{n+1} and
   //    p^{n+1} rather than the previous step's values.
   if (_thermalCoupling == "coupled" && varIm.find("Temp") != varIm.end()) {
-    ierr = _fault->updateTemperature(varIm.find("Temp")->second); CHKERRQ(ierr);
+    for (size_t i = 0; i < _faults.size(); i++) { ierr = _faults[i]->updateTemperature(varIm.find("Temp")->second); CHKERRQ(ierr); }
   }
   if (_hydraulicCoupling == "coupled" && varIm.find("pressure") != varIm.end()) {
     ierr = _fault->setSNEff(varIm.find("pressure")->second); CHKERRQ(ierr);
@@ -1247,8 +1256,8 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::solveSS()
     ierr = _material->getStresses(sxy,sxz,sdev);
 
     // scatter body fields to fault vector
-    ierr = VecScatterBegin(*_body2fault, sxy, _fault->_tauQSP, INSERT_VALUES, SCATTER_FORWARD); CHKERRQ(ierr);
-    ierr = VecScatterEnd(*_body2fault, sxy, _fault->_tauQSP, INSERT_VALUES, SCATTER_FORWARD); CHKERRQ(ierr);
+    ierr = VecScatterBegin(*_fault->_body2fault, sxy, _fault->_tauQSP, INSERT_VALUES, SCATTER_FORWARD); CHKERRQ(ierr);
+    ierr = VecScatterEnd(*_fault->_body2fault, sxy, _fault->_tauQSP, INSERT_VALUES, SCATTER_FORWARD); CHKERRQ(ierr);
 
 
     // update boundary conditions, stresses
@@ -1327,12 +1336,12 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::solveSSb()
   // extract L boundary from u to set slip and _material->_bcL
   Vec uL;
   VecDuplicate(_material->_bcL,&uL);
-  VecScatterBegin(_D->_scatters["body2L"], _material->_u, uL, INSERT_VALUES, SCATTER_FORWARD);
-  VecScatterEnd(_D->_scatters["body2L"], _material->_u, uL, INSERT_VALUES, SCATTER_FORWARD);
+  VecScatterBegin(*_fault->_body2fault, _material->_u, uL, INSERT_VALUES, SCATTER_FORWARD);
+  VecScatterEnd(*_fault->_body2fault, _material->_u, uL, INSERT_VALUES, SCATTER_FORWARD);
 
   // reset _bcL
-  VecCopy(uL,_varEx["slip"]);
-  VecScale(_varEx["slip"], _faultTypeScale);
+  VecCopy(uL,_varEx[_fault->_slipKey]);
+  VecScale(_varEx[_fault->_slipKey], _faultTypeScale);
   VecCopy(uL,_material->_bcL);
 
   // free memory

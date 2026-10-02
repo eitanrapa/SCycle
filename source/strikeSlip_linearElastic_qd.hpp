@@ -97,9 +97,6 @@ private:
   //~ string  _bcRType_ss,_bcTType_ss,_bcLType_ss,_bcBType_ss; // steady-state type
   //~ string  _bcRType_trans,_bcTType_trans,_bcLType_trans,_bcBType_trans; // steady-state type
 
-  // for mapping from body fields to the fault
-  VecScatter* _body2fault;
-
   // private member functions
   PetscErrorCode loadSettings(const char *file);
   PetscErrorCode checkInput();
@@ -113,7 +110,12 @@ public:
   OdeSolver        *_quadEx; // explicit time stepping
   OdeSolverImex    *_quadImex; // implicit time stepping
 
-  Fault_qd         *_fault;
+  // Faults. _fault is the boundary fault at y = 0 (symmFault or rigidFault): it sets bcL and carries
+  // the single-fault couplings (steady-state solve, heat source, pore pressure). _faults holds every
+  // fault, _fault first; per-fault work (stress, rates, output, checkpoints) loops over it, each fault
+  // reading the body through its own scatter. This class owns and deletes the faults.
+  Fault_qd               *_fault;
+  std::vector<Fault_qd*>  _faults;
   LinearElastic    *_material; // linear elastic off-fault material properties
   HeatEquation     *_he;
   PressureEq       *_p;

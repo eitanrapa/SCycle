@@ -128,6 +128,7 @@ public:
 
   PetscErrorCode initiateIntegrand(const PetscScalar time, map<string, Vec> &varEx, map<string, Vec> &varIm);
   PetscErrorCode addErrorControl(std::vector<string>& errInds, std::vector<double>& scale) const;
+  void setSlipKey(const string& slipKey) { _slipKey = slipKey; } // integrand key of the driving fault's slip
   PetscErrorCode relaxPermeability(const Vec& slipVel, const Vec& kOld, const PetscScalar dt, Vec& kNew);
   PetscErrorCode updateFields(const PetscScalar time, const map<string, Vec> &varEx);
   PetscErrorCode updateFields(const PetscScalar time, const map<string, Vec> &varEx, const map<string, Vec> &varIm);
