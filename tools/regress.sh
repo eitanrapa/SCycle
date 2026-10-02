@@ -45,6 +45,8 @@ for case in $cases; do
       -e '/^restartFromChkpt/d' -e '/^restartFromChkptSS/d' -e '/^retartFromChkptSS/d' \
       "$src" > "$in"
   printf 'restartFromChkpt = 0\nrestartFromChkptSS = 0\n' >> "$in"
+  # an input without outputDir would write into the default prefix (data/), outside the run directory
+  grep -q '^outputDir = ' "$in" || printf 'outputDir = %s/\n' "$out" >> "$in"
 
   start=$SECONDS
   if (( np > 1 )); then mpirun -n "$np" "$bin" "$in" > "$out/stdout.log" 2>&1
