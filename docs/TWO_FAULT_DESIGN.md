@@ -223,7 +223,14 @@ with every physics module; the gates are in section 5.
   `examples/ex4g.in` (power law, grain size, explicit) join ex1 and ex2 in `tools/regress.sh`.
 - **Baseline** for the next stage: `examples/two_faults/make_inputs.py --rheology powerlaw`
   (ex4's dislocation creep and geotherm, Lz = 60 km, coupled heat with a 10 m kernel, optional
-  grain size); its cost is in section 5.
+  grain size). Cost, measured as the reversible-strength plan asks (581 x 172 nodes, `--grainsize`,
+  optimized build, 1 process, 200 yr): 3873 steps in 812 s of integration, 0.21 s per step. Of
+  these, about 1200 are coseismic per earthquake (a fault faster than 1e-3 m/s) and about 500
+  postseismic; interseismic steps run from 8e5 to 3e7 s, about 500 per century, the Maxwell-time
+  cap binding only in the decade after an event (it fell to 2e5 s, then recovered to 2.7e7 s).
+  One cycle of about a century is thus about 2000 steps and 7 minutes; 100 cycles about 12 hours.
+  The run itself: fault ruptured first (the trigger), and fault f2, with the same friction,
+  ruptured next, at 116 yr.
 
 ## 5. Verification gates
 
