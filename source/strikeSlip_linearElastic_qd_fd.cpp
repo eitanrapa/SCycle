@@ -279,9 +279,10 @@ PetscErrorCode StrikeSlip_LinearElastic_qd_fd::checkInput()
       _timeIntegrator.compare("RK32_WBE")==0 ||
       _timeIntegrator.compare("RK43_WBE")==0 );
 
-  assert(_timeControlType.compare("P")==0 ||
-         _timeControlType.compare("PI")==0 ||
-         _timeControlType.compare("PID")==0 );
+  if (_timeControlType != "P" && _timeControlType != "PID") {
+    PetscPrintf(PETSC_COMM_WORLD,"Error: timeControlType = %s is not supported; use P or PID (PI was accepted here but no integrator implements it).\n",_timeControlType.c_str());
+    assert(0);
+  }
 
   if (_initDeltaT<_minDeltaT || _initDeltaT < 1e-14) {_initDeltaT = _minDeltaT; }
 

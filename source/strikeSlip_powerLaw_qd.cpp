@@ -248,9 +248,10 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::checkInput()
       _timeIntegrator == "RK32_WBE" ||
       _timeIntegrator == "RK43_WBE" );
 
-  assert(_timeControlType == "P" ||
-         _timeControlType == "PI" ||
-         _timeControlType == "PID" );
+  if (_timeControlType != "P" && _timeControlType != "PID") {
+    PetscPrintf(PETSC_COMM_WORLD,"Error: timeControlType = %s is not supported; use P or PID (PI was accepted here but no integrator implements it).\n",_timeControlType.c_str());
+    assert(0);
+  }
 
   if (_initDeltaT<_minDeltaT || _initDeltaT < 1e-14) {_initDeltaT = _minDeltaT; }
   if (_hydraulicCoupling != "no" && _hydraulicTimeIntType == "implicit" && _timeIntegrator != "RK32_WBE" && _timeIntegrator != "RK43_WBE") {
@@ -269,6 +270,10 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::checkInput()
   assert(_bcTType == "freeSurface" || _bcTType == "remoteLoading" || _bcTType == "atan_u");
   assert(_bcLType == "symmFault"   || _bcLType == "rigidFault" );
   assert(_bcBType == "freeSurface" || _bcBType == "remoteLoading");
+  if (_bcTType == "remoteLoading" || _bcBType == "remoteLoading") {
+    PetscPrintf(PETSC_COMM_WORLD,"Note: bcTType/bcBType = remoteLoading holds that boundary at its initial (steady-state) displacement;\n"
+      "      unlike bcRType it is not moved with vL*t during the simulation (that update is commented out in d_dt).\n");
+  }
 
   if (_bcTType == "atan_u") { assert(_bcT_L > 0.); }
 
