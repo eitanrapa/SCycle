@@ -20,7 +20,9 @@ heating. Output: a library of two-fault models with partitioning histories and s
 profiles. Design and verification gates: `docs/TWO_FAULT_DESIGN.md`.
 
 Upstream: `origin` = github.com/kali-allison/SCycle (`master`). Audit fixes live on branch
-`audit/fixes-2026-10`. Nothing has been pushed.
+`audit/fixes-2026-10`, pushed to the user's fork (remote `fork`, github.com/eitanrapa/SCycle). The
+two-fault work continues on `stage1/fault-generalization`, `stage2/interior-fault` and
+`stage3/two-faults`, each built on the previous one (not pushed).
 
 ## Build
 
@@ -95,7 +97,17 @@ mpirun -n 4 ./source/main examples/ex2.in
   grid rows, at least 6 rows from the y-boundaries; `mediator.txt` records where. Not with a
   boundary fault (`symmFault` would mirror it), steady-state initial conditions, heat or pore
   pressure. `interiorFaultKinkLift = 1` (default) gives second-order fault traction.
-  `examples/interior_fault/make_inputs.py` writes a working case and its half-space twin.
+  `examples/interior_fault/make_inputs.py` writes one interior fault and its half-space twin;
+  `examples/two_faults/make_inputs.py` two faults (seismic, creeping or locked second fault) on a
+  grid refined around both, each fault exactly midway between two rows.
+- With interior faults, two outputs are on by default (off otherwise): `computeSurfVel = 1` writes
+  the instantaneous surface velocity `/momBal/surfVel` (m/s) with each 1D output, and
+  `strideSeries = N` appends per-fault max slip rate, its depth, potency rate and potency to
+  `faultSeries.txt` every N steps (restarts append; keep the last line per step).
+  `data_context.h5` gives each interior fault's `y`, `iRow` and `dy` as attributes of its group.
+  `tools/two_fault.py <outputDir>` writes `events.csv`, `partition.csv` and `surfvel.csv`.
+- A `timeIntInds` that lists `slip` or `psi` means those of every fault: `<name>_slip`, `<name>_psi`
+  are added with the same scale (a note prints the final list).
 
 ## Architecture
 
@@ -120,14 +132,16 @@ mpirun -n 4 ./source/main examples/ex2.in
   operators are allowed. Order 2 or 4 (`order`).
 - **Integrators**: `odeSolver.cpp` (RK32, RK43, FEuler), `odeSolverImex.cpp` (RK32_WBE, RK43_WBE),
   `odeSolver_WaveEq.cpp` (fully dynamic leapfrog). Step control uses `timeIntInds` (empty = all
-  explicit variables) with `scale`, norm `normType`, controller P or PID. Quasi-dynamic steps never
-  go below `minDeltaT` (default: one grid wave-transit time) and are accepted there even when the
-  error exceeds `timeStepTol`.
+  explicit variables) with `scale`, norm `normType`, controller P or PID. Steps never go below
+  `minDeltaT` and are accepted there even when the error exceeds `timeStepTol` (a warning says so
+  and the run summary counts such steps). The quasi-dynamic default is 1e-3 of the shear-wave time
+  of the smallest cell; the old default, that time itself, overrode error control in events (A-95).
 - **Combined mode** switches to fully dynamic when max V exceeds `trigger_qd2fd` and back below
   `trigger_fd2qd` (`checkSwitchRegime`, `prepare_qd2fd`, `prepare_fd2qd`).
 - **Output** (HDF5, PETSc timestepping, one index per output step): `data_context.h5` (coordinates,
   parameters), `data_1D.h5` (fault and boundary series every `stride1D` steps: `/time`, `/fault`,
-  `/momBal`, `/heatEquation`, `/pressureEq`), `data_2D.h5` (body fields every `stride2D`),
+  `/momBal`, `/heatEquation`, `/pressureEq`; `/<name>` per fault), `data_2D.h5` (body fields every
+  `stride2D`), `faultSeries.txt` (per step, multi-fault runs),
   `data_steadyState.h5`, `checkpoint.h5`, and text context files (`domain.txt`, `mediator.txt`, ...).
   Each mediator's `writeStep1D/2D` must run first in `timeMonitor`: it opens the files and advances
   the HDF5 time index that the components write into.
@@ -144,8 +158,11 @@ mpirun -n 4 ./source/main examples/ex2.in
 - `Nz = 1` is a spring slider (ex1). The combined mode refuses it.
 - `lockedVals`: > 0.5 locked, < -0.5 creeps at vL, otherwise frictional.
 - The aging law freezes psi where b <= 1e-3 (and where exp((f0-psi)/b) overflows).
-- Explicit slip-dependent permeability is unstable when |V| dt > ~2.8 kL_p; with quasi-dynamic
-  minimum steps this happens during events. Use `hydraulicTimeIntType = implicit` (exact relaxation).
+- Explicit slip-dependent permeability needs |V| dt < ~2.8 kL_p, so an event with kL_p = 1 mm takes
+  ~1e5 steps. Use `hydraulicTimeIntType = implicit` (exact relaxation).
+- Near an interior fault (rows iRow-2 .. iRow+3) the y-strain comes from u without the fault's jump
+  (`InteriorFaultLift::correctStress`, applied in `LinearElastic::computeStresses`); anything else
+  that differentiates u in y there (the power law, stage 4) must apply the same correction.
 - `momBal_bcT_qd`/`momBal_bcB_qd = remoteLoading` stay at their initial displacement.
 
 ## Testing
@@ -164,9 +181,10 @@ python3 SEAS_benchmarks/BP1/createICs.py [--dz 0.1]   # BP1 grid and initial con
   (~1e-10). Debug and optimized builds differ slightly once adaptive steps diverge (ex1: 2201 vs
   2202 steps, event onsets within 0.02 yr over 4500 yr), so compare a build only with a baseline
   made by the same PETSC_ARCH.
-- A baseline from the end of the audit (debug build, 1 rank) is in `data/regress-baseline/`
-  (ignored by git; `README.txt` there records its commit). Regenerate it after any intended change
-  of results and say so in the commit message.
+- The baseline (debug build, 1 rank) is in `data/regress-baseline/` (ignored by git; `README.txt`
+  there records its commit, `5bb2fee`; the one from the end of the audit is kept in
+  `data/regress-baseline-35ba52f/`). Regenerate it after any intended change of results and say so
+  in the commit message.
 - ex2 takes about 70 s with the debug build; ex1 about 13 s.
 
 ## Working agreements

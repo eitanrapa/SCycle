@@ -4,11 +4,11 @@
 
 This document records an audit of SCycle, the C++/PETSc code for 2D antiplane earthquake-cycle simulations, and the fixes made on branch `audit/fixes-2026-10`. The audit started from an unmodified clone of upstream master (github.com/kali-allison/SCycle, last upstream commit `74a132f` of 19 December 2024).
 
-The branch adds 69 commits to master: 58 fixes, 3 tool commits, 2 commits for the repository contents, 2 for this documentation, and one each for the build, the example inputs, a code comment, and the SEAS BP1 benchmark with an input-key checker. Together they fix 94 distinct findings (32 Critical, 25 High, 25 Medium, 12 Low), listed in section 3. Three are fixed only in part (A-35, A-45, A-57), and the MATLAB tools of A-93 were not run. Section 5 lists 15 open items and documented limitations. Each commit message records its finding: what was wrong, the failure it caused, the fix and the test evidence (`git show <hash>`). A few spot tests from early in the audit appear only in this document; their entries say so.
+The branch adds 69 commits to master: 58 fixes, 3 tool commits, 2 commits for the repository contents, 2 for this documentation, and one each for the build, the example inputs, a code comment, and the SEAS BP1 benchmark with an input-key checker. Together they fix 94 distinct findings (32 Critical, 25 High, 25 Medium, 12 Low), listed in section 3. A 95th, A-95 (Critical), was found during stage 3 of the two-fault work and fixed on branch `stage3/two-faults` (`5bb2fee`); the tables below include it. Three are fixed only in part (A-35, A-45, A-57), and the MATLAB tools of A-93 were not run. Section 5 lists 15 open items and documented limitations. Each commit message records its finding: what was wrong, the failure it caused, the fix and the test evidence (`git show <hash>`). A few spot tests from early in the audit appear only in this document; their entries say so.
 
 How the fixes were verified:
 
-- `tools/regress.sh` runs `examples/ex1.in` (1D) and `examples/ex2.in` (2D) and compares every HDF5 output file with a stored baseline using `h5diff`, bit for bit unless a tolerance is set. Unless its message says otherwise, each code commit was checked this way. The persistent baseline is in `data/regress-baseline/` (ignored by git). It was generated from commit `35ba52f`, is bit-identical to the output of the build at `06bada2`, and was still bit-identical at `aa53679`.
+- `tools/regress.sh` runs `examples/ex1.in` (1D) and `examples/ex2.in` (2D) and compares every HDF5 output file with a stored baseline using `h5diff`, bit for bit unless a tolerance is set. Unless its message says otherwise, each code commit was checked this way. The persistent baseline is in `data/regress-baseline/` (ignored by git). It was generated from commit `35ba52f`, is bit-identical to the output of the build at `06bada2`, and was still bit-identical at `aa53679`. It was regenerated at `5bb2fee` (A-95 changes ex2); the earlier one is kept in `data/regress-baseline-35ba52f/`.
 - `tools/mms.in` runs the manufactured-solution (MMS) convergence test of the linear-elastic quasi-dynamic momentum balance on Ny = Nz = 21, 41 and 81.
 - `tools/checkkeys.py` lists keys in an input file that no part of the code reads.
 - Targeted spot runs for configurations that ex1 and ex2 do not exercise. Each commit message describes them; the evidence lines below quote their numbers.
@@ -36,11 +36,11 @@ How the scale is applied:
 |---|---|---|---|---|---|
 | 3.1 Crashes, undefined behaviour and memory | A-01 to A-22 | 17 | 0 | 5 | 0 |
 | 3.2 Physics and numerics (wrong results) | A-23 to A-47 | 1 | 17 | 4 | 3 |
-| 3.3 Time integration, checkpoints and I/O | A-48 to A-68 | 11 | 3 | 6 | 1 |
+| 3.3 Time integration, checkpoints and I/O | A-48 to A-68, A-95 | 12 | 3 | 6 | 1 |
 | 3.4 Input handling and error reporting | A-69 to A-79 | 3 | 3 | 4 | 1 |
 | 3.5 Build, repository and tooling | A-80 to A-87 | 0 | 0 | 1 | 7 |
 | 3.6 Examples, benchmarks and post-processing | A-88 to A-94 | 0 | 2 | 5 | 0 |
-| Total | 94 | 32 | 25 | 25 | 12 |
+| Total | 95 | 33 | 25 | 25 | 12 |
 
 "No run reported" means the commit message describes the fix without a dedicated test; the ex1/ex2 regression comparison still applied to it.
 
@@ -324,6 +324,11 @@ Section 4 summarizes how much each of these changes results.
 - Defect: only `_initTime` was set from `initTime`, but phases start at `_currTime`, so a fresh run always started at t = 0.
 - Evidence: no run reported; both are now set, as in the linear-elastic qd_fd class.
 
+**A-95. The default minimum time step overrode error control during earthquakes.** Critical. `5bb2fee`. `source/strikeSlip_linearElastic_qd.cpp`, `source/strikeSlip_powerLaw_qd.cpp`, `source/odeSolver.cpp`, `source/odeSolverImex.cpp`. Found after the audit, during stage 3 of the two-fault work.
+- Defect: without `minDeltaT` in the input, the quasi-dynamic classes set it to the shear-wave time of the smallest grid cell, min(dy, dz)/cs, and the adaptive integrators accept a step at minDeltaT whatever its error (A-50 made such steps consistent but still accepts them). Earthquakes on grids of 50 to 100 m need smaller steps: ex2 (smallest cell 45 m, floor 14 ms) took 329 steps at the floor during its event with errors above `timeStepTol`; with 100 m cells (floor 32 ms) the state variable overflowed (psi = 23, so exp(psi/a) = inf) and the root finder stopped on an assertion; explicit pore pressure with kL_p = 1 mm (O-01) failed the same way (psi = 3.7e11).
+- Fix: the default is now 1e-3 of that time, a safeguard far below what fast slip needs (ex2's error control chooses 1.9 ms at its peak). A `minDeltaT` given in the input is kept, with a clearer warning when it exceeds the shear-wave time. The four adaptive RK integrators warn the first time they accept a step with its error above the tolerance and count such steps in the run summary.
+- Evidence: ex1 and the spot cases that never reached the floor are bit-identical; ex2, BP1 and the implicit-pressure case are bit-identical to the previous build run with `minDeltaT = 1e-5`, so the only change is that the floor no longer binds. ex2: onset unchanged (54.55431 yr), peak slip rate 6.991 -> 7.229 m/s, slip at 207 yr unchanged to 1e-4 m. In the stage 2 interior-fault comparison the floor had moved the peak slip rate by 1.9% and the final slip by 6e-8 m.
+
 ### 3.4 Input handling and error reporting
 
 **A-69. Failed runs exited with status 0.** Medium. `e9cdc49`. `source/main.cpp`.
@@ -472,12 +477,13 @@ Unless its message says otherwise, each code commit was followed by a bit-for-bi
 | `04298a8` | Permeability relaxation, error control (A-57) | pore pressure with slip-dependent permeability | kL_p = 1 mm runs now finish except explicit quasi-dynamic (O-01); k within [1e-19, 1e-17] in implicit runs |
 | `35ba52f` | Empty timeIntInds left alone (A-57) | explicit pore pressure without `timeIntInds` | restores the behaviour before `04298a8` |
 | `aa53679` | Cohesion, fully dynamic (A-37) | quasidynamic_and_dynamic with nonzero `cohesionVals` | 5 MPa: peak V 28.93 -> 25.13 m/s, max slip 20.96 -> 19.72 m |
+| `5bb2fee` | Default minimum time step (A-95) | quasi-dynamic runs without `minDeltaT` whose events needed steps below min(dy,dz)/cs | ex2 peak V 6.991 -> 7.229 m/s (+3.4%), onset and slip unchanged; runs that overflowed now finish |
 
 ## 5. Open items and documented limitations
 
 These are not fixed, or are handled only by a startup message or a refusal.
 
-**O-01. Explicit pore pressure in pure quasi-dynamic runs** (`04298a8`). Slip-dependent permeability integrated explicitly is unstable when |V| x dt > about 2.8 x kL_p, and quasi-dynamic steps never go below minDeltaT (one grid wave-transit time, about 14 ms for ex2's grid). A startup note points users to `hydraulicTimeIntType = implicit`, which relaxes permeability exactly; the run with kL_p = 1 mm still diverges in explicit mode (k -> -1e158).
+**O-01. Explicit pore pressure in pure quasi-dynamic runs** (`04298a8`, `5bb2fee`). Slip-dependent permeability integrated explicitly needs |V| x dt below about 2.8 x kL_p. Until A-95 the minimum step (14 ms for ex2's grid) was larger than that during events, and the run with kL_p = 1 mm diverged (k -> -1e158, then psi overflowed). Now the error control keeps the step small enough: the same run passes 8 s of its earthquake at up to 7.2 m/s with steps of 0.3 to 2 ms and permeability within its bounds, but a whole event would take about 1e5 steps. A startup note points users to `hydraulicTimeIntType = implicit`, which relaxes permeability exactly.
 
 **O-02. `sbpCompatibilityType = compatible` is refused at startup** (`e892279`). Its manufactured-solution errors stay near 0.2 for orders 2 and 4 on constant and variable grids even after the boundary-row typos were fixed (A-35). The root cause, in how the compatible boundary derivative is assembled into the D2/SAT terms, was not found. `fullyCompatible`, the default used by all examples, is unaffected.
 

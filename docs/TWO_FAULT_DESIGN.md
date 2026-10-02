@@ -1,7 +1,7 @@
 # Two-fault extension: design note
 
-Status: Stages 0, 1 and 2 are done (branches `audit/fixes-2026-10`, `stage1/fault-generalization`,
-`stage2/interior-fault`, each built on the previous one); Stage 3 is next.
+Status: Stages 0 to 3 are done (branches `audit/fixes-2026-10`, `stage1/fault-generalization`,
+`stage2/interior-fault`, `stage3/two-faults`, each built on the previous one); Stage 4 is next.
 Line numbers refer to upstream commit `74a132f` and will drift; function names are the stable
 reference.
 
@@ -159,9 +159,15 @@ Done on branch `stage2/interior-fault` (commit `c602b99` and the example `cc9625
   placed midway between the two grid rows around `<name>_y`, at least 6 rows from the y-boundaries.
   A fault named `fault` reads the plain keys and files, so a single interior fault needs no prefixes.
 - **Method.** `InteriorFaultLift` implements Route B with the B+ kink lift
-  (`interiorFaultKinkLift = 1`, the default; 0 gives the first-order traction). `LinearElastic`
-  takes the y-strain from `_uContinuous`; the physical sxy adds mu c (y - y_f) past each fault; the
-  fault traction subtracts that term's own contribution on row i_f + 1.
+  (`interiorFaultKinkLift = 1`, the default; 0 gives the first-order traction).
+  `LinearElastic::computeStresses` forms mu D_y u and lets each lift replace it, on the rows
+  i_f - 2 .. i_f + 3 whose D_y stencil crosses the fault, with mu D_y w + mu c (y - y_f) past it
+  (`correctStress`); the fault traction subtracts that term's own contribution on row i_f + 1.
+  c is taken from the operator, c = -(A delta)/(A q) on row i_f with q = (y - y_f)^2/2, so that
+  A Ut vanishes on the fault rows. (Both refinements came in stage 3, `44312d7`: the first version
+  used w on every row past the fault, which put errors up to 1 MPa into sxy near the remote
+  boundaries, and computed c with D1 twice, which made the order-2 traction first order at the free
+  surface.)
 - **Refused.** Interior faults with a `symmFault` boundary (mirror images) or `rigidFault`, with
   `guessSteadyStateICs = 1`, with heat or pore pressure (stage 4), with `isMMS` or a body force.
   Interior faults take their initial state from `<name>_stateVals`, `<name>_prestressScalar` or
@@ -169,24 +175,36 @@ Done on branch `stage2/interior-fault` (commit `c602b99` and the example `cc9625
 - **Results.** See gates 2a, 2b and 2d below; 2c is covered by 2a, which compares with the
   half-space solution of the existing, separately verified code.
 
-### Stage 3: two interior faults, elastic
-- The code already accepts several interior faults (`interiorFaults = [f1 f2]`, one lift per
-  fault; the traction of each subtracts only its own kink term). Stage 3 is the verification of
-  two interacting faults and the diagnostics of section 6.
-- Two lifts, two `Fault_qd` objects, two scatters; qd step-size control already picks up any new
-  integrand key when `timeIntInds` is empty (`OdeSolver` uses all explicit keys). Inputs that list
-  `timeIntInds` must add `<name>_slip`, `<name>_psi` themselves (`PressureEq::addErrorControl`
-  shows the pattern for automatic additions to a non-empty list).
+### Stage 3: two interior faults, elastic (done)
+Done on branch `stage3/two-faults` (`44312d7`, `cd2fac5`, `5bb2fee` and the example and tool).
+- **Input.** `interiorFaults = [fault f2]` with `fault_y`, `f2_y`; the second fault inherits the
+  plain keys and overrides them with `f2_` keys. `examples/two_faults/make_inputs.py` writes a
+  case with a seismic (`--f2 rs`), creeping (`vs`) or locked (`locked`) second fault, or none
+  (`--single`) on the same grid: uniform spacing `--h0` within `--band` of each fault, each fault
+  exactly midway between two rows, geometric growth elsewhere.
+- **Step size.** A `timeIntInds` listing `slip` or `psi` now covers every fault (`<name>_slip`,
+  `<name>_psi` added with the same scale). The default `minDeltaT` was the shear-wave time of the
+  smallest cell, and steps at the floor are accepted whatever their error; with 100 m cells it
+  stopped the first two-fault runs with an overflow of the state variable. It is now 1e-3 of that
+  time (audit finding A-95, `5bb2fee`; ex2's peak slip rate changes by 3.4%).
+- **Outputs** (section 6): `/momBal/surfVel` (`computeSurfVel`), `faultSeries.txt`
+  (`strideSeries`), fault positions in `data_context.h5`; `tools/two_fault.py` turns a run into
+  `events.csv`, `partition.csv` and `surfvel.csv`.
+- **Results.** Gates 3a, 3b and 3c below all pass.
 
 ### Stage 4: viscoelastic and reversible-strength physics
-- `PowerLaw::computeTotalStrains` uses `w` for `gTxy`; the viscous source term `B·γV` is unchanged.
+- `PowerLaw` must apply the lifts' `correctStress` to its y-strain near each fault, as
+  `LinearElastic::computeStresses` does (sxy = mu (D_y u - gVxy), so the correction is the same
+  additive term); `StrikeSlip_PowerLaw_qd` needs the multi-fault structure, interior faults and
+  outputs that stages 1 to 3 gave `StrikeSlip_LinearElastic_qd`. The viscous source term is
+  unchanged.
 - Heat: frictional source becomes a sum of per-fault Gaussians centred at `y_f(k)`
   (`HeatEquation` builds one centred at `y = 0`, normalised for a half-space); reject the
   `w = 0` boundary-flux option for interior faults.
 - Grain size: no fault-specific code.
 - Pore pressure / valving: one `PressureEq` per fault. Use `hydraulicTimeIntType = implicit`:
   permeability is then relaxed exactly over each step (`PressureEq::relaxPermeability`); the
-  explicit form is unstable during events when `kL_p` is small.
+  explicit form needs |V| dt < 2.8 kL_p, about 1e5 steps per event with kL_p = 1 mm.
 
 ## 5. Verification gates
 
@@ -196,10 +214,10 @@ Done on branch `stage2/interior-fault` (commit `c602b99` and the example `cc9625
 | 2a | Prescribed smooth `δ(z)`, μ uniform, fault at `y = 0` of a symmetric full domain, vs the existing `symmFault` half-space run with `bcL = δ/2` | `u` O(h²), traction O(h) over three grids. **Passed**: Gaussian slip, Ny = 32..256 against Ny = 513: `u` rates 3.7, 3.6; traction rates 1.95, 1.89, 1.70 with B+ (0.93-0.99 without) |
 | 2b | Same with `δ` linear in depth | traction O(h²). **Passed** in the stronger form of uniform slip: exact to round-off (4e-13 in `u`) |
 | 2c | Analytic antiplane screw dislocation with free-surface image | Covered by 2a |
-| 2d | Rate-and-state on the interior fault, other boundary far | recurrence interval and peak V within 1% of the half-space BP1-style run. **Passed** with a triggered first event (steady-state start nucleates from round-off): at Ny_half = 301, onset +0.14%, peak V -0.29%, slip 0.034%; the differences shrink with refinement (0.61%, 1.8% at Ny_half = 151). Restarts bit-identical; 2 ranks match onset and slip |
-| 3a | Fault 2 locked (`lockedVals`) | reproduces 2d |
-| 3b | Fault 2 velocity-strengthening | long-term `V1 + V2 = vL` from cumulative slip |
-| 3c | Coseismic stress change on fault 2 from a fault-1 event | matches the 2D screw-dislocation formula at distance `y_f` |
+| 2d | Rate-and-state on the interior fault, other boundary far | recurrence interval and peak V within 1% of the half-space BP1-style run. **Passed** with a triggered first event (steady-state start nucleates from round-off) and `minDeltaT = 1e-4`: at Ny_half = 151 onset +0.68%, peak V +0.54%, slip 0.08%; at 301 onset +0.18%, peak V +0.15%, slip 0.02%. Restarts bit-identical; 2 ranks match onset and slip. (With the old default step floor, A-95, peak V differed by 1.8% and 0.29%.) |
+| 3a | Fault 2 locked (`lockedVals`) | reproduces 2d. **Passed** bit for bit: with f2 locked and `constantState`, every dataset of `fault` and `/momBal` (surfDisp, surfVel) and the series equal the run without f2 on the same grid, over 1533 steps through an event |
+| 3b | Fault 2 velocity-strengthening | long-term `V1 + V2 = vL` from cumulative slip. **Passed**: f2 with a - b = 0.004, 20 km from fault (ex2 friction), 2980 yr, 14 events; the cycle becomes periodic (recurrence 224.3 yr, peak V 7.22 m/s); over the last cycle, mid-interseismic to mid-interseismic, (slip_1 + slip_2)/(vL dt) = 0.9994 to 1.0045 over depth, and within 0.9% over the last 2, 3 and 5 cycles. f2 takes 0.6 to 0.8% (its friction barely weakens at slow rates, while fault's deep part, with a - b up to 0.2, does). Earlier cycles show the initial stress relaxing (sum up to 1.03) |
+| 3c | Coseismic stress change on fault 2 from a fault-1 event | matches the 2D screw-dislocation formula at distance `y_f`. **Passed**: against the antiplane solution for the strip (traction-free top and bottom, held sides; cosine series in depth, exact in y) from the computed slip of fault, the change on the locked f2 20 km away (max 1.29 MPa) agrees to 2.6e-5 MPa (0.002%) |
 | 4 | Power-law single-fault limit | matches the existing `StrikeSlip_PowerLaw_qd` run; heat budget `∫Q = Σ τ_k V_k` |
 
 Keep μ uniform across both faults (Route B does not handle a modulus jump at a fault). The
@@ -207,12 +225,18 @@ partition-dependent `R` coefficient that once made results depend on the rank co
 
 ## 6. Output for the research goal
 
-- Per fault, per 1D stride: slip, V, τ, τ_QS, ψ (already written by `Fault::writeStep`), plus scalar
-  series for max V, moment rate, cumulative slip at a reference depth, and the partition fraction
-  `Δslip_k / Σ Δslip` over a trailing window.
-- Surface velocity: write `surfVel` directly. Because the right-hand side is linear in
-  `(bcL, bcR, δ1, δ2)`, one extra back-substitution with the factored `A`,
-  `A v = rhsL(−vL/2) + rhsR(+vL/2) + J(V1) + J(V2)`, gives the instantaneous velocity field; scatter
-  its top row. This avoids differencing displacement across adaptive time steps.
-- Context file: fault positions `y_f`, grid rows `i_f`, local grid spacing, so interseismic profiles
-  can be selected in post-processing by a max-V threshold.
+Implemented in stage 3 (`cd2fac5`), on by default when interior faults are declared:
+- Per fault, per 1D stride: slip, V, tau, tau_QS, psi (`Fault::writeStep`, group `/<name>`).
+- Per step (`strideSeries`): `faultSeries.txt` with, per fault, max V, its depth, potency rate and
+  potency, so event catalogs and peak slip rates do not depend on `stride1D`.
+- Surface velocity (`computeSurfVel`): `/momBal/surfVel` with each 1D output. Because the
+  right-hand side is linear in (bcL, bcR, slip of each fault), one extra back-substitution with the
+  factored A, A v = rhs(-vL/2, +vL/2) + sum_k J(V_k), gives the instantaneous velocity field; its
+  top row is written. No differencing of displacement across adaptive steps. The far field is
+  exactly +-vL/2.
+- Context: each interior fault's `y`, `iRow` and `dy` as attributes of its group in
+  `data_context.h5`.
+- `tools/two_fault.py <outputDir>`: event catalog (`events.csv`: onset and end, duration, peak V,
+  depth, potency, moment per unit length), slip at a reference depth and each fault's share over a
+  trailing window (`partition.csv`), and the mean and latest interseismic surface velocity
+  (`surfvel.csv`, outputs where every fault is slower than `--vinter`).
