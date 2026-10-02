@@ -7,7 +7,7 @@ using namespace std;
 
 InteriorFaultLift::InteriorFaultLift(Domain& D, const PetscInt iRow, const bool kinkLift)
 : _D(&D), _iRow(iRow), _yFault(0.), _kinkLift(kinkLift),
-  _step(NULL), _Ut(NULL), _U(NULL), _c(NULL), _halfDy2(NULL), _dy(NULL), _work(NULL), _work2(NULL),
+  _step(NULL), _band(NULL), _Ut(NULL), _U(NULL), _c(NULL), _cFault(NULL), _Aq(NULL), _halfDy2(NULL), _dy(NULL), _work(NULL), _work2(NULL),
   _tauPlus(NULL), _cPlus(NULL), _muPlus(NULL), _dyPlus(0.),
   _fault2body(NULL), _rowMinus(NULL), _rowPlus(NULL)
 {
@@ -28,8 +28,11 @@ InteriorFaultLift::InteriorFaultLift(Domain& D, const PetscInt iRow, const bool 
     VecDestroy(&yAll);
   }
 
-  // body fields: the step (1 on rows past the fault), and with B+ the distance from the fault
+  // body fields: the step (1 on rows past the fault), the band of rows whose D_y stencil crosses
+  // the fault (interior stencils reach 2 rows for 4th order, 1 for 2nd), and with B+ the distance
+  // from the fault
   VecDuplicate(D._y,&_step);
+  VecDuplicate(D._y,&_band);
   VecDuplicate(D._y,&_Ut); VecSet(_Ut,0.);
   VecDuplicate(D._y,&_U);  VecSet(_U,0.);
   VecDuplicate(D._y,&_work);
@@ -40,6 +43,12 @@ InteriorFaultLift::InteriorFaultLift(Domain& D, const PetscInt iRow, const bool 
   VecGetArray(_step,&s);
   for (PetscInt Ii = Istart; Ii < Iend; Ii++) { s[Ii-Istart] = (Ii/D._Nz > iRow) ? 1.0 : 0.0; }
   VecRestoreArray(_step,&s);
+  VecGetArray(_band,&s);
+  for (PetscInt Ii = Istart; Ii < Iend; Ii++) {
+    const PetscInt iy = Ii/D._Nz;
+    s[Ii-Istart] = (iy >= iRow - 2 && iy <= iRow + 3) ? 1.0 : 0.0;
+  }
+  VecRestoreArray(_band,&s);
   if (_kinkLift) {
     VecDuplicate(D._y,&_c); VecSet(_c,0.);
     VecDuplicate(D._y,&_dy);
@@ -76,9 +85,12 @@ InteriorFaultLift::InteriorFaultLift(Domain& D, const PetscInt iRow, const bool 
 InteriorFaultLift::~InteriorFaultLift()
 {
   VecDestroy(&_step);
+  VecDestroy(&_band);
   VecDestroy(&_Ut);
   VecDestroy(&_U);
   VecDestroy(&_c);
+  VecDestroy(&_cFault);
+  VecDestroy(&_Aq);
   VecDestroy(&_halfDy2);
   VecDestroy(&_dy);
   VecDestroy(&_work);
@@ -128,17 +140,27 @@ PetscErrorCode InteriorFaultLift::locate(Domain& D, const PetscScalar yWanted, P
 
 
 // Ut = slip (+ Kt with B+) on every row, U = Ut on rows past the fault
-PetscErrorCode InteriorFaultLift::setSlip(const Vec& slip, SbpOps* sbp, const Vec& mu)
+PetscErrorCode InteriorFaultLift::setSlip(const Vec& slip, const Mat& A)
 {
   PetscErrorCode ierr = 0;
   ierr = VecScatterBegin(_fault2body,slip,_Ut,INSERT_VALUES,SCATTER_FORWARD); CHKERRQ(ierr);
   ierr = VecScatterEnd(_fault2body,slip,_Ut,INSERT_VALUES,SCATTER_FORWARD); CHKERRQ(ierr);
   if (_kinkLift) {
-    // c = -(mu delta')'/mu, the jump of w_yy across the fault, on every row
-    ierr = sbp->Dz(_Ut,_work); CHKERRQ(ierr);         // delta'
-    ierr = sbp->Dzxmu(_work,_work2); CHKERRQ(ierr);   // (mu delta')'
-    ierr = VecPointwiseDivide(_c,_work2,mu); CHKERRQ(ierr);
-    ierr = VecScale(_c,-1.0); CHKERRQ(ierr);
+    if (_Aq == NULL) { // A q on row _iRow: the y-part of A on the quadratic, mu times the row weights
+      ierr = VecDuplicate(_tauPlus,&_Aq); CHKERRQ(ierr);
+      ierr = VecDuplicate(_tauPlus,&_cFault); CHKERRQ(ierr);
+      ierr = MatMult(A,_halfDy2,_work); CHKERRQ(ierr);
+      ierr = VecScatterBegin(*_rowMinus,_work,_Aq,INSERT_VALUES,SCATTER_FORWARD); CHKERRQ(ierr);
+      ierr = VecScatterEnd(*_rowMinus,_work,_Aq,INSERT_VALUES,SCATTER_FORWARD); CHKERRQ(ierr);
+    }
+    // c = -(A delta)/(A q) on row _iRow, the jump of w_yy across the fault, copied to every row
+    ierr = MatMult(A,_Ut,_work); CHKERRQ(ierr);
+    ierr = VecScatterBegin(*_rowMinus,_work,_cFault,INSERT_VALUES,SCATTER_FORWARD); CHKERRQ(ierr);
+    ierr = VecScatterEnd(*_rowMinus,_work,_cFault,INSERT_VALUES,SCATTER_FORWARD); CHKERRQ(ierr);
+    ierr = VecPointwiseDivide(_cFault,_cFault,_Aq); CHKERRQ(ierr);
+    ierr = VecScale(_cFault,-1.0); CHKERRQ(ierr);
+    ierr = VecScatterBegin(_fault2body,_cFault,_c,INSERT_VALUES,SCATTER_FORWARD); CHKERRQ(ierr);
+    ierr = VecScatterEnd(_fault2body,_cFault,_c,INSERT_VALUES,SCATTER_FORWARD); CHKERRQ(ierr);
     // Kt = c (y - yf)^2 / 2, added to the slip
     ierr = VecPointwiseMult(_work,_c,_halfDy2); CHKERRQ(ierr);
     ierr = VecAXPY(_Ut,1.0,_work); CHKERRQ(ierr);
@@ -161,31 +183,28 @@ PetscErrorCode InteriorFaultLift::addToRhs(const Mat& A, Vec& rhs)
 }
 
 
-// w -= U: removes this fault's lift from a displacement field
-PetscErrorCode InteriorFaultLift::subtractJump(Vec& w)
+// On the band rows, sxy = mu D_y u becomes mu D_y (u - U) + mu c (y - yf) step: the y-derivative
+// of the continuous part, plus the exact dK/dy of the B+ lift. Off the band D_y U = 0 (U is constant
+// in y there), and mu D_y u is kept: it is more accurate than D_y applied to the large quadratic K.
+PetscErrorCode InteriorFaultLift::correctStress(Vec& sxy, SbpOps* sbp, const Vec& mu)
 {
   PetscErrorCode ierr = 0;
-  ierr = VecAXPY(w,-1.0,_U); CHKERRQ(ierr);
+  ierr = sbp->muxDy(_U,_work); CHKERRQ(ierr);           // mu D_y U
+  if (_kinkLift) {
+    ierr = VecPointwiseMult(_work2,_c,_dy); CHKERRQ(ierr);
+    ierr = VecPointwiseMult(_work2,_work2,_step); CHKERRQ(ierr);
+    ierr = VecPointwiseMult(_work2,_work2,mu); CHKERRQ(ierr);
+    ierr = VecAXPY(_work,-1.0,_work2); CHKERRQ(ierr);   // - mu c (y - yf) past the fault
+  }
+  ierr = VecPointwiseMult(_work,_work,_band); CHKERRQ(ierr);
+  ierr = VecAXPY(sxy,-1.0,_work); CHKERRQ(ierr);
   return ierr;
 }
 
 
-// B+: sxy += mu c (y - yf) on rows past the fault, the y-derivative of K times mu
-PetscErrorCode InteriorFaultLift::addKinkStress(Vec& sxy, const Vec& mu)
-{
-  PetscErrorCode ierr = 0;
-  if (!_kinkLift) { return ierr; }
-  ierr = VecPointwiseMult(_work,_c,_dy); CHKERRQ(ierr);
-  ierr = VecPointwiseMult(_work,_work,_step); CHKERRQ(ierr);
-  ierr = VecPointwiseMult(_work,_work,mu); CHKERRQ(ierr);
-  ierr = VecAXPY(sxy,1.0,_work); CHKERRQ(ierr);
-  return ierr;
-}
-
-
-// Fault traction: the average of the physical sxy on the two rows, less this lift's own
-// contribution there (mu c (y - yf) on row iRow + 1 only, so half of it in the average);
-// what remains is the average of mu D_y w, plus the exact dK/dy of other faults' lifts.
+// Fault traction: the average of sxy (after correctStress) on the two rows, less this lift's own
+// dK/dy there (mu c (y - yf) on row iRow + 1 only, so half of it in the average); what remains is
+// the average of mu D_y w, which includes the stress of every other fault.
 PetscErrorCode InteriorFaultLift::traction(const Vec& sxy, const Vec& mu, Vec& tau)
 {
   PetscErrorCode ierr = 0;

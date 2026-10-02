@@ -40,7 +40,7 @@ LinearElastic::LinearElastic(Domain&D,string bcRTtype,string bcTTtype,string bcL
     _order(D._order),_Ny(D._Ny),_Nz(D._Nz),
     _Ly(D._Ly),_Lz(D._Lz),_dy(D._dq),_dz(D._dr),_y(&D._y),_z(&D._z),_y0(&D._y0),_z0(&D._z0),
     _isMMS(D._isMMS),
-    _mu(NULL),_rho(NULL),_cs(NULL),_surfDisp(NULL),_bcRShift(NULL),_bcTShift(NULL),_bcBShift(NULL),_uContinuous(NULL),
+    _mu(NULL),_rho(NULL),_cs(NULL),_surfDisp(NULL),_bcRShift(NULL),_bcTShift(NULL),_bcBShift(NULL),
     _rhs(NULL),_u(NULL),_sxy(NULL),_sxz(NULL),_sdev(NULL),_computeSxz(0),_computeSdev(0),
     _linSolverSS("MUMPSCHOLESKY"),_linSolverTrans("MUMPSCHOLESKY"),_ksp(NULL),_pc(NULL),
     _kspTol(1e-10),_akspTol(1e-10),_rkspTol(1e-10),
@@ -970,9 +970,10 @@ PetscErrorCode LinearElastic::computeStresses()
     CHKERRQ(ierr);
   #endif
 
-  // solve for shear stress; with interior faults the y-strain comes from the continuous part of u
-  // (the jumps are physical in z, so sxz still uses u)
-  ierr = _sbp->muxDy(_uContinuous != NULL ? _uContinuous : _u,_sxy); CHKERRQ(ierr);
+  // solve for shear stress; near an interior fault the y-strain comes from the continuous part of u
+  // (the jumps are physical in z, so sxz uses u everywhere)
+  ierr = _sbp->muxDy(_u,_sxy); CHKERRQ(ierr);
+  for (size_t i = 0; i < _lifts.size(); i++) { ierr = _lifts[i]->correctStress(_sxy,_sbp,_mu); CHKERRQ(ierr); }
 
   // if compute sigma_xz
   if (_computeSxz) {
@@ -989,6 +990,15 @@ PetscErrorCode LinearElastic::computeStresses()
   #endif
 
   return ierr;
+}
+
+
+// interior faults whose jumps computeStresses removes from the y-strain near each fault
+PetscErrorCode LinearElastic::setInteriorFaults(const std::vector<InteriorFaultLift*>& lifts)
+{
+  _lifts.clear();
+  for (size_t i = 0; i < lifts.size(); i++) { if (lifts[i] != NULL) { _lifts.push_back(lifts[i]); } }
+  return 0;
 }
 
 

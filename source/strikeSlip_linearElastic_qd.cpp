@@ -24,7 +24,7 @@ StrikeSlip_LinearElastic_qd::StrikeSlip_LinearElastic_qd(Domain &D)
   _miscTime(0),_viewer_context(NULL),_viewer1D(NULL),_viewer2D(NULL),_viewerSS(NULL),_viewer_chkpt(NULL),
   _forcingVal(0),
   _bcRType("remoteLoading"),_bcTType("freeSurface"),_bcLType("symmFault"),_bcBType("freeSurface"),
-  _quadEx(NULL),_quadImex(NULL),_fault(NULL),_interiorFaultKinkLift(1),_uContinuous(NULL),_material(NULL),_he(NULL),_p(NULL)
+  _quadEx(NULL),_quadImex(NULL),_fault(NULL),_interiorFaultKinkLift(1),_material(NULL),_he(NULL),_p(NULL)
 {
   #if VERBOSE > 1
     std::string funcName = "StrikeSlip_LinearElastic_qd::StrikeSlip_LinearElastic_qd()";
@@ -94,12 +94,8 @@ StrikeSlip_LinearElastic_qd::StrikeSlip_LinearElastic_qd(Domain &D)
     _material = new LinearElastic(D,_mat_bcRType,_mat_bcTType,_mat_bcLType,_mat_bcBType);
   }
 
-  // with interior faults, sxy is computed from u without their jumps
-  if (!_interiorFaultNames.empty()) {
-    VecDuplicate(_material->_u,&_uContinuous);
-    VecSet(_uContinuous,0.0);
-    _material->_uContinuous = _uContinuous;
-  }
+  // near each interior fault, sxy is computed from u without its jump
+  _material->setInteriorFaults(_lifts);
 
   // body forcing term for ice stream
   _forcingTerm = NULL;
@@ -146,7 +142,6 @@ StrikeSlip_LinearElastic_qd::~StrikeSlip_LinearElastic_qd()
   _faults.clear();     _fault = NULL;
   for (size_t i = 0; i < _lifts.size(); i++) { delete _lifts[i]; }
   _lifts.clear();
-  VecDestroy(&_uContinuous);
   delete _he;          _he = NULL;
   delete _p;           _p = NULL;
 
@@ -1304,28 +1299,19 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::solveMomentumBalance(const PetscScal
   if (_forcingType.compare("iceStream")==0) { VecAXPY(_material->_rhs,-1.0,_forcingTerm); }
 
   // interior faults: each fault's slip enters through a correction to the right-hand side
-  if (_uContinuous != NULL) {
+  if (!_interiorFaultNames.empty()) {
     Mat A;
     ierr = _material->_sbp->getA(A); CHKERRQ(ierr);
     for (size_t i = 0; i < _faults.size(); i++) {
       if (_lifts[i] == NULL) { continue; }
-      ierr = _lifts[i]->setSlip(varEx.find(_faults[i]->_slipKey)->second,_material->_sbp,_material->_mu); CHKERRQ(ierr);
+      ierr = _lifts[i]->setSlip(varEx.find(_faults[i]->_slipKey)->second,A); CHKERRQ(ierr);
       ierr = _lifts[i]->addToRhs(A,_material->_rhs); CHKERRQ(ierr);
     }
   }
 
   // compute displacement and stresses
   ierr = _material->computeU(); CHKERRQ(ierr);
-  if (_uContinuous != NULL) { // y-strains from u without the jumps (LinearElastic::_uContinuous)
-    ierr = VecCopy(_material->_u,_uContinuous); CHKERRQ(ierr);
-    for (size_t i = 0; i < _lifts.size(); i++) {
-      if (_lifts[i] != NULL) { ierr = _lifts[i]->subtractJump(_uContinuous); CHKERRQ(ierr); }
-    }
-  }
-  ierr = _material->computeStresses(); CHKERRQ(ierr);
-  for (size_t i = 0; i < _lifts.size(); i++) { // B+: the physical sxy includes mu dK/dy past each fault
-    if (_lifts[i] != NULL) { ierr = _lifts[i]->addKinkStress(_material->_sxy,_material->_mu); CHKERRQ(ierr); }
-  }
+  ierr = _material->computeStresses(); CHKERRQ(ierr); // near interior faults, from u without their jumps
 
   return ierr;
 }

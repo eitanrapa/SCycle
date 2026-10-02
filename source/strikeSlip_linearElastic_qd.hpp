@@ -125,7 +125,6 @@ public:
   std::map<string,PetscScalar>    _faultPositions; // every <name>_y value in the input file
   std::vector<InteriorFaultLift*> _lifts;
   int                             _interiorFaultKinkLift; // 1 (default): B+, second-order fault traction
-  Vec                             _uContinuous; // u without the interior-fault jumps (NULL if none)
   LinearElastic    *_material; // linear elastic off-fault material properties
   HeatEquation     *_he;
   PressureEq       *_p;

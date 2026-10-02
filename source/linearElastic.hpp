@@ -13,6 +13,7 @@
 #include "sbpOps.hpp"
 #include "sbpOps_m_constGrid.hpp"
 #include "sbpOps_m_varGrid.hpp"
+#include "interiorFaultLift.hpp"
 
 using namespace std;
 
@@ -52,7 +53,7 @@ public:
   Vec             _mu, _rho, _cs;
   vector<double>  _muVals,_muDepths,_rhoVals,_rhoDepths;
   Vec             _surfDisp,_bcRShift,_bcTShift,_bcBShift;
-  Vec             _uContinuous; // if set: u without interior-fault jumps, used for the y-strain (sxy)
+  std::vector<InteriorFaultLift*> _lifts; // interior faults: sxy is corrected near each (not owned)
   Vec             _rhs,_u,_sxy,_sxz,_sdev;
   int             _computeSxz,_computeSdev; // 0 = no, 1 = yes
 
@@ -101,6 +102,7 @@ public:
   // time stepping function
   PetscErrorCode getStresses(Vec& sxy, Vec& sxz, Vec& sdev);
   PetscErrorCode computeStresses();
+  PetscErrorCode setInteriorFaults(const std::vector<InteriorFaultLift*>& lifts); // NULL entries are skipped
   PetscErrorCode computeSDev();
   PetscErrorCode setSurfDisp();
   PetscErrorCode setRHS();
