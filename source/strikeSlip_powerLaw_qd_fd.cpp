@@ -81,6 +81,7 @@ StrikeSlip_PowerLaw_qd_fd::StrikeSlip_PowerLaw_qd_fd(Domain&D)
     _he->getTemp(T);
     _fault_qd->setThermalFields(T,_he->_k,_he->_c);
     _fault_fd->setThermalFields(T,_he->_k,_he->_c);
+    VecDestroy(&T);
   }
 
   // pressure diffusion equation
@@ -93,6 +94,9 @@ StrikeSlip_PowerLaw_qd_fd::StrikeSlip_PowerLaw_qd_fd(Domain&D)
   // grain size distribution
   if (_evolveGrainSize == 1 || _computeSSGrainSize == 1) { _grainDist = new GrainSizeEvolution(D); }
   if (_grainSizeEvCoupling == "coupled") { VecCopy(_grainDist->_d, _material->_grainSize); }
+
+  // body forcing term for ice stream (needs _material)
+  if (_forcingType.compare("iceStream")==0) { constructIceStreamForcingTerm(); }
 
   computePenaltyVectors();
   computeTimeStep(); // compute fully dynamic time step
@@ -425,9 +429,8 @@ PetscErrorCode StrikeSlip_PowerLaw_qd_fd::allocateFields()
   ierr = VecDuplicate(_D->_y, &_u0); VecSet(_u0,0.0);
   ierr = PetscObjectSetName((PetscObject) _u0, "u0"); CHKERRQ(ierr);
 
-  // body forcing term for ice stream
+  // body forcing term for ice stream (constructed in the constructor, once the material exists)
   _forcingTerm = NULL; _forcingTermPlain = NULL;
-  if (_forcingType.compare("iceStream")==0) { constructIceStreamForcingTerm(); }
 
 
   // initiate Vecs to hold index Jj

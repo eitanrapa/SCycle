@@ -64,6 +64,7 @@ StrikeSlip_PowerLaw_qd::StrikeSlip_PowerLaw_qd(Domain&D)
     Vec T; VecDuplicate(_D->_y,&T);
     _he->getTemp(T);
     _fault->setThermalFields(T,_he->_k,_he->_c);
+    VecDestroy(&T);
   }
 
   //~ // pressure diffusion equation
@@ -1313,7 +1314,7 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::updateBCT_atan_v()
     Jj++;
   }
   VecRestoreArray(_material->_bcT,&bcT);
-  VecRestoreArrayRead(_D->_y0,&y);
+  VecRestoreArrayRead(yT,&y);
 
   VecDestroy(&yT);
 
@@ -1334,12 +1335,18 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::updateBCT_atan_u(const PetscScalar time)
     PetscPrintf(PETSC_COMM_WORLD,"Starting %s in %s\n",funcName.c_str(),FILENAME);
   #endif
 
+  // y coordinates along the top boundary (_D->_y0 holds the depths along the fault)
+  Vec yT;
+  VecDuplicate(_D->_z0,&yT);
+  VecScatterBegin(_D->_scatters["body2T"], _D->_y, yT, INSERT_VALUES, SCATTER_FORWARD);
+  VecScatterEnd(_D->_scatters["body2T"], _D->_y, yT, INSERT_VALUES, SCATTER_FORWARD);
+
   PetscInt           Istart,Iend;
   PetscScalar       *bcT;
   const PetscScalar *y,*bcTShift;
   VecGetOwnershipRange(_material->_bcT,&Istart,&Iend);
   VecGetArray(_material->_bcT,&bcT);
-  VecGetArrayRead(_D->_y0,&y);
+  VecGetArrayRead(yT,&y);
   VecGetArrayRead(_material->_bcTShift,&bcTShift);
 
   PetscInt Jj = 0;
@@ -1349,7 +1356,9 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::updateBCT_atan_u(const PetscScalar time)
     Jj++;
   }
   VecRestoreArray(_material->_bcT,&bcT);
-  VecRestoreArrayRead(_D->_y0,&y);
+  VecRestoreArrayRead(yT,&y);
+  VecRestoreArrayRead(_material->_bcTShift,&bcTShift);
+  VecDestroy(&yT);
 
   #if VERBOSE > 3
     PetscPrintf(PETSC_COMM_WORLD,"Ending %s in %s\n",funcName.c_str(),FILENAME);
