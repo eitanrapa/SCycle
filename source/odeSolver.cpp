@@ -681,6 +681,7 @@ PetscErrorCode RK32::integrate(IntegratorContextEx *obj)
     // compute new deltaT for next time step
     // but timeMonitor before updating to newDeltaT, to keep output consistent while allowing for checkpointing
     if (_totErr!=0.0) { _newDeltaT = computeStepSize(_totErr); }
+    else { _newDeltaT = min(_maxDeltaT,5.0*_deltaT); } // zero error estimate: largest allowed growth
     _errA[1] = _errA[0]; // record error for use when estimating time step
     _errA[0] = _totErr;
 
@@ -1303,6 +1304,7 @@ PetscErrorCode RK43::integrate(IntegratorContextEx *obj)
     // but call timeMonitor before updating to newDeltaT, to keep output
     // consistent while allowing for checkpointing
     if (_totErr!=0.0) { _newDeltaT = computeStepSize(_totErr); }
+    else { _newDeltaT = min(_maxDeltaT,5.0*_deltaT); } // zero error estimate: largest allowed growth
     _errA[1] = _errA[0]; // record error for use when estimating time step
     _errA[0] = _totErr;
 

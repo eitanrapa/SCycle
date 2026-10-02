@@ -3,7 +3,7 @@
 using namespace std;
 
 OdeSolverImex::OdeSolverImex(PetscInt maxNumSteps,PetscReal finalT,PetscReal deltaT,string controlType)
-: _initT(0),_finalT(finalT),_currT(0),_deltaT(deltaT),
+: _initT(0),_finalT(finalT),_currT(0),_deltaT(deltaT),_newDeltaT(deltaT),
   _maxNumSteps(maxNumSteps),_stepCount(0),
   _runTime(0),_controlType(controlType),_normType("L2_absolute"),
   _minDeltaT(0),_maxDeltaT(finalT),
@@ -461,6 +461,7 @@ PetscErrorCode RK32_WBE::integrate(IntegratorContextImex *obj)
     // compute new deltaT for next time step
     // but timeMonitor before updating to newDeltaT, to keep output consistent while allowing for checkpointing
     if (_totErr!=0.0) { _newDeltaT = computeStepSize(_totErr); }
+    else { _newDeltaT = min(_maxDeltaT,5.0*_deltaT); } // zero error estimate: largest allowed growth
     _errA[1] = _errA[0]; // record error for use when estimating time step
     _errA[0] = _totErr;
 
@@ -1098,6 +1099,7 @@ PetscErrorCode RK43_WBE::integrate(IntegratorContextImex *obj)
     // compute new deltaT for next time step
     // but timeMonitor before updating to newDeltaT, to keep output consistent while allowing for checkpointing
     if (_totErr!=0.0) { _newDeltaT = computeStepSize(_totErr); }
+    else { _newDeltaT = min(_maxDeltaT,5.0*_deltaT); } // zero error estimate: largest allowed growth
     _errA[1] = _errA[0]; // record error for use when estimating time step
     _errA[0] = _totErr;
 
