@@ -168,7 +168,7 @@ mpirun -n 4 ./source/main examples/ex2.in
 ## Testing
 
 ```bash
-tools/regress.sh baseline <dir>      # run ex1, ex2 (fresh, outputDir redirected) and store output
+tools/regress.sh baseline <dir>      # run ex1, ex2, ex4s, ex4g (fresh, outputDir redirected), store output
 tools/regress.sh compare  <dir>      # rerun and h5diff every dataset; exit 1 on any difference
 SCYCLE_BIN=... REGRESS_NP=2 REGRESS_CASES="ex1 ex2" REGRESS_DELTA=1e-12 REGRESS_WORK=... tools/regress.sh ...
 ./source/main tools/mms.in           # MMS convergence, Ny = Nz = 21, 41, 81 (order 4: u ~3.5, sxy ~2.5)
@@ -185,7 +185,9 @@ python3 SEAS_benchmarks/BP1/createICs.py [--dz 0.1]   # BP1 grid and initial con
   there records its commit, `5bb2fee`; the one from the end of the audit is kept in
   `data/regress-baseline-35ba52f/`). Regenerate it after any intended change of results and say so
   in the commit message.
-- ex2 takes about 70 s with the debug build; ex1 about 13 s.
+- ex2 takes about 70 s with the debug build; ex1 about 13 s; ex4s and ex4g (short power-law runs:
+  coupled heat with the implicit-explicit integrator; grain size coupled to diffusion creep with
+  the explicit one) about 30 s each. They are the only cases that exercise `StrikeSlip_PowerLaw_qd`.
 
 ## Working agreements
 

@@ -11,7 +11,7 @@
 #   SCYCLE_BIN     executable (default: source/main)
 #   REGRESS_NP     MPI ranks (default 1; >1 runs through mpirun)
 #   REGRESS_CASES  example names under examples/, or paths to other input files
-#                  (default "ex1 ex2"); a path's case name is its file name without .in
+#                  (default "ex1 ex2 ex4s ex4g"); a path's case name is its file name without .in
 #   REGRESS_DELTA  absolute tolerance for h5diff --delta (default: exact)
 #   REGRESS_WORK   scratch directory for the runs (default: mktemp -d)
 #
@@ -27,7 +27,7 @@ fi
 root=$(cd "$(dirname "$0")/.." && pwd)
 bin=${SCYCLE_BIN:-$root/source/main}
 np=${REGRESS_NP:-1}
-cases=${REGRESS_CASES:-"ex1 ex2"}
+cases=${REGRESS_CASES:-"ex1 ex2 ex4s ex4g"}
 work=${REGRESS_WORK:-$(mktemp -d)}
 
 [[ -x "$bin" ]] || { echo "missing executable $bin (run: make -C source)" >&2; exit 2; }
