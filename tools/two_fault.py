@@ -65,7 +65,7 @@ def main():
     p.add_argument('--zref', type=float, default=5.0, help='depth for slip histories and partitioning (km)')
     p.add_argument('--window', type=float, default=300.0, help='trailing window for slip shares (yr)')
     p.add_argument('--vseis', type=float, default=1e-3, help='slip rate above which a fault is in an earthquake (m/s)')
-    p.add_argument('--merge', type=float, default=60.0, help='merge seismic intervals closer than this (s)')
+    p.add_argument('--merge', type=float, default=3600.0, help='merge seismic intervals closer than this (s)')
     p.add_argument('--vinter', type=float, default=1e-8, help='interseismic: every fault slower than this (m/s)')
     args = p.parse_args()
     run = args.run if args.run.endswith('/') else args.run + '/'
@@ -122,10 +122,11 @@ def main():
             shares = [(slip[n][j] - slip[n][j0[j]])/total[j] if total[j] > 0 and t1[j] - t1[j0[j]] > 0.5*W else np.nan for n in names]
             f.write('%.9g,' % (t1[j]/YEAR) + ','.join('%.9g' % slip[n][j] for n in names) + ',' + ','.join('%.6g' % x for x in shares) + '\n')
     # long-term rates: between the first and last onsets of the most active fault, if it has 2 or more
-    # events (whole cycles), else over the last window
+    # events spanning at least a quarter of the run (whole cycles), else over the last window
     ev = {n: [e for e in cat if e['fault'] == n] for n in names}
     main_fault = max(names, key=lambda n: len(ev[n]))
-    if len(ev[main_fault]) >= 2:
+    span = ev[main_fault][-1]['onset'] - ev[main_fault][0]['onset'] if len(ev[main_fault]) >= 2 else 0.0
+    if len(ev[main_fault]) >= 2 and span >= 0.25*(t1[-1] - t1[0]):
         ta, tb = ev[main_fault][0]['onset'], ev[main_fault][-1]['onset']
         how = 'between the first and last onsets on %s (%d cycles)' % (main_fault, len(ev[main_fault]) - 1)
     else:
