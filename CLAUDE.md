@@ -180,7 +180,8 @@ SCYCLE_BIN=... REGRESS_NP=2 REGRESS_CASES="ex1 ex2" REGRESS_DELTA=1e-12 REGRESS_
 ./source/main tools/mms.in           # MMS convergence, Ny = Nz = 21, 41, 81 (order 4: u ~3.5, sxy ~2.5)
 tools/checkkeys.py examples/*.in     # keys no component reads
 python3 SEAS_benchmarks/BP1/createICs.py [--dz 0.1]   # BP1 grid and initial conditions
-./source/main <input> -objects_dump  # PETSc objects never freed (none expected)
+./source/main <input> -objects_dump all  # every PETSc object never freed (none expected; without
+                                         # "all" only objects made by a Create call are listed)
 ```
 
 - Runs are bit-reproducible for a given build and rank count; 1 vs 2 ranks agree to round-off

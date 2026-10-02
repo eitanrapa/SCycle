@@ -4,7 +4,7 @@
 
 This document records an audit of SCycle, the C++/PETSc code for 2D antiplane earthquake-cycle simulations, and the fixes made on branch `audit/fixes-2026-10`. The audit started from an unmodified clone of upstream master (github.com/kali-allison/SCycle, last upstream commit `74a132f` of 19 December 2024).
 
-The branch adds 69 commits to master: 58 fixes, 3 tool commits, 2 commits for the repository contents, 2 for this documentation, and one each for the build, the example inputs, a code comment, and the SEAS BP1 benchmark with an input-key checker. Together they fix 94 distinct findings (32 Critical, 25 High, 25 Medium, 12 Low), listed in section 3. A 95th, A-95 (Critical), was found during stage 3 of the two-fault work and fixed on branch `stage3/two-faults` (`5bb2fee`), and two more during stage 4, A-96 (Medium) and A-97 (High), on branch `stage4/viscoelastic` (`ae6c6a8`, `3f402f3`); the tables below include them. Three are fixed only in part (A-35, A-45, A-57), and the MATLAB tools of A-93 were not run. Section 5 lists 15 open items and documented limitations. Each commit message records its finding: what was wrong, the failure it caused, the fix and the test evidence (`git show <hash>`). A few spot tests from early in the audit appear only in this document; their entries say so.
+The branch adds 69 commits to master: 58 fixes, 3 tool commits, 2 commits for the repository contents, 2 for this documentation, and one each for the build, the example inputs, a code comment, and the SEAS BP1 benchmark with an input-key checker. Together they fix 94 distinct findings (32 Critical, 25 High, 25 Medium, 12 Low), listed in section 3. A 95th, A-95 (Critical), was found during stage 3 of the two-fault work and fixed on branch `stage3/two-faults` (`5bb2fee`), two more during stage 4, A-96 (Medium) and A-97 (High), on branch `stage4/viscoelastic` (`ae6c6a8`, `3f402f3`), and A-98 (Low) during stage 5 on branch `stage5/reversible-strength`; the tables below include them. Three are fixed only in part (A-35, A-45, A-57), and the MATLAB tools of A-93 were not run. Section 5 lists 15 open items and documented limitations. Each commit message records its finding: what was wrong, the failure it caused, the fix and the test evidence (`git show <hash>`). A few spot tests from early in the audit appear only in this document; their entries say so.
 
 How the fixes were verified:
 
@@ -34,13 +34,13 @@ How the scale is applied:
 
 | Group | Entries | Critical | High | Medium | Low |
 |---|---|---|---|---|---|
-| 3.1 Crashes, undefined behaviour and memory | A-01 to A-22 | 17 | 0 | 5 | 0 |
+| 3.1 Crashes, undefined behaviour and memory | A-01 to A-22, A-98 | 17 | 0 | 5 | 1 |
 | 3.2 Physics and numerics (wrong results) | A-23 to A-47, A-97 | 1 | 18 | 4 | 3 |
 | 3.3 Time integration, checkpoints and I/O | A-48 to A-68, A-95, A-96 | 12 | 3 | 7 | 1 |
 | 3.4 Input handling and error reporting | A-69 to A-79 | 3 | 3 | 4 | 1 |
 | 3.5 Build, repository and tooling | A-80 to A-87 | 0 | 0 | 1 | 7 |
 | 3.6 Examples, benchmarks and post-processing | A-88 to A-94 | 0 | 2 | 5 | 0 |
-| Total | 97 | 33 | 26 | 26 | 12 |
+| Total | 98 | 33 | 26 | 26 | 13 |
 
 "No run reported" means the commit message describes the fix without a dedicated test; the ex1/ex2 regression comparison still applied to it.
 
@@ -133,6 +133,11 @@ How the scale is applied:
 **A-22. PETSc objects leaked.** Medium. `2febba7`, `9866e9b`, `f8fa0e4`, `4942bd8`, `aece9f9`, `e77dcda`, `89a6b0b`, `8916df7`. Several files.
 - Defect: thirteen places created a binary viewer and then overwrote its handle with `PetscViewerHDF5Open`; several Vecs were never destroyed (`_sdev`, PowerLaw's `_wetDist`, the heat equation's `maxdT`, qd_fd's `SS_index`, temperature Vecs in three constructors, `viscSource` in the off-fault Green's-function driver); PressureEq allocated five Vecs twice.
 - Evidence: after `8916df7`, PETSc's `-objects_dump` lists no SCycle objects at exit for ex2, ex5, the 2D quasidynamic_and_dynamic case, implicit pore pressure and the fully dynamic mode; the original code left 44 unfreed blocks after 20 steps of ex2.
+
+**A-98. The implicit-explicit integrators never freed their implicit-variable Vecs.** Low. `source/odeSolverImex.cpp`. Found after the audit, during stage 5 of the two-fault work.
+- Defect: `RK32_WBE` and `RK43_WBE` duplicate each implicit variable (`Temp`; `pressure` and `permeability` when implicit) into `_vardTIm` and never destroyed it, so one body field per implicit variable was still allocated at exit. A-22's checks used the default `-objects_dump`, which lists only objects made directly by a Create call, and missed these duplicates.
+- Fix: both destructors free `_vardTIm`; `_varIm` belongs to the caller.
+- Evidence: 30 steps with `-objects_dump all`: ex4s (RK43_WBE), ex4s with RK32_WBE and ex4g with coupled heat each left one Vec and now none; ex1, ex2, ex4g none before and after; ex1, ex2, ex4s, ex4g bit-identical.
 
 ### 3.2 Physics and numerics (wrong results)
 

@@ -81,6 +81,7 @@ RK32_WBE::~RK32_WBE()
   destroyVector(_f2);
   destroyVector(_y2);
   destroyVector(_y3);
+  destroyVector(_vardTIm); // the updated implicit variables (_varIm belongs to the caller)
 
 
 #if VERBOSE > 1
@@ -618,6 +619,7 @@ RK43_WBE::~RK43_WBE()
   destroyVector(_k6);
   destroyVector(_y4);
   destroyVector(_y3);
+  destroyVector(_vardTIm); // the updated implicit variables (_varIm belongs to the caller)
 
 #if VERBOSE > 1
   PetscPrintf(PETSC_COMM_WORLD,"Ending RK43_WBE destructor in odeSolverImex.cpp.\n");
