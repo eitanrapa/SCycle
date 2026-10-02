@@ -22,7 +22,7 @@ HeatEquation::HeatEquation(Domain& D)
   _linSolveTime(0),_factorTime(0),_beTime(0),_writeTime(0),_miscTime(0),
   _linSolveCount(0),
   _Tamb(NULL),_dT(NULL),_T(NULL),
-  _k(NULL),_rho(NULL),_c(NULL),_Qrad(NULL),_Qfric(NULL),_Qvisc(NULL),_Q(NULL),_faultHeat(NULL)
+  _k(NULL),_rho(NULL),_c(NULL),_Qrad(NULL),_Qfric(NULL),_Qvisc(NULL),_Q(NULL),_faultHeat(NULL),_fricSink(NULL)
 {
   #if VERBOSE > 1
     string funcName = "HeatEquation::HeatEquation";
@@ -1642,6 +1642,7 @@ PetscErrorCode HeatEquation::computeFrictionalShearHeating(const Vec& tau, const
   if (_faultHeat != NULL) {
     ierr = VecCopy(*_faultHeat,_Qfric); CHKERRQ(ierr);
     ierr = VecSet(_bcL,0.); CHKERRQ(ierr); // no flux through the left boundary
+    if (_fricSink != NULL) { ierr = VecAXPY(_Qfric,-1.0,*_fricSink); CHKERRQ(ierr); } // the work stored elsewhere
     return ierr;
   }
 
@@ -1659,6 +1660,7 @@ PetscErrorCode HeatEquation::computeFrictionalShearHeating(const Vec& tau, const
     ierr = MatMult(_MapV,_bcL,_Qfric); CHKERRQ(ierr); // Qfric = tau * slipVel (now a body field)
     VecPointwiseMult(_Qfric,_Qfric,_Gw); // Qfric = tau * slipVel * Gw
     VecSet(_bcL,0.); // q = 0, no flux
+    if (_fricSink != NULL) { ierr = VecAXPY(_Qfric,-1.0,*_fricSink); CHKERRQ(ierr); } // the work stored elsewhere
   }
 
   #if VERBOSE > 1
@@ -1673,6 +1675,18 @@ PetscErrorCode HeatEquation::computeFrictionalShearHeating(const Vec& tau, const
 PetscErrorCode HeatEquation::setFaultHeatSource(const Vec* Q)
 {
   _faultHeat = Q;
+  return 0;
+}
+
+
+// the part of the frictional work that does not become heat (kW/m^3, the cataclastic grain-size
+// sink), subtracted from Qfric; the caller keeps it up to date. Needs a finite-width source (w > 0).
+PetscErrorCode HeatEquation::setFrictionalHeatSink(const Vec* Q)
+{
+  if (!(_wMax > 0) && _faultHeat == NULL) {
+    SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_ARG_WRONGSTATE,"a frictional heat sink needs a finite-width source (wVals > 0)");
+  }
+  _fricSink = Q;
   return 0;
 }
 

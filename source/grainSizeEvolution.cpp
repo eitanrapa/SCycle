@@ -11,7 +11,8 @@ GrainSizeEvolution::GrainSizeEvolution(Domain& D)
   _grainSizeEvType("transient"),_grainSizeEvTypeSS("steadyState"),
   _order(D._order),_Ny(D._Ny),_Nz(D._Nz),
   _Ly(D._Ly),_Lz(D._Lz),_dy(D._dq),_dz(D._dr),_y(&D._y),_z(&D._z),
-  _A(NULL),_QR(NULL),_p(NULL),_f(NULL),_gamma(NULL),_c(0),_piez_A(NULL),_piez_n(NULL),_d(NULL),_d_t(NULL),
+  _A(NULL),_QR(NULL),_p(NULL),_f(NULL),_gamma(NULL),_c(0),_piez_A(NULL),_piez_n(NULL),
+  _fCat(NULL),_dZ(NULL),_dZExp(2),_dMin(1e-7),_QTest(-1),_Qcat(NULL),_d(NULL),_d_t(NULL),
   _viewer(NULL)
 {
   #if VERBOSE > 1
@@ -47,6 +48,9 @@ GrainSizeEvolution::~GrainSizeEvolution()
   VecDestroy(&_gamma);
   VecDestroy(&_piez_A);
   VecDestroy(&_piez_n);
+  VecDestroy(&_fCat);
+  VecDestroy(&_dZ);
+  VecDestroy(&_Qcat);
   VecDestroy(&_d);
   VecDestroy(&_d_t);
 
@@ -118,6 +122,15 @@ PetscErrorCode GrainSizeEvolution::loadSettings(const char *file)
     else if (var.compare("grainSizeEv_piez_nVals")==0) { loadVectorFromInputFile(rhsFull,_piez_nVals); }
     else if (var.compare("grainSizeEv_piez_nDepths")==0) { loadVectorFromInputFile(rhsFull,_piez_nDepths); }
 
+    // cataclastic sink and Zener pinning
+    else if (var.compare("grainSizeEv_fCatVals")==0) { loadVectorFromInputFile(rhsFull,_fCatVals); }
+    else if (var.compare("grainSizeEv_fCatDepths")==0) { loadVectorFromInputFile(rhsFull,_fCatDepths); }
+    else if (var.compare("grainSizeEv_dZVals")==0) { loadVectorFromInputFile(rhsFull,_dZVals); }
+    else if (var.compare("grainSizeEv_dZDepths")==0) { loadVectorFromInputFile(rhsFull,_dZDepths); }
+    else if (var.compare("grainSizeEv_dZExp")==0) { _dZExp = atof( rhs.c_str() ); }
+    else if (var.compare("grainSizeEv_dMin")==0) { _dMin = atof( rhs.c_str() ); }
+    else if (var.compare("grainSizeEv_QTest")==0) { _QTest = atof( rhs.c_str() ); }
+
     // initial values for grain size
     else if (var.compare("grainSizeEv_grainSizeVals")==0) { loadVectorFromInputFile(rhsFull,_dVals); }
     else if (var.compare("grainSizeEv_grainSizeDepths")==0) { loadVectorFromInputFile(rhsFull,_dDepths); }
@@ -181,6 +194,36 @@ PetscErrorCode GrainSizeEvolution::checkInput()
   assert(_fVals.size() == _fDepths.size() );
   assert(_gammaVals.size() == _gammaDepths.size() );
 
+  // cataclastic sink and Zener pinning
+  if (_fCatVals.size() != _fCatDepths.size() || _dZVals.size() != _dZDepths.size()) {
+    PetscPrintf(PETSC_COMM_WORLD,"Error: grainSizeEv_fCatVals/Depths and grainSizeEv_dZVals/Depths must come in pairs of equal length.\n");
+    assert(0);
+  }
+  for (size_t i = 0; i < _fCatVals.size(); i++) {
+    if (!(_fCatVals[i] >= 0 && _fCatVals[i] <= 1)) {
+      PetscPrintf(PETSC_COMM_WORLD,"Error: grainSizeEv_fCatVals must lie in [0, 1].\n");
+      assert(0);
+    }
+  }
+  for (size_t i = 0; i < _dZVals.size(); i++) {
+    if (!(_dZVals[i] > 0)) {
+      PetscPrintf(PETSC_COMM_WORLD,"Error: grainSizeEv_dZVals (pinned grain size) must be > 0.\n");
+      assert(0);
+    }
+  }
+  if (!_fCatVals.empty() && _grainSizeEvType != "transient") {
+    PetscPrintf(PETSC_COMM_WORLD,"Error: the cataclastic sink (grainSizeEv_fCatVals) needs grainSizeEv_grainSizeEvType = transient.\n");
+    assert(0);
+  }
+  if (!(_dZExp > 0) || !(_dMin >= 0)) {
+    PetscPrintf(PETSC_COMM_WORLD,"Error: grainSizeEv_dZExp must be > 0 and grainSizeEv_dMin >= 0.\n");
+    assert(0);
+  }
+  if (_QTest >= 0 && _fCatVals.empty()) {
+    PetscPrintf(PETSC_COMM_WORLD,"Error: grainSizeEv_QTest drives the cataclastic sink: it needs grainSizeEv_fCatVals.\n");
+    assert(0);
+  }
+
 
   #if VERBOSE > 1
     ierr = PetscPrintf(PETSC_COMM_WORLD,"Ending %s in %s\n",funcName.c_str(),FILENAME);
@@ -208,6 +251,12 @@ PetscErrorCode GrainSizeEvolution::allocateFields()
     VecDuplicate(_d,&_p); VecSet(_p,0.0); PetscObjectSetName((PetscObject) _p, "p");
     VecDuplicate(_d,&_gamma); VecSet(_gamma,0.0); PetscObjectSetName((PetscObject) _gamma, "gamma");
   }
+
+  if (!_fCatVals.empty()) {
+    VecDuplicate(_d,&_fCat); VecSet(_fCat,0.0); PetscObjectSetName((PetscObject) _fCat, "fCat");
+    VecDuplicate(_d,&_Qcat); VecSet(_Qcat,0.0); PetscObjectSetName((PetscObject) _Qcat, "Qcat");
+  }
+  if (!_dZVals.empty()) { VecDuplicate(_d,&_dZ); VecSet(_dZ,0.0); PetscObjectSetName((PetscObject) _dZ, "dZ"); }
 
   if (_grainSizeEvType == "piezometer" || _grainSizeEvTypeSS == "piezometer") {
     VecDuplicate(*_z,&_piez_A); VecSet(_piez_A,0.0); PetscObjectSetName((PetscObject) _piez_A, "A");
@@ -243,6 +292,9 @@ PetscErrorCode GrainSizeEvolution::setMaterialParameters()
     ierr = setVec(_p,*_z,_pVals,_pDepths);                              CHKERRQ(ierr);
     ierr = setVec(_gamma,*_z,_gammaVals,_gammaDepths);                  CHKERRQ(ierr);
   }
+
+  if (_fCat != NULL) { ierr = setVec(_fCat,*_z,_fCatVals,_fCatDepths); CHKERRQ(ierr); }
+  if (_dZ != NULL) { ierr = setVec(_dZ,*_z,_dZVals,_dZDepths); CHKERRQ(ierr); }
 
   // if user provided piezometric relation
   if (_grainSizeEvType == "piezometer" || _grainSizeEvTypeSS == "piezometer") {
@@ -330,7 +382,7 @@ PetscErrorCode GrainSizeEvolution::updateFields(const PetscScalar time,const map
 }
 
 // limited by characteristic timescale of grain size evolution for wattmeter
-PetscErrorCode GrainSizeEvolution::computeMaxTimeStep(PetscScalar& maxTimeStep, const Vec& sdev, const Vec& dgdev_disl, const Vec& Temp)
+PetscErrorCode GrainSizeEvolution::computeMaxTimeStep(PetscScalar& maxTimeStep, const Vec& sdev, const Vec& dgdev_disl, const Vec& Temp, const Vec* Qfault)
 {
   PetscErrorCode ierr = 0;
   #if VERBOSE > 1
@@ -356,13 +408,24 @@ PetscErrorCode GrainSizeEvolution::computeMaxTimeStep(PetscScalar& maxTimeStep, 
   VecGetArrayRead(sdev,&s);
   VecGetArrayRead(dgdev_disl,&dgdev);
   VecGetArray(Tg,&tg);
+  const PetscScalar *fc = NULL, *Q = NULL, *dz = NULL;
+  if (_fCat != NULL) {
+    VecGetArrayRead(_fCat,&fc);
+    if (_QTest < 0) {
+      if (Qfault == NULL) { SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_ARG_NULL,"the cataclastic sink needs the faults' work (Qfault)"); }
+      VecGetArrayRead(*Qfault,&Q);
+    }
+  }
+  if (_dZ != NULL) { VecGetArrayRead(_dZ,&dz); }
   PetscInt Jj = 0;
   for (Ii=Istart;Ii<Iend;Ii++) {
     PetscScalar lambda = f[Jj] / (_c * g[Jj] *1e3); // convert g to J/m^2 from kJ/m^2
     PetscScalar a = A[Jj] * exp(-QR[Jj]/T[Jj]) * (1.0/p[Jj]);
     PetscScalar b = lambda * (s[Jj]*1e6)*(dgdev[Jj]*1e-3); // work rate sdev*dgdev; convert s to Pa from MPa, dgdev to 1/s from milistrain rate
 
+    if (fc != NULL) { b += fc[Jj] * PetscMax(0.0, Q != NULL ? Q[Jj] : _QTest) / (_c * g[Jj]); } // cataclastic sink, without its floor
     tg[Jj] = pow(b,-p[Jj]/(p[Jj]+1.0)) * pow(a,-1.0/(p[Jj]+1.0));
+    if (dz != NULL) { tg[Jj] = PetscMin(tg[Jj], pow(dz[Jj],p[Jj])/(_dZExp*a)); } // relaxation to the pinned size
 
     Jj++;
   }
@@ -375,6 +438,9 @@ PetscErrorCode GrainSizeEvolution::computeMaxTimeStep(PetscScalar& maxTimeStep, 
   VecRestoreArrayRead(sdev,&s);
   VecRestoreArrayRead(dgdev_disl,&dgdev);
   VecRestoreArray(Tg,&tg);
+  if (fc != NULL) { VecRestoreArrayRead(_fCat,&fc); }
+  if (Q != NULL) { VecRestoreArrayRead(*Qfault,&Q); }
+  if (dz != NULL) { VecRestoreArrayRead(_dZ,&dz); }
 
   PetscScalar min_Tmax;
   ierr = VecMin(Tg,NULL,&min_Tmax); CHKERRQ(ierr);
@@ -390,7 +456,7 @@ PetscErrorCode GrainSizeEvolution::computeMaxTimeStep(PetscScalar& maxTimeStep, 
   return ierr;
 }
 
-PetscErrorCode GrainSizeEvolution::d_dt(Vec& grainSizeEv_t,const Vec& grainSize,const Vec& sdev, const Vec& dgdev_disl, const Vec& Temp)
+PetscErrorCode GrainSizeEvolution::d_dt(Vec& grainSizeEv_t,const Vec& grainSize,const Vec& sdev, const Vec& dgdev_disl, const Vec& Temp, const Vec* Qfault)
 {
   PetscErrorCode ierr = 0;
   #if VERBOSE > 1
@@ -417,12 +483,25 @@ PetscErrorCode GrainSizeEvolution::d_dt(Vec& grainSizeEv_t,const Vec& grainSize,
   VecGetArrayRead(dgdev_disl,&dgdev);
   VecGetArrayRead(grainSize,&d);
   VecGetArray(_d_t,&d_t);
+  const PetscScalar *fc = NULL, *Q = NULL, *dz = NULL;
+  PetscScalar *qc = NULL;
+  if (_fCat != NULL) {
+    VecGetArrayRead(_fCat,&fc);
+    VecGetArray(_Qcat,&qc);
+    if (_QTest < 0) {
+      if (Qfault == NULL) { SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_ARG_NULL,"the cataclastic sink needs the faults' work (Qfault)"); }
+      VecGetArrayRead(*Qfault,&Q);
+    }
+  }
+  if (_dZ != NULL) { VecGetArrayRead(_dZ,&dz); }
   PetscInt Jj = 0;
   for (Ii=Istart;Ii<Iend;Ii++) {
     PetscScalar cc = f[Jj] / (g[Jj] *_c);
 
     // static grain growth rate
     PetscScalar growth = A[Jj] * exp(-B[Jj]/T[Jj]) * (1.0/p[Jj]) * pow(d[Jj], 1.0-p[Jj]);
+    // Zener pinning: growth stops at the pinned grain size dZ
+    if (dz != NULL) { growth *= PetscMax(0.0, 1.0 - pow(d[Jj]/dz[Jj],_dZExp)); }
 
     // grain size reduction from work done by dislocation creep
     // work rate of dislocation creep: sigma_ij*epsdot_ij = sdev*dgdev with engineering shear strain rates
@@ -430,6 +509,13 @@ PetscErrorCode GrainSizeEvolution::d_dt(Vec& grainSizeEv_t,const Vec& grainSize,
     PetscScalar w = s[Jj]*dgdev[Jj];
     PetscScalar red = - cc * d[Jj]*d[Jj] * w;
     d_t[Jj] = growth + red;
+
+    // cataclastic sink: the part of the faults' work stored as grain-boundary energy, Qcat, reduces
+    // the grain size as the wattmeter's dislocation work does, down to the floor dMin
+    if (fc != NULL) {
+      qc[Jj] = fc[Jj] * (Q != NULL ? Q[Jj] : _QTest) * PetscMax(0.0, 1.0 - _dMin/d[Jj]);
+      d_t[Jj] += - d[Jj]*d[Jj] * qc[Jj] / (g[Jj] *_c);
+    }
     if (PetscIsInfReal(red)) {
       PetscPrintf(PETSC_COMM_WORLD,"%i: cc = %.15e, d = %.15e, s = %.15e, dgdev = %.15e\n",Jj,cc,d[Jj],s[Jj],dgdev[Jj]);
     }
@@ -455,6 +541,9 @@ PetscErrorCode GrainSizeEvolution::d_dt(Vec& grainSizeEv_t,const Vec& grainSize,
   VecRestoreArrayRead(dgdev_disl,&dgdev);
   VecRestoreArrayRead(grainSize,&d);
   VecRestoreArray(_d_t,&d_t);
+  if (fc != NULL) { VecRestoreArrayRead(_fCat,&fc); VecRestoreArray(_Qcat,&qc); }
+  if (Q != NULL) { VecRestoreArrayRead(*Qfault,&Q); }
+  if (dz != NULL) { VecRestoreArrayRead(_dZ,&dz); }
 
   VecCopy(_d_t,grainSizeEv_t);
 
@@ -520,6 +609,24 @@ PetscErrorCode GrainSizeEvolution::computeGrainSizeFromPiez(const Vec& sdev, con
 
 
 // compute steady-state grain size from Austin and Evans (2007)
+// Steady grain size with Zener pinning: the root of a d^(1-p) (1 - (d/dZ)^q) = b d^2 (growth against
+// the wattmeter's sink), which lies below min((a/b)^(1/(p+1)), dZ); dZ itself without a sink. Bisection.
+static PetscScalar pinnedSteadyState(const PetscScalar a, const PetscScalar b, const PetscScalar p,
+  const PetscScalar dZ, const PetscScalar q)
+{
+  if (!(b > 0)) { return dZ; }
+  if (!(a > 0)) { return 0.0; }
+  auto resid = [&](const PetscScalar x) { return a*pow(x,1.0-p)*(1.0 - pow(x/dZ,q)) - b*x*x; };
+  PetscScalar hi = PetscMin(pow(a/b,1.0/(p+1.0)),dZ), lo = hi;
+  while (resid(lo) <= 0 && lo > 1e-300) { lo *= 0.5; }
+  for (int it = 0; it < 200 && hi - lo > 1e-15*hi; it++) {
+    const PetscScalar mid = 0.5*(lo + hi);
+    if (resid(mid) > 0) { lo = mid; } else { hi = mid; }
+  }
+  return 0.5*(lo + hi);
+}
+
+
 PetscErrorCode GrainSizeEvolution::computeSteadyStateGrainSize(const Vec& sdev, const Vec& dgdev_disl, const Vec& Temp)
 {
   PetscErrorCode ierr = 0;
@@ -550,6 +657,8 @@ PetscErrorCode GrainSizeEvolution::computeSteadyStateGrainSize(const Vec& sdev, 
   VecGetArrayRead(_f,&f);
   VecGetArrayRead(_gamma,&g);
   VecGetArrayRead(dgdev_disl,&dgdev);
+  const PetscScalar *dz = NULL;
+  if (_dZ != NULL) { VecGetArrayRead(_dZ,&dz); }
   PetscInt Jj = 0;
   for (Ii=Istart;Ii<Iend;Ii++) {
     PetscScalar AA = A[Jj] * exp(-B[Jj]/T[Jj]) * (1.0/p[Jj]);
@@ -585,11 +694,16 @@ PetscErrorCode GrainSizeEvolution::computeSteadyStateGrainSize(const Vec& sdev, 
       PetscPrintf(PETSC_COMM_WORLD,"sdev = %.15e\n", s[Jj]);
     }
 
+    // Zener pinning: the capped growth AA d^(1-p) (1 - (d/dZ)^q) balances the sink BB s d^2 at one
+    // grain size below both the uncapped balance and dZ
+    if (dz != NULL) { d[Jj] = pinnedSteadyState(AA,BB*s[Jj],p[Jj],dz[Jj],_dZExp); }
+
     assert(!PetscIsNanReal(d[Jj]));
     assert(!PetscIsInfReal(d[Jj]));
 
     Jj++;
   }
+  if (dz != NULL) { VecRestoreArrayRead(_dZ,&dz); }
   VecRestoreArrayRead(_A,&A);
   VecRestoreArrayRead(_QR,&B);
   VecRestoreArrayRead(_p,&p);
@@ -656,6 +770,8 @@ PetscErrorCode GrainSizeEvolution::writeContext(const std::string outputDir, Pet
   // write context variables
   ierr = PetscViewerHDF5PushGroup(viewer, "/grainSizeEv");              CHKERRQ(ierr);
   ierr = VecView(_f, viewer);                                           CHKERRQ(ierr);
+  if (_fCat != NULL) { ierr = VecView(_fCat, viewer);                   CHKERRQ(ierr); }
+  if (_dZ != NULL) { ierr = VecView(_dZ, viewer);                       CHKERRQ(ierr); }
   ierr = PetscViewerHDF5PopGroup(viewer);                               CHKERRQ(ierr);
   if (_grainSizeEvType=="transient" || _grainSizeEvType=="steadyState" || _grainSizeEvType=="constant" ||
     _grainSizeEvTypeSS=="transient" ||  _grainSizeEvTypeSS=="steadyState" ||  _grainSizeEvTypeSS=="constant") {
@@ -686,6 +802,11 @@ PetscErrorCode GrainSizeEvolution::writeContext(const std::string outputDir, Pet
     _grainSizeEvTypeSS=="transient" ||  _grainSizeEvTypeSS=="steadyState" ||  _grainSizeEvTypeSS=="constant") {
     ierr = PetscViewerASCIIPrintf(viewer_scalar,"c = %g\n",_c);CHKERRQ(ierr);
   }
+  if (_fCat != NULL) {
+    ierr = PetscViewerASCIIPrintf(viewer_scalar,"dMin = %.15e # floor of the cataclastic sink\n",_dMin);CHKERRQ(ierr);
+    if (_QTest >= 0) { ierr = PetscViewerASCIIPrintf(viewer_scalar,"QTest = %.15e # (kW/m^3) test fault work\n",_QTest);CHKERRQ(ierr); }
+  }
+  if (_dZ != NULL) { ierr = PetscViewerASCIIPrintf(viewer_scalar,"dZExp = %.15e # exponent of the pinning factor\n",_dZExp);CHKERRQ(ierr); }
 
   PetscViewerDestroy(&viewer_scalar);
 
@@ -712,6 +833,7 @@ PetscErrorCode GrainSizeEvolution::writeStep(PetscViewer& viewer)
 
   ierr = VecView(_d, viewer);                                           CHKERRQ(ierr);
   ierr = VecView(_d_t, viewer);                                         CHKERRQ(ierr);
+  if (_Qcat != NULL) { ierr = VecView(_Qcat, viewer);                   CHKERRQ(ierr); }
 
   ierr = PetscViewerHDF5PopTimestepping(viewer);                        CHKERRQ(ierr);
   ierr = PetscViewerHDF5PopGroup(viewer);                               CHKERRQ(ierr);

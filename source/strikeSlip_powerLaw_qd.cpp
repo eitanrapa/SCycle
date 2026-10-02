@@ -33,7 +33,7 @@ StrikeSlip_PowerLaw_qd::StrikeSlip_PowerLaw_qd(Domain&D)
     _quadEx(NULL),_quadImex(NULL),
     _fault(NULL),_interiorFaultKinkLift(1),_interiorFaultKinkSource(0),
     _computeSurfVel(-1),_strideSeries(-1),_vel(NULL),_rhsVel(NULL),_surfVel(NULL),_viscSourceRate(NULL),
-    _bcLRate(NULL),_bcRRate(NULL),_bcTRate(NULL),_bcBRate(NULL),_Qfault(NULL),
+    _bcLRate(NULL),_bcRRate(NULL),_bcTRate(NULL),_bcBRate(NULL),_Qfault(NULL),_tauV(NULL),
     _material(NULL),_he(NULL),_p(NULL),_grainDist(NULL)
 {
   #if VERBOSE > 1
@@ -143,6 +143,29 @@ StrikeSlip_PowerLaw_qd::StrikeSlip_PowerLaw_qd(Domain&D)
   if (_evolveGrainSize == 1 || _computeSSGrainSize == 1) { _grainDist = new GrainSizeEvolution(D); }
   if (_grainSizeEvCoupling == "coupled") { VecCopy(_grainDist->_d, _material->_grainSize); }
 
+  // cataclastic grain-size sink (docs/REVERSIBLE_STRENGTH_PLAN.md 4.3): the faults' work spread into
+  // the body over the frictional-heat kernels; the heat equation receives the part not stored
+  if (_grainDist != NULL && _grainDist->_fCat != NULL) {
+    if (_grainSizeEvCoupling == "no") {
+      PetscPrintf(PETSC_COMM_WORLD,"Error: the cataclastic sink (grainSizeEv_fCatVals) needs grainSizeEvCoupling = uncoupled or coupled.\n");
+      assert(0);
+    }
+    if (_he->_wFrictionalHeating != "yes" || !(_he->_wMax > 0)) {
+      PetscPrintf(PETSC_COMM_WORLD,"Error: the cataclastic sink spreads the faults' work over the frictional-heat kernel: it needs\n"
+        "       withFrictionalHeating = yes and wVals > 0.\n");
+      assert(0);
+    }
+    if (_Qfault == NULL) {
+      if (!_interiorFaultNames.empty()) {
+        PetscErrorCode ierr = _faultWork.setup(D,_material->_sbp,_he->_w,_faults,_lifts); CHKERRABORT(PETSC_COMM_WORLD,ierr);
+      }
+      VecDuplicate(D._y,&_Qfault);
+      VecSet(_Qfault,0.0);
+    }
+    if (_fault != NULL) { VecDuplicate(_fault->_slipVel,&_tauV); }
+    if (_grainDist->_QTest < 0) { _he->setFrictionalHeatSink(&_grainDist->_Qcat); } // QTest: the sink alone, a unit test
+  }
+
   // body forcing term for ice stream
   _forcingTerm = NULL; _forcingTermPlain = NULL;
   if (_forcingType == "iceStream") { constructIceStreamForcingTerm(); }
@@ -208,6 +231,7 @@ StrikeSlip_PowerLaw_qd::~StrikeSlip_PowerLaw_qd()
   VecDestroy(&_bcTRate);
   VecDestroy(&_bcBRate);
   VecDestroy(&_Qfault);
+  VecDestroy(&_tauV);
   delete _he;          _he = NULL;
   for (size_t i = 0; i < _pressures.size(); i++) { delete _pressures[i]; }
   _pressures.clear();  _p = NULL;
@@ -761,7 +785,8 @@ double startTime = MPI_Wtime();
 
   if (_evolveGrainSize == 1 && _grainDist->_grainSizeEvType == "transient") {
     PetscScalar maxDeltaT_grainSizeEv = 0;
-    ierr =  _grainDist->computeMaxTimeStep(maxDeltaT_grainSizeEv,_material->_sdev,_material->_dgVdev_disl,_material->_T); CHKERRQ(ierr);
+    ierr =  _grainDist->computeMaxTimeStep(maxDeltaT_grainSizeEv,_material->_sdev,_material->_dgVdev_disl,_material->_T,
+      _grainDist->_fCat != NULL ? &_Qfault : NULL); CHKERRQ(ierr);
     maxTimeStep_tot = min(maxTimeStep_tot,0.9*maxDeltaT_grainSizeEv); // keep the Maxwell-time limit too
   }
   if (!_bulkStates.empty()) { // and the relaxation time of each bulk state law
@@ -1103,7 +1128,7 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::writeContext()
   _D->write(_viewer_context);
   for (size_t i = 0; i < _faults.size(); i++) { _faults[i]->writeContext(_outputDir, _viewer_context); }
   ierr = writeInteriorFaultContext(_viewer_context,_faults,_lifts); CHKERRQ(ierr); // position, row and spacing
-  if (_Qfault != NULL) { ierr = _faultWork.writeContext(_viewer_context,_faults); CHKERRQ(ierr); } // heat kernels
+  if (_Qfault != NULL && !_interiorFaultNames.empty()) { ierr = _faultWork.writeContext(_viewer_context,_faults); CHKERRQ(ierr); } // kernels
   _material->writeContext(_outputDir, _viewer_context);
   if (_he != NULL) { _he->writeContext(_outputDir, _viewer_context); }
   for (size_t i = 0; i < _pressures.size(); i++) { _pressures[i]->writeContext(_outputDir, _viewer_context); }
@@ -1235,17 +1260,6 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::d_dt(const PetscScalar time,const map<str
   // 2. compute rates
   ierr = solveMomentumBalance(time,varEx,dvarEx); CHKERRQ(ierr);
 
-  // compute grain size rate, or value from either piezometric relation or steady-state
-  if ( _grainSizeEvCoupling!="no" && varEx.find("grainSize") != varEx.end() && _grainDist->_grainSizeEvType != "steadyState" && _grainDist->_grainSizeEvType != "piezometer") {
-    ierr = _grainDist->d_dt(dvarEx["grainSize"],varEx.find("grainSize")->second,_material->_sdev,_material->_dgVdev_disl,_material->_T); CHKERRQ(ierr);
-  }
-  else if ( _grainSizeEvCoupling!="no" && _grainDist->_grainSizeEvType == "piezometer") {
-    _grainDist->computeGrainSizeFromPiez(_material->_sdev, _material->_dgVdev_disl, _material->_T);
-  }
-  else if ( _grainSizeEvCoupling!="no" && _grainDist->_grainSizeEvType == "steadyState") {
-    _grainDist->computeSteadyStateGrainSize(_material->_sdev, _material->_dgVdev_disl, _material->_T);
-  }
-
 
   // shear stress on each fault: the boundary fault reads row 0, an interior fault averages the rows around it
   for (size_t i = 0; i < _faults.size(); i++) {
@@ -1266,6 +1280,8 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::d_dt(const PetscScalar time,const map<str
   for (size_t i = 0; i < _faults.size(); i++) {
     ierr = _faults[i]->d_dt(time,varEx,dvarEx); CHKERRQ(ierr); // sets rates for slip and state
   }
+
+  ierr = grainSizeRates(varEx,dvarEx); CHKERRQ(ierr);
 
   // rates of the bulk state fields (after the faults, for laws that use fault quantities)
   if (!_bulkStates.empty()) {
@@ -1342,17 +1358,6 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::d_dt(const PetscScalar time,const map<str
   // 2. compute rates
   ierr = solveMomentumBalance(time,varEx,dvarEx); CHKERRQ(ierr);
 
-  // compute grain size rate, or value from either piezometric relation or steady-state
-  if ( _grainSizeEvCoupling!="no" && varEx.find("grainSize") != varEx.end() && _grainDist->_grainSizeEvType != "steadyState" && _grainDist->_grainSizeEvType != "piezometer") {
-    ierr = _grainDist->d_dt(dvarEx["grainSize"],varEx.find("grainSize")->second,_material->_sdev,_material->_dgVdev_disl,_material->_T); CHKERRQ(ierr);
-  }
-  else if ( _grainSizeEvCoupling!="no" && _grainDist->_grainSizeEvType == "piezometer") {
-    _grainDist->computeGrainSizeFromPiez(_material->_sdev, _material->_dgVdev_disl, _material->_T);
-  }
-  else if ( _grainSizeEvCoupling!="no" && _grainDist->_grainSizeEvType == "steadyState") {
-    _grainDist->computeSteadyStateGrainSize(_material->_sdev, _material->_dgVdev_disl, _material->_T);
-  }
-
 
   // shear stress on each fault, then its slip and state rates
   for (size_t i = 0; i < _faults.size(); i++) {
@@ -1364,6 +1369,8 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::d_dt(const PetscScalar time,const map<str
     else { ierr = _lifts[i]->traction(_material->_sxy, _material->_mu, f->_tauQSP); CHKERRQ(ierr); }
     ierr = f->d_dt(time,varEx,dvarEx); CHKERRQ(ierr); // sets rates for slip and state
   }
+
+  ierr = grainSizeRates(varEx,dvarEx); CHKERRQ(ierr);
 
   // rates of the bulk state fields (after the faults, for laws that use fault quantities)
   if (!_bulkStates.empty()) {
@@ -1386,7 +1393,7 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::d_dt(const PetscScalar time,const map<str
     // interior faults' work spread into the body (then the heat equation ignores V and tau)
     Vec V = NULL, tau = NULL;
     if (_fault != NULL) { V = dvarEx.find(_fault->_slipKey)->second; tau = _fault->_tauP; }
-    if (_Qfault != NULL) { ierr = _faultWork.spread(_faults,_Qfault); CHKERRQ(ierr); }
+    if (_Qfault != NULL) { ierr = computeFaultWork(); CHKERRQ(ierr); }
 
     // compute viscous strain rate that contributes to viscous shear heating:
     Vec dgV_sh;
@@ -1533,6 +1540,41 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::computeSurfVel()
 
   ierr = VecScatterBegin(_D->_scatters["body2T"], _vel, _surfVel, INSERT_VALUES, SCATTER_FORWARD); CHKERRQ(ierr);
   ierr = VecScatterEnd(_D->_scatters["body2T"], _vel, _surfVel, INSERT_VALUES, SCATTER_FORWARD); CHKERRQ(ierr);
+  return ierr;
+}
+
+
+// the faults' work spread into the body (kW/m^3): the boundary fault's over the heat equation's half
+// Gaussian, as its frictional heat; interior faults' over their kernels (FaultWorkKernel)
+PetscErrorCode StrikeSlip_PowerLaw_qd::computeFaultWork()
+{
+  PetscErrorCode ierr = 0;
+  if (_fault != NULL) {
+    ierr = VecPointwiseMult(_tauV,_fault->_tauP,_fault->_slipVel); CHKERRQ(ierr);
+    ierr = MatMult(_he->_MapV,_tauV,_Qfault); CHKERRQ(ierr);
+    ierr = VecPointwiseMult(_Qfault,_Qfault,_he->_Gw); CHKERRQ(ierr);
+  }
+  else { ierr = _faultWork.spread(_faults,_Qfault); CHKERRQ(ierr); }
+  return ierr;
+}
+
+
+// grain size: its rate, or its value from the piezometer or the steady state. After the faults'
+// rates, since the cataclastic sink takes their work.
+PetscErrorCode StrikeSlip_PowerLaw_qd::grainSizeRates(const map<string,Vec>& varEx, map<string,Vec>& dvarEx)
+{
+  PetscErrorCode ierr = 0;
+  if ( _grainSizeEvCoupling!="no" && varEx.find("grainSize") != varEx.end() && _grainDist->_grainSizeEvType != "steadyState" && _grainDist->_grainSizeEvType != "piezometer") {
+    const Vec *Q = NULL;
+    if (_grainDist->_fCat != NULL) { ierr = computeFaultWork(); CHKERRQ(ierr); Q = &_Qfault; }
+    ierr = _grainDist->d_dt(dvarEx["grainSize"],varEx.find("grainSize")->second,_material->_sdev,_material->_dgVdev_disl,_material->_T,Q); CHKERRQ(ierr);
+  }
+  else if ( _grainSizeEvCoupling!="no" && _grainDist->_grainSizeEvType == "piezometer") {
+    _grainDist->computeGrainSizeFromPiez(_material->_sdev, _material->_dgVdev_disl, _material->_T);
+  }
+  else if ( _grainSizeEvCoupling!="no" && _grainDist->_grainSizeEvType == "steadyState") {
+    _grainDist->computeSteadyStateGrainSize(_material->_sdev, _material->_dgVdev_disl, _material->_T);
+  }
   return ierr;
 }
 

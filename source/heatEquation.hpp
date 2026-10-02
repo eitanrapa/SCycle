@@ -143,7 +143,9 @@ public:
   Vec _k,_rho,_c; // thermal conductivity, density, heat capacity,
   Vec _Qrad,_Qfric,_Qvisc,_Q; // source terms: radioactive decay, frictional, viscous, total heat generation
   const Vec *_faultHeat; // if set, the frictional source (body field, kW/m^3) of interior faults, used for Qfric
+  const Vec      *_fricSink;  // part of the frictional work stored elsewhere (cataclastic grain-size sink), subtracted from Qfric; NULL: none
   PetscErrorCode setFaultHeatSource(const Vec* Q); // see FaultWorkKernel (multiFault.hpp)
+  PetscErrorCode setFrictionalHeatSink(const Vec* Q); // Qfric -= *Q (kW/m^3), kept up to date by the caller
 
   // constructor and destructor
   HeatEquation(Domain& D);

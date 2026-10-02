@@ -97,6 +97,10 @@ StrikeSlip_PowerLaw_qd_fd::StrikeSlip_PowerLaw_qd_fd(Domain&D)
 
   // grain size distribution
   if (_evolveGrainSize == 1 || _computeSSGrainSize == 1) { _grainDist = new GrainSizeEvolution(D); }
+  if (_grainDist != NULL && _grainDist->_fCat != NULL) {
+    PetscPrintf(PETSC_COMM_WORLD,"Error: the cataclastic grain-size sink (grainSizeEv_fCatVals) needs StrikeSlip_PowerLaw_qd.\n");
+    assert(0);
+  }
   if (_grainSizeEvCoupling == "coupled") { VecCopy(_grainDist->_d, _material->_grainSize); }
 
   // body forcing term for ice stream (needs _material)
