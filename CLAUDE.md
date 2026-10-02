@@ -74,8 +74,8 @@ mpirun -n 4 ./source/main examples/ex2.in
   `aVals = [0.0135 0.0300]`. Lines without ` = ` are skipped.
 - **Unknown or misspelled keys are silently ignored.** Run `tools/checkkeys.py file.in` to list keys
   that no component reads. It cannot see a key read by the wrong component: `linSolver` is read only
-  by the pressure equation; the momentum balance reads `linSolverSS`/`linSolverTrans` and the heat
-  equation `linSolver_heateq`.
+  by the pressure equation (`AMG`, the default, or `MUMPSLU`); the momentum balance reads
+  `linSolverSS`/`linSolverTrans` and the heat equation `linSolver_heateq`.
 - Depth profiles: `<name>Vals = [...]` with `<name>Depths = [...]` (km), interpolated linearly in z;
   equal lengths, non-decreasing depths; a repeated depth makes a step (`lockedDepths = [0 40 40 500]`).
 - Every component re-reads the whole file in its own `loadSettings`, so key names are per

@@ -552,6 +552,11 @@ PetscErrorCode PressureEq::checkInput()
   assert(_permSlipDependent.compare("no") == 0 || _permSlipDependent.compare("yes") == 0 );
   assert(_permPressureDependent.compare("no") == 0 || _permPressureDependent.compare("yes") == 0 );
   assert(_bcB_type.compare("Q") == 0 || _bcB_type.compare("Dp") == 0);
+  if (_linSolver != "AMG" && _linSolver != "MUMPSLU") {
+    PetscPrintf(PETSC_COMM_WORLD,"Error: linSolver (the pore-pressure solver) must be AMG (the default) or MUMPSLU; its matrix is\n"
+      "       not symmetric in general, so MUMPSCHOLESKY is not available. The momentum balance reads linSolverSS and linSolverTrans.\n");
+    assert(0);
+  }
 
   #if VERBOSE > 1
     PetscPrintf(PETSC_COMM_WORLD, "Ending %s in %s\n", funcName.c_str(), FILENAME);
@@ -792,11 +797,18 @@ PetscErrorCode PressureEq::setupKSP(const Mat &A)
   // algebraic multigrid
   // set up preconditioner, using the boomerAMG PC from Hypre
   ierr = KSPGetPC(_ksp, &pc); CHKERRQ(ierr);
-  ierr = PCSetType(pc, PCHYPRE); CHKERRQ(ierr);
-  //~ ierr = PCHYPRESetType(pc, "boomeramg"); CHKERRQ(ierr); //!!! THIS IS NEEDED
-  ierr = KSPSetTolerances(_ksp, _kspTol, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT); CHKERRQ(ierr);
-  ierr = PCFactorSetLevels(pc, 4); CHKERRQ(ierr);
-  ierr = KSPSetInitialGuessNonzero(_ksp, PETSC_TRUE); CHKERRQ(ierr);
+  if (_linSolver == "MUMPSLU") { // direct: an LU factorization, redone whenever the matrix changes
+    ierr = KSPSetType(_ksp, KSPPREONLY); CHKERRQ(ierr);
+    ierr = PCSetType(pc, PCLU); CHKERRQ(ierr);
+    ierr = PCFactorSetMatSolverType(pc, MATSOLVERMUMPS); CHKERRQ(ierr);
+  }
+  else { // AMG: Richardson iterations to the relative tolerance _kspTol
+    ierr = PCSetType(pc, PCHYPRE); CHKERRQ(ierr);
+    //~ ierr = PCHYPRESetType(pc, "boomeramg"); CHKERRQ(ierr); //!!! THIS IS NEEDED
+    ierr = KSPSetTolerances(_ksp, _kspTol, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT); CHKERRQ(ierr);
+    ierr = PCFactorSetLevels(pc, 4); CHKERRQ(ierr);
+    ierr = KSPSetInitialGuessNonzero(_ksp, PETSC_TRUE); CHKERRQ(ierr);
+  }
 
   // finish setting up KSP context using options defined above
   ierr = KSPSetFromOptions(_ksp); CHKERRQ(ierr);
@@ -840,11 +852,18 @@ PetscErrorCode PressureEq::computeInitialSteadyStatePressure(Domain &D)
   ierr = KSPSetOperators(ksp, D2, D2); CHKERRQ(ierr);
   ierr = KSPSetReusePreconditioner(ksp, PETSC_FALSE); CHKERRQ(ierr);
   ierr = KSPGetPC(ksp, &pc); CHKERRQ(ierr);
-  ierr = PCSetType(pc, PCHYPRE); CHKERRQ(ierr);
-  //~ ierr = PCHYPRESetType(pc, "boomeramg"); CHKERRQ(ierr); //!!! THIS IS NEEDED
-  ierr = KSPSetTolerances(ksp, _kspTol, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT); CHKERRQ(ierr);
-  ierr = PCFactorSetLevels(pc, 4); CHKERRQ(ierr);
-  ierr = KSPSetInitialGuessNonzero(ksp, PETSC_TRUE); CHKERRQ(ierr);
+  if (_linSolver == "MUMPSLU") { // direct, as in setupKSP
+    ierr = KSPSetType(ksp, KSPPREONLY); CHKERRQ(ierr);
+    ierr = PCSetType(pc, PCLU); CHKERRQ(ierr);
+    ierr = PCFactorSetMatSolverType(pc, MATSOLVERMUMPS); CHKERRQ(ierr);
+  }
+  else {
+    ierr = PCSetType(pc, PCHYPRE); CHKERRQ(ierr);
+    //~ ierr = PCHYPRESetType(pc, "boomeramg"); CHKERRQ(ierr); //!!! THIS IS NEEDED
+    ierr = KSPSetTolerances(ksp, _kspTol, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT); CHKERRQ(ierr);
+    ierr = PCFactorSetLevels(pc, 4); CHKERRQ(ierr);
+    ierr = KSPSetInitialGuessNonzero(ksp, PETSC_TRUE); CHKERRQ(ierr);
+  }
 
   // perform computation of preconditioners now, rather than on first use
   ierr = KSPSetUp(ksp); CHKERRQ(ierr);

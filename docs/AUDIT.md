@@ -4,7 +4,7 @@
 
 This document records an audit of SCycle, the C++/PETSc code for 2D antiplane earthquake-cycle simulations, and the fixes made on branch `audit/fixes-2026-10`. The audit started from an unmodified clone of upstream master (github.com/kali-allison/SCycle, last upstream commit `74a132f` of 19 December 2024).
 
-The branch adds 69 commits to master: 58 fixes, 3 tool commits, 2 commits for the repository contents, 2 for this documentation, and one each for the build, the example inputs, a code comment, and the SEAS BP1 benchmark with an input-key checker. Together they fix 94 distinct findings (32 Critical, 25 High, 25 Medium, 12 Low), listed in section 3. A 95th, A-95 (Critical), was found during stage 3 of the two-fault work and fixed on branch `stage3/two-faults` (`5bb2fee`), two more during stage 4, A-96 (Medium) and A-97 (High), on branch `stage4/viscoelastic` (`ae6c6a8`, `3f402f3`), and A-98, A-99 (both Low) and A-100 (High) during stage 5 on branch `stage5/reversible-strength`; the tables below include them. Three are fixed only in part (A-35, A-45, A-57), and the MATLAB tools of A-93 were not run. Section 5 lists 15 open items and documented limitations. Each commit message records its finding: what was wrong, the failure it caused, the fix and the test evidence (`git show <hash>`). A few spot tests from early in the audit appear only in this document; their entries say so.
+The branch adds 69 commits to master: 58 fixes, 3 tool commits, 2 commits for the repository contents, 2 for this documentation, and one each for the build, the example inputs, a code comment, and the SEAS BP1 benchmark with an input-key checker. Together they fix 94 distinct findings (32 Critical, 25 High, 25 Medium, 12 Low), listed in section 3. A 95th, A-95 (Critical), was found during stage 3 of the two-fault work and fixed on branch `stage3/two-faults` (`5bb2fee`), two more during stage 4, A-96 (Medium) and A-97 (High), on branch `stage4/viscoelastic` (`ae6c6a8`, `3f402f3`), and A-98, A-99 (both Low), A-100 (High) and A-101 (Medium) during stage 5 on branch `stage5/reversible-strength`; the tables below include them. Three are fixed only in part (A-35, A-45, A-57), and the MATLAB tools of A-93 were not run. Section 5 lists 15 open items and documented limitations. Each commit message records its finding: what was wrong, the failure it caused, the fix and the test evidence (`git show <hash>`). A few spot tests from early in the audit appear only in this document; their entries say so.
 
 How the fixes were verified:
 
@@ -37,10 +37,10 @@ How the scale is applied:
 | 3.1 Crashes, undefined behaviour and memory | A-01 to A-22, A-98 | 17 | 0 | 5 | 1 |
 | 3.2 Physics and numerics (wrong results) | A-23 to A-47, A-97, A-100 | 1 | 19 | 4 | 3 |
 | 3.3 Time integration, checkpoints and I/O | A-48 to A-68, A-95, A-96, A-99 | 12 | 3 | 7 | 2 |
-| 3.4 Input handling and error reporting | A-69 to A-79 | 3 | 3 | 4 | 1 |
+| 3.4 Input handling and error reporting | A-69 to A-79, A-101 | 3 | 3 | 5 | 1 |
 | 3.5 Build, repository and tooling | A-80 to A-87 | 0 | 0 | 1 | 7 |
 | 3.6 Examples, benchmarks and post-processing | A-88 to A-94 | 0 | 2 | 5 | 0 |
-| Total | 100 | 33 | 27 | 26 | 14 |
+| Total | 101 | 33 | 27 | 27 | 14 |
 
 "No run reported" means the commit message describes the fix without a dedicated test; the ex1/ex2 regression comparison still applied to it.
 
@@ -399,6 +399,11 @@ Section 4 summarizes how much each of these changes results.
 **A-79. The mediators ignored errors from the pressure and grain-size rates.** Critical. `04298a8`. The four quasi-dynamic `source/strikeSlip_*.cpp` classes.
 - Defect: the return codes of the pressure and grain-size `d_dt` calls were not checked, so the failed pressure solve of A-57 let the run continue on bad state until it segfaulted at exit.
 - Evidence: the codes are now checked; see A-57 for the runs.
+
+**A-101. The pore-pressure solver ignored `linSolver`.** Medium. `source/pressureEq.cpp`. Found after the audit, during stage 5 of the two-fault work.
+- Defect: `PressureEq` read `linSolver` but both of its solves (the initial steady state and each backward-Euler step) always used Richardson iterations with BoomerAMG to a relative tolerance of 1e-10. Inputs that asked for `MUMPSLU` got the iterative solver; in long implicit runs its tolerance leaves errors near 1e-9 of the pressure.
+- Fix: `MUMPSLU` selects a direct LU factorization (MUMPS), redone whenever the matrix changes; `AMG` (the default) keeps the iterative solver, with its calls unchanged. Other values stop the run with a message: the matrix is not symmetric in general, so `MUMPSCHOLESKY` is not offered.
+- Evidence: the implicit pore-pressure spot case with `linSolver = AMG` is bit-identical to before; with its `MUMPSLU` only the steady-state pressure changes, from 0 to -0 (that case has no pressure source). A 30 km column with g = 9.8 and an imposed flux, integrated implicitly from its steady state: the two solvers differ by 3e-11 MPa of 499 MPa, and the direct solve holds the column to 3e-15; under AMG a flux step held for 60 diffusion times ends 2.7e-9 off the exact linear profile, under MUMPSLU 1e-13 or less (stage 5 recharge tests). ex1, ex2, ex4s, ex4g bit-identical.
 
 ### 3.5 Build, repository and tooling
 
