@@ -30,6 +30,10 @@ PetscErrorCode createInteriorFaults(Domain& D, const std::vector<std::string>& n
 // (every integrated variable) is left alone. Prints the final list when it changed.
 PetscErrorCode extendTimeIntInds(std::vector<std::string>& inds, std::vector<double>& scale,
   const std::vector<Fault_qd*>& faults);
+// evolving cohesion: explicit cohesion and the reseal ceiling join a non-empty timeIntInds (scaled by
+// the largest ceiling and limit); implicit cohesion needs timeIntegrator = RK32_WBE or RK43_WBE
+PetscErrorCode prepareCohesion(std::vector<std::string>& inds, std::vector<double>& scale,
+  const std::vector<Fault_qd*>& faults, const std::string& timeIntegrator);
 
 // mediator.txt lines (interiorFaults, interiorFaultKinkLift, <name>_y) and, in data_context.h5, the
 // attributes y (km), iRow and dy (row spacing across the fault, km) of each interior fault's group.

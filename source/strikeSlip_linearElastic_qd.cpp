@@ -65,6 +65,7 @@ StrikeSlip_LinearElastic_qd::StrikeSlip_LinearElastic_qd(Domain &D)
 
   // a timeIntInds listing slip or psi covers every fault
   extendTimeIntInds(_timeIntInds,_scale,_faults);
+  prepareCohesion(_timeIntInds,_scale,_faults,_timeIntegrator); // evolving cohesion: error control, integrator
   if (_thermalCoupling != "no" && _stateLaw == "flashHeating") {
     for (size_t i = 0; i < _faults.size(); i++) { _faults[i]->setThermalFields(_he->_Tamb,_he->_k,_he->_c); }
   }
@@ -606,7 +607,7 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::initiateIntegrand()
   if (_isMMS) { _material->setMMSInitialConditions(_initTime); }
 
 
-  for (size_t i = 0; i < _faults.size(); i++) { ierr = _faults[i]->initiateIntegrand(_initTime,_varEx); CHKERRQ(ierr); }
+  for (size_t i = 0; i < _faults.size(); i++) { ierr = _faults[i]->initiateIntegrand(_initTime,_varEx,&_varIm); CHKERRQ(ierr); }
 
   if (_evolveTemperature == 1) {
      _he->initiateIntegrand(_initTime,_varEx,_varIm);
@@ -634,6 +635,19 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::timeMonitor(PetscScalar time, PetscS
   double startTime = MPI_Wtime();
 
   _stepCount = stepCount;
+
+  // implicit cohesion: bound the next step so that its destruction by slip is resolved
+  if (_quadImex != NULL) {
+    bool bound = false;
+    PetscScalar maxStep = _maxDeltaT;
+    for (size_t i = 0; i < _faults.size(); i++) {
+      if (_faults[i]->_cohesionEvolution != "implicit") { continue; }
+      PetscScalar dt = 0;
+      ierr = _faults[i]->cohesionMaxTimeStep(dt); CHKERRQ(ierr);
+      maxStep = min(maxStep,PetscMax(dt,_minDeltaT)); bound = true;
+    }
+    if (bound) { ierr = _quadImex->setTimeStepBounds(_minDeltaT,maxStep); CHKERRQ(ierr); }
+  }
   _deltaT = deltaT;
   _currTime = time;
 
@@ -1333,6 +1347,9 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::d_dt(const PetscScalar time,const ma
   //~ }
 
   for (size_t i = 0; i < _faults.size(); i++) { ierr = _faults[i]->updateFields(time,varEx); CHKERRQ(ierr); }
+  for (size_t i = 0; i < _faults.size(); i++) { // implicit cohesion: its value at the start of the step
+    if (_faults[i]->_cohesionEvolution == "implicit") { ierr = _faults[i]->setCohesion(varImo.find(_faults[i]->_cohesionKey)->second); CHKERRQ(ierr); }
+  }
 
   for (size_t i = 0; i < _pressures.size(); i++) { ierr = _pressures[i]->updateFields(time,varEx,varImo); CHKERRQ(ierr); }
   if (varImo.find("Temp") != varImo.end() && _thermalCoupling == "coupled") {
@@ -1358,6 +1375,13 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::d_dt(const PetscScalar time,const ma
     }
     else { ierr = _lifts[i]->traction(sxy, _material->_mu, f->_tauQSP); CHKERRQ(ierr); } // average across the fault
     ierr = f->d_dt(time,varEx,dvarEx); CHKERRQ(ierr);
+  }
+
+  // implicit cohesion: exact update over the step with each fault's slip rate at its end; the new value
+  // is also the one the explicit rates evaluated next use
+  for (size_t i = 0; i < _faults.size(); i++) {
+    Fault_qd *f = _faults[i];
+    if (f->_cohesionEvolution == "implicit") { ierr = f->relaxCohesion(varImo.find(f->_cohesionKey)->second,dt,varIm[f->_cohesionKey]); CHKERRQ(ierr); }
   }
 
   for (size_t i = 0; i < _pressures.size(); i++) { ierr = _pressures[i]->d_dt(time,varEx,dvarEx,varIm,varImo,dt); CHKERRQ(ierr); }

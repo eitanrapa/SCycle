@@ -85,6 +85,29 @@ public:
   Vec              _a,_b,_Dc;
   vector<double>   _cohesionVals,_cohesionDepths,_rhoVals,_rhoDepths,_muVals,_muDepths;
   Vec              _cohesion,_mu,_rho;
+
+  // Evolving cohesion (docs/REVERSIBLE_STRENGTH_PLAN.md 4.6), on frictional nodes (0 on locked and
+  // creeping ones, which never consult it):  dC/dt = (Cmax - C)/tauHeal - C |V|/Dheal.
+  // explicit: the integrand <prefix>cohesion; implicit: exact relaxation over each IMEX step with V at
+  // its end (relaxCohesion, as PressureEq::relaxPermeability). With cohesionReseal = 1 the ceiling
+  // evolves too, explicitly (<prefix>cohesionMax): dCmax/dt = (|V|/Drh)(Clim - Cmax) - (Cmax - Cmin)/tauLong.
+  // cohesionVals/Depths give the initial C; guessSS (guessSteadyStateICs) the steady state at vL.
+  string           _cohesionEvolution = "no"; // no, explicit or implicit
+  string           _cohesionKey, _cohesionMaxKey;
+  vector<double>   _cohesionMaxVals, _cohesionMaxDepths;
+  Vec              _cohesionMax = NULL;       // Cmax (MPa)
+  PetscScalar      _cohesionTauHeal = -1, _cohesionDheal = -1; // (s), (m)
+  PetscScalar      _cohesionStepFrac = 0.03; // implicit: the largest slip per step, as a fraction of Dheal, while cohesion remains
+  int              _cohesionReseal = 0;
+  PetscScalar      _cohesionDrh = -1, _cohesionLim = -1, _cohesionMin = 0, _cohesionTauLong = -1; // (m), (MPa), (MPa), (s)
+  // implicit cohesion: the slip at the last update, and from that update, per node, the growth rate of
+  // the slip rate over the step where cohesion was present (else -1) and whether the cohesion changed by
+  // more than 0.1 a sNEff (1 or 0); they set the next step's bound (Fault_qd::cohesionMaxTimeStep)
+  Vec              _cohesionSlip0 = NULL, _cohesionGrowth = NULL, _cohesionJumped = NULL;
+  bool cohesionEvolves() const { return _cohesionEvolution != "no"; }
+  PetscErrorCode cohesionRate(const Vec& C, const Vec& V, Vec& dC) const;    // dC/dt, 0 on locked and creeping nodes
+  PetscErrorCode cohesionMaxRate(const Vec& V, Vec& dCmax) const;            // dCmax/dt (reseal), likewise
+  PetscErrorCode cohesionSteadyState(const PetscScalar V);                   // C (and Cmax) of steady sliding at V
   vector<double>   _sigmaNVals,_sigmaNDepths;
   vector<double>   _stateVals,_stateDepths; // initial conditions for state variable
   PetscScalar      _sigmaN_cap,_sigmaN_floor; // allow cap and floor on normal stress
@@ -172,7 +195,12 @@ public:
   PetscErrorCode setEtaScale(const PetscScalar etaScale); // recompute the radiation damping
 
   // for interaction with mediator
-  PetscErrorCode initiateIntegrand(const PetscScalar time,map<string,Vec>& varEx);
+  // varIm: the implicit integrand, needed only with cohesionEvolution = implicit
+  PetscErrorCode initiateIntegrand(const PetscScalar time,map<string,Vec>& varEx,map<string,Vec>* varIm = NULL);
+  PetscErrorCode setCohesion(const Vec& C); // implicit cohesion: the value the slip-rate solve uses
+  PetscErrorCode relaxCohesion(const Vec& Cold, const PetscScalar dt, Vec& Cnew); // implicit: exact update over dt, V at its end
+  // implicit cohesion: the largest next step that resolves its destruction by slip (see fault.cpp)
+  PetscErrorCode cohesionMaxTimeStep(PetscScalar& maxDeltaT) const;
   PetscErrorCode updateFields(const PetscScalar time,const map<string,Vec>& varEx);
   PetscErrorCode d_dt(const PetscScalar time,const map<string,Vec>& varEx,map<string,Vec>& dvarEx);
   PetscErrorCode getResid(const PetscInt ind,const PetscScalar vel,PetscScalar* out);

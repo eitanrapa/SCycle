@@ -77,6 +77,7 @@ StrikeSlip_PowerLaw_qd::StrikeSlip_PowerLaw_qd(Domain&D)
   }
   _material->setInteriorFaults(_lifts);
   extendTimeIntInds(_timeIntInds,_scale,_faults); // a timeIntInds listing slip or psi covers every fault
+  prepareCohesion(_timeIntInds,_scale,_faults,_timeIntegrator); // evolving cohesion: error control, integrator
   if (_thermalCoupling.compare("no")!=0 && _stateLaw.compare("flashHeating")==0) {
     Vec T; VecDuplicate(_D->_y,&T);
     _he->getTemp(T);
@@ -687,7 +688,7 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::initiateIntegrand()
   }
 
   _material->initiateIntegrand(_initTime,_varEx);
-  for (size_t i = 0; i < _faults.size(); i++) { ierr = _faults[i]->initiateIntegrand(_initTime,_varEx); CHKERRQ(ierr); }
+  for (size_t i = 0; i < _faults.size(); i++) { ierr = _faults[i]->initiateIntegrand(_initTime,_varEx,&_varIm); CHKERRQ(ierr); }
   for (size_t i = 0; i < _bulkStates.size(); i++) { ierr = _bulkStates[i]->initiateIntegrand(_initTime,_varEx); CHKERRQ(ierr); }
 
   if (_evolveTemperature == 1) {
@@ -770,6 +771,12 @@ double startTime = MPI_Wtime();
     ierr =  _grainDist->computeMaxTimeStep(maxDeltaT_grainSizeEv,_material->_sdev,_material->_dgVdev_disl,_material->_T,
       _grainDist->_fCat != NULL ? &_Qfault : NULL); CHKERRQ(ierr);
     maxTimeStep_tot = min(maxTimeStep_tot,0.9*maxDeltaT_grainSizeEv); // keep the Maxwell-time limit too
+  }
+  for (size_t i = 0; i < _faults.size(); i++) { // implicit cohesion: resolve its destruction by slip
+    if (_faults[i]->_cohesionEvolution != "implicit") { continue; }
+    PetscScalar dt = 0;
+    ierr = _faults[i]->cohesionMaxTimeStep(dt); CHKERRQ(ierr);
+    maxTimeStep_tot = min(maxTimeStep_tot,PetscMax(dt,_minDeltaT));
   }
   if (!_bulkStates.empty()) { // and the relaxation time of each bulk state law
     const BulkInputs in = bulkInputs(time);
@@ -1328,6 +1335,9 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::d_dt(const PetscScalar time,const map<str
 
   _material->updateFields(time,varEx);
   for (size_t i = 0; i < _faults.size(); i++) { ierr = _faults[i]->updateFields(time,varEx); CHKERRQ(ierr); }
+  for (size_t i = 0; i < _faults.size(); i++) { // implicit cohesion: its value at the start of the step
+    if (_faults[i]->_cohesionEvolution == "implicit") { ierr = _faults[i]->setCohesion(varImo.find(_faults[i]->_cohesionKey)->second); CHKERRQ(ierr); }
+  }
   for (size_t i = 0; i < _bulkStates.size(); i++) {
     ierr = _bulkStates[i]->updateFields(time,varEx); CHKERRQ(ierr);
     ierr = _bulkStates[i]->pushToMaterial(*_material); CHKERRQ(ierr);
@@ -1369,6 +1379,13 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::d_dt(const PetscScalar time,const map<str
     }
     else { ierr = _lifts[i]->traction(_material->_sxy, _material->_mu, f->_tauQSP); CHKERRQ(ierr); }
     ierr = f->d_dt(time,varEx,dvarEx); CHKERRQ(ierr); // sets rates for slip and state
+  }
+
+  // implicit cohesion: exact update over the step with each fault's slip rate at its end; the new value
+  // is also the one the explicit rates evaluated next use
+  for (size_t i = 0; i < _faults.size(); i++) {
+    Fault_qd *f = _faults[i];
+    if (f->_cohesionEvolution == "implicit") { ierr = f->relaxCohesion(varImo.find(f->_cohesionKey)->second,dt,varIm[f->_cohesionKey]); CHKERRQ(ierr); }
   }
 
   ierr = grainSizeRates(varEx,dvarEx); CHKERRQ(ierr);

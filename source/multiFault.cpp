@@ -56,6 +56,37 @@ PetscErrorCode extendTimeIntInds(vector<string>& inds, vector<double>& scale, co
 }
 
 
+PetscErrorCode prepareCohesion(vector<string>& inds, vector<double>& scale, const vector<Fault_qd*>& faults,
+  const string& timeIntegrator)
+{
+  PetscErrorCode ierr = 0;
+  const vector<string> inds0 = inds;
+  for (size_t i = 0; i < faults.size(); i++) {
+    const Fault_qd *f = faults[i];
+    if (f->_cohesionEvolution == "implicit" && timeIntegrator != "RK32_WBE" && timeIntegrator != "RK43_WBE") {
+      PetscPrintf(PETSC_COMM_WORLD,"Error: %scohesionEvolution = implicit needs timeIntegrator = RK32_WBE or RK43_WBE.\n",f->_prefix.c_str());
+      assert(0);
+    }
+    if (inds.empty() || !f->cohesionEvolves()) { continue; }
+    while (scale.size() < inds.size()) { scale.push_back(1.0); } // integrators default missing scales to 1
+    // scales from the input, not the state, so that a restart controls the steps as the run it continues
+    PetscScalar m = f->_cohesionMaxVals.empty() ? 0.0 : *std::max_element(f->_cohesionMaxVals.begin(),f->_cohesionMaxVals.end());
+    if (f->_cohesionReseal) { m = PetscMax(m,f->_cohesionLim); }
+    if (!(m > 0)) { m = 1.0; }
+    if (f->_cohesionEvolution == "explicit" && std::find(inds.begin(),inds.end(),f->_cohesionKey) == inds.end()) {
+      inds.push_back(f->_cohesionKey); scale.push_back(m);
+    }
+    if (f->_cohesionReseal && std::find(inds.begin(),inds.end(),f->_cohesionMaxKey) == inds.end()) {
+      inds.push_back(f->_cohesionMaxKey); scale.push_back(m);
+    }
+  }
+  if (inds != inds0) {
+    ierr = PetscPrintf(PETSC_COMM_WORLD,"Note: timeIntInds = %s, with the evolving cohesion.\n",vector2str(inds).c_str()); CHKERRQ(ierr);
+  }
+  return ierr;
+}
+
+
 PetscErrorCode printInteriorFaults(PetscViewer& ascii, const vector<string>& names, const int kinkLift,
   const vector<Fault_qd*>& faults, const vector<InteriorFaultLift*>& lifts)
 {

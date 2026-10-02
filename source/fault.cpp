@@ -27,6 +27,9 @@ Fault::Fault(Domain &D, VecScatter& scatter2fault, const int& faultTypeScale, co
     PetscPrintf(PETSC_COMM_WORLD,"Starting %s in %s\n",funcName.c_str(),FILENAME);
   #endif
 
+  _cohesionKey = _prefix + "cohesion";
+  _cohesionMaxKey = _prefix + "cohesionMax";
+
   loadSettings(_inputFile);
   checkInput();
   setFields(D);
@@ -104,6 +107,17 @@ bool Fault::parseSetting(const string& var, const string& rhs, const string& rhs
   else if (var.compare("bDepths")==0) { loadList(rhsFull,_bDepths); }
   else if (var.compare("cohesionVals")==0) { loadList(rhsFull,_cohesionVals); }
   else if (var.compare("cohesionDepths")==0) { loadList(rhsFull,_cohesionDepths); }
+  else if (var.compare("cohesionEvolution")==0) { _cohesionEvolution = rhs.c_str(); }
+  else if (var.compare("cohesionMaxVals")==0) { loadList(rhsFull,_cohesionMaxVals); }
+  else if (var.compare("cohesionMaxDepths")==0) { loadList(rhsFull,_cohesionMaxDepths); }
+  else if (var.compare("cohesionTauHeal")==0) { _cohesionTauHeal = atof( rhs.c_str() ); }
+  else if (var.compare("cohesionDheal")==0) { _cohesionDheal = atof( rhs.c_str() ); }
+  else if (var.compare("cohesionStepFrac")==0) { _cohesionStepFrac = atof( rhs.c_str() ); }
+  else if (var.compare("cohesionReseal")==0) { _cohesionReseal = atoi( rhs.c_str() ); }
+  else if (var.compare("cohesionDrh")==0) { _cohesionDrh = atof( rhs.c_str() ); }
+  else if (var.compare("cohesionLim")==0) { _cohesionLim = atof( rhs.c_str() ); }
+  else if (var.compare("cohesionMin")==0) { _cohesionMin = atof( rhs.c_str() ); }
+  else if (var.compare("cohesionTauLong")==0) { _cohesionTauLong = atof( rhs.c_str() ); }
   else if (var.compare("muVals")==0) { loadList(rhsFull,_muVals); }
   else if (var.compare("muDepths")==0) { loadList(rhsFull,_muDepths); }
   else if (var.compare("rhoVals")==0) { loadList(rhsFull,_rhoVals); }
@@ -274,6 +288,37 @@ PetscErrorCode Fault::checkInput()
   assert(_v0 > 0);
   assert(_f0 > 0);
 
+  // evolving cohesion
+  if (_cohesionEvolution != "no" && _cohesionEvolution != "explicit" && _cohesionEvolution != "implicit") {
+    PetscPrintf(PETSC_COMM_WORLD,"Error: %scohesionEvolution must be no, explicit or implicit.\n",_prefix.c_str());
+    assert(0);
+  }
+  if (cohesionEvolves()) {
+    if (_D->_momentumBalanceType != "quasidynamic") {
+      PetscPrintf(PETSC_COMM_WORLD,"Error: evolving cohesion (%scohesionEvolution) is implemented for momentumBalanceType = quasidynamic only.\n",_prefix.c_str());
+      assert(0);
+    }
+    if (_cohesionMaxVals.empty() || _cohesionMaxVals.size() != _cohesionMaxDepths.size() || !(_cohesionTauHeal > 0) || !(_cohesionDheal > 0)) {
+      PetscPrintf(PETSC_COMM_WORLD,"Error: evolving cohesion needs %scohesionMaxVals/Depths (MPa), cohesionTauHeal > 0 (s) and cohesionDheal > 0 (m).\n",_prefix.c_str());
+      assert(0);
+    }
+    if (!(_cohesionStepFrac > 0)) {
+      PetscPrintf(PETSC_COMM_WORLD,"Error: %scohesionStepFrac must be > 0.\n",_prefix.c_str());
+      assert(0);
+    }
+    if (_cohesionEvolution == "explicit" && _cohesionDheal < 0.1) {
+      PetscPrintf(PETSC_COMM_WORLD,"Note: %scohesionDheal = %g m with cohesionEvolution = explicit: slip destroys cohesion on a time\n"
+        "      scale Dheal/V, stiff during events; cohesionEvolution = implicit (with RK32_WBE or RK43_WBE) is exact.\n",_prefix.c_str(),_cohesionDheal);
+    }
+  }
+  if (_cohesionReseal) {
+    if (!cohesionEvolves() || !(_cohesionDrh > 0) || !(_cohesionTauLong > 0) || !(_cohesionMin >= 0) || !(_cohesionLim >= _cohesionMin)) {
+      PetscPrintf(PETSC_COMM_WORLD,"Error: %scohesionReseal needs evolving cohesion, cohesionDrh > 0 (m), cohesionTauLong > 0 (s) and\n"
+        "       0 <= cohesionMin <= cohesionLim (MPa).\n",_prefix.c_str());
+      assert(0);
+    }
+  }
+
   if (_stateLaw.compare("flashHeating") == 0) {
     assert(_TwVals.size() == _TwDepths.size() );
     assert(_TwVals.size() != 0 );
@@ -321,6 +366,12 @@ PetscErrorCode Fault::setFields(Domain& D)
   VecDuplicate(_tauP,&_a);        VecSet(_a,0.0);        PetscObjectSetName((PetscObject) _a, "a");
   VecDuplicate(_tauP,&_b);        VecSet(_b,0.0);        PetscObjectSetName((PetscObject) _b, "b");
   VecDuplicate(_tauP,&_cohesion); VecSet(_cohesion,0.0); PetscObjectSetName((PetscObject) _cohesion, "cohesion");
+  if (cohesionEvolves()) { VecDuplicate(_tauP,&_cohesionMax); VecSet(_cohesionMax,0.0); PetscObjectSetName((PetscObject) _cohesionMax, "cohesionMax"); }
+  if (_cohesionEvolution == "implicit") {
+    VecDuplicate(_tauP,&_cohesionSlip0);  VecSet(_cohesionSlip0,0.0);
+    VecDuplicate(_tauP,&_cohesionGrowth); VecSet(_cohesionGrowth,-1.0);
+    VecDuplicate(_tauP,&_cohesionJumped); VecSet(_cohesionJumped,0.0);
+  }
   VecDuplicate(_tauP,&_sN);       VecSet(_sN,0.0);       PetscObjectSetName((PetscObject) _sN, "sN");
   VecDuplicate(_tauP,&_sNEff);    VecSet(_sNEff,0.0);    PetscObjectSetName((PetscObject) _sNEff, "sNEff");
   VecDuplicate(_tauP,&_rho);      VecSet(_rho,0.0);      PetscObjectSetName((PetscObject) _rho, "rho");
@@ -350,6 +401,7 @@ PetscErrorCode Fault::setFields(Domain& D)
   if (_lockedVals.size() > 0 ) { ierr = setVec(_locked,_z,_lockedVals,_lockedDepths); CHKERRQ(ierr); }
   else { VecSet(_locked,0.); }
   if (_cohesionVals.size() > 0 ) { ierr = setVec(_cohesion,_z,_cohesionVals,_cohesionDepths); CHKERRQ(ierr); }
+  if (_cohesionMax != NULL) { ierr = setVec(_cohesionMax,_z,_cohesionMaxVals,_cohesionMaxDepths); CHKERRQ(ierr); }
 
   scatterStart = MPI_Wtime();
   Vec temp1;
@@ -578,6 +630,14 @@ PetscErrorCode Fault::writeContext(const string outputDir, PetscViewer& viewer)
   ierr = PetscViewerASCIIPrintf(viewer_ascii,"v0 = %.15e\n",_v0);CHKERRQ(ierr);
   ierr = PetscViewerASCIIPrintf(viewer_ascii,"stateEvolutionLaw = %s\n",_stateLaw.c_str());CHKERRQ(ierr);
   ierr = PetscViewerASCIIPrintf(viewer_ascii,"vCreep = %.15e # (m/s) slip velocity where lockedVals < -0.5\n",_vCreep);CHKERRQ(ierr);
+  if (cohesionEvolves()) {
+    ierr = PetscViewerASCIIPrintf(viewer_ascii,"cohesionEvolution = %s\n",_cohesionEvolution.c_str());CHKERRQ(ierr);
+    ierr = PetscViewerASCIIPrintf(viewer_ascii,"cohesionTauHeal = %.15e # (s)\ncohesionDheal = %.15e # (m)\n",_cohesionTauHeal,_cohesionDheal);CHKERRQ(ierr);
+    if (_cohesionReseal) {
+      ierr = PetscViewerASCIIPrintf(viewer_ascii,"cohesionReseal = 1\ncohesionDrh = %.15e # (m)\ncohesionLim = %.15e # (MPa)\ncohesionMin = %.15e # (MPa)\ncohesionTauLong = %.15e # (s)\n",
+        _cohesionDrh,_cohesionLim,_cohesionMin,_cohesionTauLong);CHKERRQ(ierr);
+    }
+  }
 
   // write flash heating parameters if this is enabled
   if (!_stateLaw.compare("flashHeating")) {
@@ -596,6 +656,7 @@ PetscErrorCode Fault::writeContext(const string outputDir, PetscViewer& viewer)
   ierr = VecView(_b, viewer);                                           CHKERRQ(ierr);
   ierr = VecView(_Dc, viewer);                                          CHKERRQ(ierr);
   ierr = VecView(_cohesion, viewer);                                    CHKERRQ(ierr);
+  if (_cohesionMax != NULL) { ierr = VecView(_cohesionMax, viewer);        CHKERRQ(ierr); } // the ceiling (initial value with reseal)
   ierr = VecView(_locked, viewer);                                      CHKERRQ(ierr);
   ierr = VecView(_prestress, viewer);                                   CHKERRQ(ierr);
   ierr = VecView(_slip0, viewer);                                       CHKERRQ(ierr);
@@ -639,6 +700,8 @@ PetscErrorCode Fault::writeStep(PetscViewer& viewer)
     ierr = VecView(_psi, viewer);                                       CHKERRQ(ierr);
     ierr = VecView(_sNEff, viewer);                                       CHKERRQ(ierr);
     ierr = VecView(_sN, viewer);                                       CHKERRQ(ierr);
+    if (cohesionEvolves()) { ierr = VecView(_cohesion, viewer);                 CHKERRQ(ierr); }
+    if (_cohesionReseal) { ierr = VecView(_cohesionMax, viewer);                CHKERRQ(ierr); }
 
     if (_stateLaw.compare("flashHeating") == 0) {
       ierr = VecView(_T, viewer);                                       CHKERRQ(ierr);
@@ -730,6 +793,10 @@ Fault::~Fault()
   VecDestroy(&_sNEff);
   VecDestroy(&_sN);
   VecDestroy(&_cohesion);
+  VecDestroy(&_cohesionMax);
+  VecDestroy(&_cohesionSlip0);
+  VecDestroy(&_cohesionGrowth);
+  VecDestroy(&_cohesionJumped);
   VecDestroy(&_mu);
   VecDestroy(&_rho);
   VecDestroy(&_Tw);
@@ -766,6 +833,9 @@ PetscErrorCode Fault::guessSS(const PetscScalar vL)
   if (_stateVals.size() == 0) {
     computePsiSS(vL);
   }
+
+  // evolving cohesion: its steady state at vL, part of the stress of steady sliding
+  if (cohesionEvolves()) { ierr = cohesionSteadyState(vL); CHKERRQ(ierr); }
 
   // shear stress
   PetscInt       Istart,Iend;
@@ -897,7 +967,152 @@ Fault_qd::~Fault_qd()
 
 
 // initialize variables to be integrated, put them into varEx
-PetscErrorCode Fault_qd::initiateIntegrand(const PetscScalar time, map<string,Vec>& varEx)
+// Evolving cohesion: dC/dt = (Cmax - C)/tauHeal - C |V|/Dheal on frictional nodes, 0 on locked
+// (lockedVals > 0.5) and creeping (< -0.5) nodes, which never consult the cohesion
+PetscErrorCode Fault::cohesionRate(const Vec& C, const Vec& V, Vec& dC) const
+{
+  PetscErrorCode ierr = 0;
+  PetscInt Istart, Iend;
+  ierr = VecGetOwnershipRange(C,&Istart,&Iend); CHKERRQ(ierr);
+  const PetscScalar *c, *v, *cm, *lk;
+  PetscScalar *dc;
+  VecGetArrayRead(C,&c); VecGetArrayRead(V,&v); VecGetArrayRead(_cohesionMax,&cm); VecGetArrayRead(_locked,&lk);
+  VecGetArray(dC,&dc);
+  for (PetscInt Jj = 0; Jj < Iend - Istart; Jj++) {
+    dc[Jj] = (fabs(lk[Jj]) > 0.5) ? 0.0 : (cm[Jj] - c[Jj])/_cohesionTauHeal - c[Jj]*fabs(v[Jj])/_cohesionDheal;
+  }
+  VecRestoreArrayRead(C,&c); VecRestoreArrayRead(V,&v); VecRestoreArrayRead(_cohesionMax,&cm); VecRestoreArrayRead(_locked,&lk);
+  VecRestoreArray(dC,&dc);
+  return ierr;
+}
+
+
+// reseal hardening of the ceiling: dCmax/dt = (|V|/Drh)(Clim - Cmax) - (Cmax - Cmin)/tauLong
+PetscErrorCode Fault::cohesionMaxRate(const Vec& V, Vec& dCmax) const
+{
+  PetscErrorCode ierr = 0;
+  PetscInt Istart, Iend;
+  ierr = VecGetOwnershipRange(V,&Istart,&Iend); CHKERRQ(ierr);
+  const PetscScalar *v, *cm, *lk;
+  PetscScalar *d;
+  VecGetArrayRead(V,&v); VecGetArrayRead(_cohesionMax,&cm); VecGetArrayRead(_locked,&lk);
+  VecGetArray(dCmax,&d);
+  for (PetscInt Jj = 0; Jj < Iend - Istart; Jj++) {
+    d[Jj] = (fabs(lk[Jj]) > 0.5) ? 0.0 : fabs(v[Jj])/_cohesionDrh*(_cohesionLim - cm[Jj]) - (cm[Jj] - _cohesionMin)/_cohesionTauLong;
+  }
+  VecRestoreArrayRead(V,&v); VecRestoreArrayRead(_cohesionMax,&cm); VecRestoreArrayRead(_locked,&lk);
+  VecRestoreArray(dCmax,&d);
+  return ierr;
+}
+
+
+// cohesion (and its ceiling, with reseal) of steady sliding at V on frictional nodes:
+// C = (Cmax/tauHeal)/(1/tauHeal + V/Dheal), Cmax = (V Clim/Drh + Cmin/tauLong)/(V/Drh + 1/tauLong)
+PetscErrorCode Fault::cohesionSteadyState(const PetscScalar V)
+{
+  PetscErrorCode ierr = 0;
+  PetscInt Istart, Iend;
+  ierr = VecGetOwnershipRange(_cohesion,&Istart,&Iend); CHKERRQ(ierr);
+  const PetscScalar *lk;
+  PetscScalar *c, *cm;
+  VecGetArrayRead(_locked,&lk); VecGetArray(_cohesion,&c); VecGetArray(_cohesionMax,&cm);
+  const PetscScalar v = fabs(V);
+  for (PetscInt Jj = 0; Jj < Iend - Istart; Jj++) {
+    if (fabs(lk[Jj]) > 0.5) { continue; }
+    if (_cohesionReseal) { cm[Jj] = (v*_cohesionLim/_cohesionDrh + _cohesionMin/_cohesionTauLong)/(v/_cohesionDrh + 1.0/_cohesionTauLong); }
+    c[Jj] = (cm[Jj]/_cohesionTauHeal)/(1.0/_cohesionTauHeal + v/_cohesionDheal);
+  }
+  VecRestoreArrayRead(_locked,&lk); VecRestoreArray(_cohesion,&c); VecRestoreArray(_cohesionMax,&cm);
+  return ierr;
+}
+
+
+// implicit cohesion: the largest next step that resolves its destruction by slip, from the current
+// slip rate V and what the last update recorded. Where the cohesion is significant, above 0.1 a sNEff
+// (removing less changes V by less than exp(0.1)), now or at the start of the last step, the slip over
+// the next step, with V growing at twice the rate g seen over the last step, stays below f Dheal
+// (f = cohesionStepFrac): dt = log(1 + f Dheal 2g/V)/(2g), or f Dheal/V.
+// Where the last update changed the cohesion by more than 0.1 a sNEff, so that V jumped, the next
+// step also resolves the state evolution at the new V: dt <= 0.1 Dc/V. PETSC_MAX_REAL if no bound.
+// The exact update holds V within a step, so without these one step at the onset of slip can remove
+// all the cohesion while the slip rate rises by orders of magnitude.
+PetscErrorCode Fault_qd::cohesionMaxTimeStep(PetscScalar& maxDeltaT) const
+{
+  PetscErrorCode ierr = 0;
+  PetscScalar dt = PETSC_MAX_REAL;
+  if (_cohesionEvolution == "implicit") {
+    PetscInt Istart, Iend;
+    ierr = VecGetOwnershipRange(_cohesion,&Istart,&Iend); CHKERRQ(ierr);
+    const PetscScalar *c, *v, *lk, *gr, *jp, *dc, *a, *sn;
+    VecGetArrayRead(_cohesion,&c); VecGetArrayRead(_slipVel,&v); VecGetArrayRead(_locked,&lk);
+    VecGetArrayRead(_cohesionGrowth,&gr); VecGetArrayRead(_cohesionJumped,&jp); VecGetArrayRead(_Dc,&dc);
+    VecGetArrayRead(_a,&a); VecGetArrayRead(_sNEff,&sn);
+    for (PetscInt Jj = 0; Jj < Iend - Istart; Jj++) {
+      const PetscScalar V = fabs(v[Jj]);
+      if (fabs(lk[Jj]) > 0.5 || !(V > 0)) { continue; }
+      if (c[Jj] > 0.1*a[Jj]*sn[Jj] || gr[Jj] >= 0) {
+        const PetscScalar g = 2.0*PetscMax(gr[Jj],0.0);
+        const PetscScalar ds = _cohesionStepFrac*_cohesionDheal; // the slip allowed over the next step
+        dt = PetscMin(dt, (g > 0) ? log1p(ds*g/V)/g : ds/V);
+      }
+      if (jp[Jj] > 0.5) { dt = PetscMin(dt, 0.1*dc[Jj]/V); }
+    }
+    VecRestoreArrayRead(_cohesion,&c); VecRestoreArrayRead(_slipVel,&v); VecRestoreArrayRead(_locked,&lk);
+    VecRestoreArrayRead(_cohesionGrowth,&gr); VecRestoreArrayRead(_cohesionJumped,&jp); VecRestoreArrayRead(_Dc,&dc);
+    VecRestoreArrayRead(_a,&a); VecRestoreArrayRead(_sNEff,&sn);
+  }
+  ierr = MPIU_Allreduce(&dt,&maxDeltaT,1,MPIU_SCALAR,MPIU_MIN,PETSC_COMM_WORLD); CHKERRQ(ierr);
+  return ierr;
+}
+
+
+// implicit cohesion: the value the slip-rate solve uses
+PetscErrorCode Fault_qd::setCohesion(const Vec& C)
+{
+  return VecCopy(C,_cohesion);
+}
+
+
+// implicit cohesion, exact over a step of length dt for the slip ds that occurred over it, if the
+// slip rate was constant within the step (the destruction, exp(-ds/Dheal), is exact in any case):
+//   A = dt/tauHeal + ds/Dheal,  Cinf = (Cmax/tauHeal) dt/A,  Cnew = Cinf + (Cold - Cinf) exp(-A);
+// unchanged on locked and creeping nodes. Cnew also becomes the cohesion the slip-rate solve uses.
+// It records, for the bound on the next step, the growth rate of the slip rate where cohesion was
+// present (from V at the end of the step against its mean ds/dt) and whether the cohesion jumped.
+PetscErrorCode Fault_qd::relaxCohesion(const Vec& Cold, const PetscScalar dt, Vec& Cnew)
+{
+  PetscErrorCode ierr = 0;
+  PetscInt Istart, Iend;
+  ierr = VecGetOwnershipRange(Cold,&Istart,&Iend); CHKERRQ(ierr);
+  const PetscScalar *co, *v, *cm, *lk, *sl, *a, *sn;
+  PetscScalar *cn, *s0, *gr, *jp;
+  VecGetArrayRead(Cold,&co); VecGetArrayRead(_slipVel,&v); VecGetArrayRead(_cohesionMax,&cm); VecGetArrayRead(_locked,&lk);
+  VecGetArrayRead(_slip,&sl); VecGetArrayRead(_a,&a); VecGetArrayRead(_sNEff,&sn);
+  VecGetArray(Cnew,&cn); VecGetArray(_cohesionSlip0,&s0); VecGetArray(_cohesionGrowth,&gr); VecGetArray(_cohesionJumped,&jp);
+  for (PetscInt Jj = 0; Jj < Iend - Istart; Jj++) {
+    const PetscScalar ds = fabs(sl[Jj] - s0[Jj]);
+    s0[Jj] = sl[Jj];
+    gr[Jj] = -1.0; jp[Jj] = 0.0;
+    if (fabs(lk[Jj]) > 0.5) { cn[Jj] = co[Jj]; continue; }
+    const PetscScalar A = dt/_cohesionTauHeal + ds/_cohesionDheal;
+    const PetscScalar cinf = (cm[Jj]/_cohesionTauHeal)*dt/A;
+    cn[Jj] = cinf + (co[Jj] - cinf)*exp(-A);
+    if (co[Jj] > 0.1*a[Jj]*sn[Jj]) { // significant cohesion: growth of the slip rate over the step, V(end)/mean - 1 ~ g dt/2 for slow growth
+      const PetscScalar r = (ds > 0) ? fabs(v[Jj])*dt/ds : 1.0;
+      gr[Jj] = (r > 1.0) ? 2.0*(r - 1.0)/dt : 0.0;
+    }
+    if (fabs(cn[Jj] - co[Jj]) > 0.1*a[Jj]*sn[Jj]) { jp[Jj] = 1.0; }
+  }
+  VecRestoreArrayRead(Cold,&co); VecRestoreArrayRead(_slipVel,&v); VecRestoreArrayRead(_cohesionMax,&cm); VecRestoreArrayRead(_locked,&lk);
+  VecRestoreArrayRead(_slip,&sl); VecRestoreArrayRead(_a,&a); VecRestoreArrayRead(_sNEff,&sn);
+  VecRestoreArray(Cnew,&cn); VecRestoreArray(_cohesionSlip0,&s0); VecRestoreArray(_cohesionGrowth,&gr); VecRestoreArray(_cohesionJumped,&jp);
+  ierr = VecCopy(Cnew,_cohesion); CHKERRQ(ierr);
+  return ierr;
+}
+
+
+
+PetscErrorCode Fault_qd::initiateIntegrand(const PetscScalar time, map<string,Vec>& varEx, map<string,Vec>* varIm)
 {
   PetscErrorCode ierr = 0;
   #if VERBOSE > 1
@@ -914,6 +1129,24 @@ PetscErrorCode Fault_qd::initiateIntegrand(const PetscScalar time, map<string,Ve
     VecDuplicate(_psi,&varPsi);
     VecCopy(_psi,varPsi);
     varEx[_psiKey] = varPsi;
+  }
+
+  // evolving cohesion: explicit in varEx, implicit in varIm; the reseal ceiling explicit
+  if (_cohesionEvolution != "no") {
+    map<string,Vec>* var = &varEx;
+    if (_cohesionEvolution == "implicit") {
+      if (varIm == NULL) { SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_ARG_NULL,"implicit cohesion needs the implicit integrand"); }
+      var = varIm;
+    }
+    if (var->find(_cohesionKey) == var->end()) { Vec c; VecDuplicate(_cohesion,&c); (*var)[_cohesionKey] = c; }
+    VecCopy(_cohesion,(*var)[_cohesionKey]);
+    if (_cohesionEvolution == "implicit") { // the slip from which the first step's increment is measured
+      VecCopy(varEx.find(_slipKey) != varEx.end() ? varEx[_slipKey] : _slip,_cohesionSlip0);
+    }
+  }
+  if (_cohesionReseal) {
+    if (varEx.find(_cohesionMaxKey) == varEx.end()) { Vec c; VecDuplicate(_cohesionMax,&c); varEx[_cohesionMaxKey] = c; }
+    VecCopy(_cohesionMax,varEx[_cohesionMaxKey]);
   }
 
   // slip is initialized in the strikeSlip class's initiateIntegrand function
@@ -936,6 +1169,8 @@ PetscErrorCode Fault_qd::updateFields(const PetscScalar time,const map<string,Ve
 
   VecCopy(varEx.find(_psiKey)->second,_psi);
   VecCopy(varEx.find(_slipKey)->second,_slip);
+  if (_cohesionEvolution == "explicit") { VecCopy(varEx.find(_cohesionKey)->second,_cohesion); }
+  if (_cohesionReseal) { VecCopy(varEx.find(_cohesionMaxKey)->second,_cohesionMax); }
 
   #if VERBOSE > 1
     PetscPrintf(PETSC_COMM_WORLD,"Ending %s in %s\n",funcName.c_str(),FILENAME);
@@ -1040,6 +1275,11 @@ PetscErrorCode Fault_qd::d_dt(const PetscScalar time, const map<string,Vec>& var
     assert(0);
   }
   _stateLawTime += MPI_Wtime() - startTime;
+
+  // evolving cohesion: the explicit rate, and that of the reseal ceiling (implicit cohesion is
+  // updated by the mediator after this, with relaxCohesion)
+  if (_cohesionEvolution == "explicit") { ierr = cohesionRate(_cohesion,_slipVel,dvarEx[_cohesionKey]); CHKERRQ(ierr); }
+  if (_cohesionReseal) { ierr = cohesionMaxRate(_slipVel,dvarEx[_cohesionMaxKey]); CHKERRQ(ierr); }
 
 
   // set tauP = tauQS - eta_rad *slipVel
@@ -1155,6 +1395,7 @@ PetscErrorCode Fault_qd::loadCheckpoint()
   ierr = VecLoad(_b, viewer);                                           CHKERRQ(ierr);
   ierr = VecLoad(_Dc, viewer);                                          CHKERRQ(ierr);
   ierr = VecLoad(_cohesion, viewer);                                    CHKERRQ(ierr);
+  if (_cohesionReseal) { ierr = VecLoad(_cohesionMax, viewer);            CHKERRQ(ierr); }
   ierr = VecLoad(_locked, viewer);                                      CHKERRQ(ierr);
   ierr = VecLoad(_prestress, viewer);                                   CHKERRQ(ierr);
   ierr = VecLoad(_slip0, viewer);                                       CHKERRQ(ierr);
@@ -1261,6 +1502,7 @@ PetscErrorCode Fault_qd::writeCheckpoint(PetscViewer& viewer)
   ierr = VecView(_b, viewer);                                           CHKERRQ(ierr);
   ierr = VecView(_Dc, viewer);                                          CHKERRQ(ierr);
   ierr = VecView(_cohesion, viewer);                                    CHKERRQ(ierr);
+  if (_cohesionReseal) { ierr = VecView(_cohesionMax, viewer);            CHKERRQ(ierr); }
   ierr = VecView(_locked, viewer);                                      CHKERRQ(ierr);
   ierr = VecView(_prestress, viewer);                                   CHKERRQ(ierr);
   ierr = VecView(_slip0, viewer);                                       CHKERRQ(ierr);
