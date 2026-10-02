@@ -934,9 +934,6 @@ PetscErrorCode Fault_qd::computeVel()
   ComputeVel_qd temp(N,etaA,tauQSA,sNA,psiA,aA,bA,_v0,_D->_vL,lockedA,Co);
   ierr = temp.computeVel(slipVelA, _rootTol, _rootIts, _maxNumIts); CHKERRQ(ierr);
 
-  // now limit slipVel to <= vL if desired
-  if (_limitSlipVel) { imposeSlipVelCeiling(); }
-
   ierr = VecRestoreArray(_slipVel,&slipVelA); CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(_eta_rad,&etaA); CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(_tauQSP,&tauQSA); CHKERRQ(ierr);
@@ -946,6 +943,9 @@ PetscErrorCode Fault_qd::computeVel()
   ierr = VecRestoreArrayRead(_b,&bA); CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(_locked,&lockedA); CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(_cohesion,&Co); CHKERRQ(ierr);
+
+  // now limit slipVel to <= vL if desired (after restoring the array taken above)
+  if (_limitSlipVel) { ierr = imposeSlipVelCeiling(); CHKERRQ(ierr); }
 
   #if VERBOSE > 1
      PetscPrintf(PETSC_COMM_WORLD,"Ending %s in %s\n",funcName.c_str(),FILENAME);
@@ -1779,10 +1779,21 @@ PetscErrorCode Fault_fd::d_dt(const PetscScalar time,const PetscScalar deltaT, m
   ierr = VecGetArrayRead(_a, &a);
   ierr = VecGetArrayRead(_Phi, &Phi);
   ierr = VecGetArrayRead(_alphay, &alphay);
+  const PetscScalar *locked;
+  ierr = VecGetArrayRead(_locked, &locked);
 
   PetscInt Jj = 0;
   for (Ii = Istart; Ii < Iend; Ii++) {
-    if (slipVel[Jj] < 1e-14){
+    if (locked[Jj] > 0.5) {
+      // held locked: no slip, u unchanged
+      slipVel[Jj] = 0.;
+    }
+    else if (locked[Jj] < -0.5) {
+      // forced to creep at the loading velocity (as in the quasi-dynamic solve)
+      slipVel[Jj] = _D->_vL;
+      u[Jj] = u[Jj] + deltaT * _D->_vL / _faultTypeScale;
+    }
+    else if (slipVel[Jj] < 1e-14){
       // slipVel[Jj] = 0;
     }
     else {
@@ -1806,6 +1817,7 @@ PetscErrorCode Fault_fd::d_dt(const PetscScalar time,const PetscScalar deltaT, m
   ierr = VecRestoreArrayRead(_a, &a);
   ierr = VecRestoreArrayRead(_Phi, &Phi);
   ierr = VecRestoreArrayRead(_alphay, &alphay);
+  ierr = VecRestoreArrayRead(_locked, &locked);
 
   // update state variable
   computeStateEvolution(varNext["psi"], var.find("psi")->second, varPrev.find("psi")->second);
