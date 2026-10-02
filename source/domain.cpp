@@ -154,6 +154,10 @@ PetscErrorCode Domain::loadSettings(const char *file)
 
   // read file inputs
   ifstream infile(file);
+  if (!infile.is_open()) {
+    PetscPrintf(PETSC_COMM_WORLD,"Error: cannot open input file %s\n",file);
+    assert(infile.is_open());
+  }
   string line, var, rhs, rhsFull;
   size_t pos = 0;
   while (getline(infile, line))

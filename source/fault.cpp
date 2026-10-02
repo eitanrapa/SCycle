@@ -250,6 +250,10 @@ PetscErrorCode Fault::checkInput()
     assert(_TwVals.size() == _TwDepths.size() );
     assert(_TwVals.size() != 0 );
     assert(_VwType.compare("constant")==0 || _VwType.compare("function_of_Tw")==0 );
+    if (_VwType.compare("constant")==0 && (_VwVals.size() == 0 || _VwVals.size() != _VwDepths.size())) {
+      PetscPrintf(PETSC_COMM_WORLD,"Error: VwType = constant requires VwVals and VwDepths of equal length\n");
+      assert(0);
+    }
   }
 
   #if VERBOSE > 1
@@ -304,8 +308,8 @@ PetscErrorCode Fault::setFields(Domain& D)
     VecDuplicate(_tauP,&_Tw);
     ierr = setVec(_Tw,_z,_TwVals,_TwDepths); CHKERRQ(ierr);
     PetscObjectSetName((PetscObject) _Tw, "Tw");
-    VecDuplicate(_tauP,&_Vw);
-    ierr = setVec(_Vw,_z,_VwVals,_VwDepths); CHKERRQ(ierr);
+    VecDuplicate(_tauP,&_Vw); VecSet(_Vw,0.);
+    if (_VwVals.size() > 0) { ierr = setVec(_Vw,_z,_VwVals,_VwDepths); CHKERRQ(ierr); } // only needed for VwType = constant
     PetscObjectSetName((PetscObject) _Vw, "Vw");
   }
   else { _T = NULL; _k = NULL; _c = NULL; _Tw = NULL; _Vw = NULL; }

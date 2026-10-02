@@ -56,12 +56,14 @@ StrikeSlip_LinearElastic_qd_fd::StrikeSlip_LinearElastic_qd_fd(Domain&D)
   _fault_qd = new Fault_qd(D,D._scatters["body2L"],_faultTypeScale); // fault for quasidynamic problem
   _fault_fd = new Fault_fd(D, D._scatters["body2L"],_faultTypeScale); // fault for fully dynamic problem
 
-  if (_evolveTemperature == 1 || _computeSSHeatEq == 1) { _he = new HeatEquation(D); }
+  // heat equation: needed for thermal coupling, for evolving temperature, or for the steady-state temperature
+  if (_thermalCoupling != "no" || _evolveTemperature == 1 || _computeSSHeatEq == 1) { _he = new HeatEquation(D); }
   if (_thermalCoupling != "no" && _stateLaw == "flashHeating") {
     Vec T; VecDuplicate(_D->_y,&T);
     _he->getTemp(T);
     _fault_qd->setThermalFields(T,_he->_k,_he->_c);
     _fault_fd->setThermalFields(T,_he->_k,_he->_c);
+    VecDestroy(&T);
   }
 
   if (_hydraulicCoupling != "no") { _p = new PressureEq(D); }

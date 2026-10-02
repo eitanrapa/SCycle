@@ -42,7 +42,8 @@ StrikeSlip_LinearElastic_qd::StrikeSlip_LinearElastic_qd(Domain &D)
   }
 
   // heat equation
-  if (_thermalCoupling != "no") { _he = new HeatEquation(D); }
+  // heat equation: needed for thermal coupling, for evolving temperature, or for the steady-state temperature
+  if (_thermalCoupling != "no" || _evolveTemperature == 1 || _computeSSHeatEq == 1) { _he = new HeatEquation(D); }
 
   // fault
   _body2fault = &(D._scatters["body2L"]); // pull out fault component of 2D fields

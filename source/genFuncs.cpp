@@ -637,6 +637,18 @@ PetscErrorCode setVec(Vec& vec, const Vec& coord, vector<double>& vals,vector<do
   PetscInt       Istart,Iend,N;
   PetscScalar    v,z,z0,z1,v0,v1;
 
+  // check the profile: as many values as depths, at least one, depths non-decreasing
+  bool validProfile = vals.size() > 0 && vals.size() == depths.size();
+  for (size_t ind = 1; validProfile && ind < depths.size(); ind++) {
+    if (depths[ind] < depths[ind-1]) { validProfile = false; }
+  }
+  if (!validProfile) {
+    PetscPrintf(PETSC_COMM_WORLD,"Error: invalid <name>Vals/<name>Depths input profile (%zu values, %zu depths; "
+      "need equally many, at least one, and non-decreasing depths). Values: %s Depths: %s\n",
+      vals.size(),depths.size(),vector2str(vals).c_str(),vector2str(depths).c_str());
+    assert(validProfile);
+  }
+
   VecSet(vec,vals[0]);
   VecGetSize(coord,&N);
   // no interpolation to be done
@@ -660,6 +672,7 @@ PetscErrorCode setVec(Vec& vec, const Vec& coord, vector<double>& vals,vector<do
       z1 = depths[0+ind+1];
       v0 = vals[0+ind];
       v1 = vals[0+ind+1];
+      if (z1 == z0) { continue; } // repeated depth: a step in the profile, nothing to interpolate
       if (z >= z0 && z <= z1) {
         v = (v1 - v0)/(z1 - z0) * (z - z0) + v0;
         vecA[Jj] = v;
