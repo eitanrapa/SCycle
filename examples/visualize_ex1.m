@@ -2,40 +2,39 @@
 % Example 1 is a quasidynamic earthquake cycle simulation for a spring slider
 % with linear elastic off-fault material.
 %
-% Required matlab functions are located in matlab/visualizePetsc.
+% Run ex1 from the repository root (./source/main examples/ex1.in), then run
+% this script from the examples directory.
 
-% define directory for output (can be relative or absolute path)
+addpath('../matlab/visualizePetsc')
+
+% output prefix (outputDir in ex1.in), relative to this directory
 sourceDir = '../data/ex1_';
 
-% load context information, such as size of domain, number of points, etc
-d.dom = loadStruct(strcat(sourceDir,'domain.txt'),' = ');
-
-% load fields that are either size Ny or size Nz
-d.time = load(strcat(sourceDir,'med_time1D.txt'));
-d.tau = loadVec(sourceDir,'tauP');
-d.slipVel = loadVec(sourceDir,'slipVel');
+% context (domain.txt, ..., data_context.h5) and the fault time series (data_1D.h5)
+d = loadContext_hdf5(sourceDir);
+d = loadData1D_hdf5(d, sourceDir);
 
 %% make plots
+yr = 3.1536e7; % seconds per year
 
 figure(1),clf
 
 % plot shear stress
 subplot(2,1,1)
-plot(d.time./3.14e7,d.tau)
+plot(d.time./yr, d.tau)
 xlabel('time (years)'),ylabel('\tau (MPa)')
 title('Spring Slider')
 
 % plot slip velocity
 subplot(2,1,2)
-semilogy(d.time./3.14e7,d.slipVel)
+semilogy(d.time./yr, d.slipVel)
 xlabel('time (years)'),ylabel('V (m/s)'),ylim([1e-14 10])
 
-% plot phase plot: integrated slip velocity vs integrated shear stress
-
+% phase plot: slip velocity vs shear stress
 figure(2),clf
-semilogx(d.slipVel,d.tau) % phase plot
+semilogx(d.slipVel, d.tau) % phase plot
 hold on
-semilogx(d.slipVel(1),d.tau(1),'g*') % indicate initial condition
-semilogx(d.slipVel(end),d.tau(end),'r*') % indicate final condition
-xlabel('integrated slip velocity (m/s km)'),ylabel('integrated shear stress (MPa km)')
+semilogx(d.slipVel(1), d.tau(1), 'g*') % initial condition
+semilogx(d.slipVel(end), d.tau(end), 'r*') % final condition
+xlabel('slip velocity (m/s)'),ylabel('shear stress (MPa)')
 legend('simulation','initial condition','final condition','Location','Northwest')

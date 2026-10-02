@@ -48,11 +48,13 @@ a.eI = min(eI,Nt);
 a.sI = min(sI,Nt);
 
 
+% (assigned, not appended: calling this twice on the same struct must not
+% leave time longer than the fault fields; use catField to join runs)
 time1D = h5read_reshape(fileName,'/time/time1D',a);
-out = catField(out,'time',1,time1D);
-out = catField(out,'time1D',1,time1D);
+out.time = time1D;
+out.time1D = time1D;
 
-dt1D = h5read_reshape(fileName,'/time/dtime1D',a); out = catField(out,'dt1D',1,dt1D);
+out.dt1D = h5read_reshape(fileName,'/time/dtime1D',a);
 
 if isDatasetPresent(allDataSetNames,'/time/regime1D')
   out.regime1D = h5read_reshape(fileName,'/time/regime1D',a);

@@ -5,42 +5,44 @@ function dataStruct = loadStruct(fileName, delim)
 % For example, if delim = ' = ', then the file is assumed to have the structure:
 %
 % var1 = 1.0
-% var2 = 2.0
-% var3 = 3.0 # comments are formatted like this
-%      .
-%      .
-%      .
+% var2 = [0 15 30]
+% var3 = RK43 # comments are formatted like this
 %
-% The data struct will contain fields with the names {var1,var2,...} with
-% the values specified. Note that text fields are returned as character
-% arrays. Also, this IS WHITE SPACE SENSITIVE except at the ends of lines.
+% The data struct will contain fields with the names {var1,var2,...}. Numbers
+% and [lists] become numeric values, anything else a character array.
+% Lines without the delimiter are skipped; text after '#' is ignored.
 
+dataStruct = struct();
 fid = fopen(fileName);
+if fid < 0
+  error('loadStruct: cannot open %s', fileName);
+end
 
-while ~feof(fid)  
+while ~feof(fid)
   fileLine = fgetl(fid); % load current line
-  
-   % skip empty lines
-  if isempty(fileLine) || ~ischar(fileLine), continue, end
-  
-  % split line at delimiter
+  if ~ischar(fileLine) || isempty(strtrim(fileLine)), continue, end
+
+  % split line at the first delimiter
   matches = strfind(fileLine,delim);
-  fieldName = fileLine(1:matches-1);
-  fieldValue = fileLine(matches+3:end);
-  
+  if isempty(matches), continue, end
+  fieldName = strtrim(fileLine(1:matches(1)-1));
+  fieldValue = fileLine(matches(1)+length(delim):end);
+
   % remove any trailing comments
   commentIndex = strfind(fieldValue,'#');
   if ~isempty(commentIndex)
-    fieldValue = fieldValue(1:commentIndex-1);
+    fieldValue = fieldValue(1:commentIndex(1)-1);
   end
-  
-  fieldName = genvarname(fieldName);
-  
-  dataStruct.(fieldName) = str2num(fieldValue);
-  if isempty(dataStruct.(fieldName)),
-    dataStruct.(fieldName)=fieldValue;
-  end
+  fieldValue = strtrim(fieldValue);
 
+  value = str2double(fieldValue); % numbers
+  if isnan(value) && startsWith(fieldValue,'[') && endsWith(fieldValue,']') % lists such as [0 15 30]
+    value = sscanf(fieldValue(2:end-1),'%f')';
+  end
+  if isempty(value) || (isscalar(value) && isnan(value) && ~strcmpi(fieldValue,'nan'))
+    value = fieldValue; % text
+  end
+  dataStruct.(matlab.lang.makeValidName(fieldName)) = value;
 end
 fclose(fid);
 

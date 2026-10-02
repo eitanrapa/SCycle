@@ -1,142 +1,94 @@
+"""Load SCycle output (HDF5 files and the .txt context files) into nested dictionaries.
+
+SCycle writes <outputDir>data_context.h5, data_1D.h5, data_2D.h5 and data_steadyState.h5,
+plus <outputDir>domain.txt, mediator.txt, fault.txt, ... where outputDir is the prefix
+given in the input file (for example "data/ex2_"). Pass either that prefix or the older
+style without the trailing underscore ("data/ex2"); both work.
+
+Each HDF5 path becomes nested keys: '/fault/slipVel' -> d['fault']['slipVel'].
+By default every dataset in a file is loaded. With Ny and Nz given, fields are reshaped:
+body fields to (Ny, Nz[, Nt]), fault and boundary fields to (Nz or Ny[, Nt]), time series
+to (Nt,), with time as the last axis (index Ii = iy*Nz + iz, z fastest).
+"""
 import h5py
 import numpy as np
 import os.path
 
+
+def _prefix(filePath):
+  """Return the output prefix that SCycle prepended to its file names."""
+  if filePath.endswith('_') or filePath.endswith('/') or filePath.endswith(os.sep):
+    return filePath
+  if os.path.isfile(filePath + 'data_context.h5') or os.path.isfile(filePath + 'domain.txt'):
+    return filePath
+  return filePath + '_'
+
+
+def _datasetKeys(currFile):
+  keys = []
+  currFile.visititems(lambda name, obj: keys.append('/' + name) if isinstance(obj, h5py.Dataset) else None)
+  return keys
+
+
+def _loadFile(fileName, keys, d, Ny=-1, Nz=-1):
+  with h5py.File(fileName, 'r') as currFile:
+    if isinstance(keys, str) and keys == 'default':
+      keys = _datasetKeys(currFile)
+    for key in keys:
+      vec = loadDataSet(currFile, key)
+      if vec.size != 0:
+        vec = reshapeDataSet(vec, Ny, Nz)
+        createSubDicts(d, key, vec)
+  return d
+
+
 def loadContext(filePath, keys='default'):
-  fileName = '%s_data_context.h5' %(filePath)
-  if keys == 'default':
-    dom_keys = ['/domain/y','/domain/z']
-    fault_keys = ['/fault/a','/fault/b','/fault/Dc','/fault/sNEff','/fault_qd/eta_rad','/fault/cs','/fault_qd/rho','/fault/locked','/fault/prestress']
-    mom_keys = ['/momBal/mu','/momBal/cs','/momBal/T',
-      '/momBal/diffusionCreep/A','/momBal/diffusionCreep/QR','/momBal/diffusionCreep/m','/momBal/diffusionCreep/n',
-      '/momBal/dislocationCreep/A','/momBal/dislocationCreep/QR','/momBal/dislocationCreep/n']
-    he_keys = ['/heatEquation/k','/heatEquation/rho','/heatEquation/Qrad','/heatEquation/c','/heatEquation/Tamb','/heatEquation/T','/heatEquation/Gw','/heatEquation/w']
-    grainSize_keys = ['/grainSizeEv/wattmeter/A','/grainSizeEv/wattmeter/QR','/grainSizeEv/wattmeter/n','/grainSizeEv/wattmeter/p','/grainSizeEv/wattmeter/f','/grainSizeEv/wattmeter/gamma']
-    keys = dom_keys + fault_keys + mom_keys + he_keys + grainSize_keys
-
+  """Mesh, material and fault parameters (data_context.h5) plus the .txt context files."""
+  prefix = _prefix(filePath)
   d = {}
-  d2 = {}
-  txtFileName = "%s_domain.txt" %(filePath)
-  if os.path.isfile(txtFileName):
-    d2 = load_txt(txtFileName);
-    appendDict(d,'domain',d2);
+  for name in ['domain', 'mediator', 'heatEquation', 'fault', 'momBal', 'pressureEq', 'grainSizeEv']:
+    txtFileName = "%s%s.txt" % (prefix, name)
+    if os.path.isfile(txtFileName):
+      appendDict(d, 'med' if name == 'mediator' else name, load_txt(txtFileName))
 
-  Ny = d['domain']['Ny']
-  Nz = d['domain']['Nz']
-
-  with h5py.File(fileName,'r') as currFile:
-    for key in keys:
-      vec = loadDataSet(currFile,key)
-      if len(vec) != 0:
-        vec = reshapeDataSet(vec,Ny,Nz);
-        createSubDicts(d,key,vec);
-
-  # also load context variables in txt files
-  txtFileName = "%s_mediator.txt" %(filePath)
-  if os.path.isfile(txtFileName):
-    d2 = load_txt(txtFileName);
-    appendDict(d,'med',d2);
-
-  txtFileName = "%s_domain.txt" %(filePath)
-  if os.path.isfile(txtFileName):
-    d2 = load_txt(txtFileName);
-    appendDict(d,'domain',d2);
-
-  txtFileName = "%s_heatEquation.txt" %(filePath)
-  if os.path.isfile(txtFileName):
-    d2 = load_txt(txtFileName);
-    appendDict(d,'heatEquation',d2);
-
-  txtFileName = "%s_fault.txt" %(filePath)
-  if os.path.isfile(txtFileName):
-    d2 = load_txt(txtFileName);
-    appendDict(d,'fault',d2);
-
-  txtFileName = "%s_momBal.txt" %(filePath)
-  if os.path.isfile(txtFileName):
-    d2 = load_txt(txtFileName);
-    appendDict(d,'momBal',d2);
-
-  return d
-
-def load_1D(filePath, indict={}, keys='default', Nz=-1, Ny=-1):
-  fileName = '%s_data_1D.h5' %(filePath)
-  if keys == 'default':
-    time_keys = ['/time/time1D','/time/dt1D']
-    fault_keys = ['/fault/slip','/fault/slipVel','/fault/psi','/fault/tauP','/fault/strength','/fault/tauQSP','/fault/Vw','/fault/Tw','/fault/T']
-    mom_keys = ['/momBal/bcR','/momBal/bcT','/momBal/bcL','/momBal/bcB','/momBal/bcRShift']
-    he_keys = ['/heatEquation/bcR','/heatEquation/bcT','/heatEquation/bcL','/heatEquation/bcB']
-    keys = time_keys + fault_keys + mom_keys + he_keys
-
-  with h5py.File(fileName,'r') as currFile:
-    for key in keys:
-      vec = loadDataSet(currFile,key)
-
-      if len(vec) != 0:
-        vec = reshapeDataSet(vec,Ny,Nz);
-        createSubDicts(indict,key,vec);
-
-  return indict
-
-def load_2D(filePath, indict={}, keys='default', Nz=-1, Ny=-1):
-  fileName = '%s_data_2D.h5' %(filePath)
-  if keys == 'default':
-    time_keys = ['/time/time2D','/time/dt2D']
-    mom_keys = ['/momBal/effVisc','/momBal/sxy','/momBal/sxz','/momBal/gTxy','/momBal/gTxz','/momBal/gVxy','/momBal/gVxz','/momBal/dgVxy','/momBal/dgVxz']
-    he_keys = ['/heatEquation/T','/heatEquation/dT','/heatEquation/Q','/heatEquation/Qfric','/heatEquation/Qvisc','/heatEquation/kTz']
-    grainSize_keys = ['/grainSizeEv/d','/grainSizeEv/d_t']
-    keys = time_keys + mom_keys + he_keys + grainSize_keys
+  Ny = d.get('domain', {}).get('Ny', -1)
+  Nz = d.get('domain', {}).get('Nz', -1)
+  return _loadFile('%sdata_context.h5' % prefix, keys, d, Ny, Nz)
 
 
-  with h5py.File(fileName,'r') as currFile:
-    for key in keys:
-      vec = loadDataSet(currFile,key)
-      if len(vec) != 0:
-        vec = reshapeDataSet(vec,Ny,Nz);
-        createSubDicts(indict,key,vec);
+def load_1D(filePath, indict=None, keys='default', Nz=-1, Ny=-1):
+  """Fault and boundary time series (data_1D.h5): fields of size Nz or Ny per saved step."""
+  d = {} if indict is None else indict
+  return _loadFile('%sdata_1D.h5' % _prefix(filePath), keys, d, Ny, Nz)
 
-  return indict
 
-def load_SS(filePath, keys='default'):
-  fileName = '%s_data_steadyState.h5' %(filePath)
-  if keys == 'default':
-    index_keys = ['/steadyState/SS_index']
-    fault_keys = ['/fault/slip','/fault/slipVelocity','/fault/psi','/fault/tauP','/fault/strength','/fault/tauQSP','/fault/Vw','/fault/Tw','/fault/T']
-    mom_keys = ['/momBal/effVisc','/momBal/sxy','/momBal/sxz','/momBal/gTxy','/momBal/gTxz','/momBal/gVxy','/momBal/gVxz','/momBal/dgVxy','/momBal/dgVxz']
-    he_keys = ['/heatEquation/T','/heatEquation/dT','/heatEquation/Q','/heatEquation/Qfric','/heatEquation/Qvisc','/heatEquation/kTz']
-    grainSize_keys = ['/grainSizeEv/d','/grainSizeEv/d_t']
-    keys = index_keys + fault_keys + mom_keys + he_keys + grainSize_keys
+def load_2D(filePath, indict=None, keys='default', Nz=-1, Ny=-1):
+  """Body fields (data_2D.h5): fields of size Ny*Nz per saved step."""
+  d = {} if indict is None else indict
+  return _loadFile('%sdata_2D.h5' % _prefix(filePath), keys, d, Ny, Nz)
 
-  d = {}
-  d2 = {}
-  with h5py.File(fileName,'r') as currFile:
-    for key in keys:
-      vec = loadDataSet(currFile,key)
-      if len(vec) != 0:
-        createSubDicts(d,key,vec)
 
-  return d
-
+def load_SS(filePath, indict=None, keys='default', Nz=-1, Ny=-1):
+  """Steady-state iterations (data_steadyState.h5)."""
+  d = {} if indict is None else indict
+  return _loadFile('%sdata_steadyState.h5' % _prefix(filePath), keys, d, Ny, Nz)
 
 
 def load_txt(txtFileName):
+  """Parse 'key = value # comment' lines into a dict, converting numbers and [lists]."""
   d = {}
-  with open(txtFileName,'r') as currFile:
+  with open(txtFileName, 'r') as currFile:
     for currLine in currFile.readlines():
-      currStrList = currLine.split(' = ')
+      currStrList = currLine.split(' = ', 1)
       if len(currStrList) == 2:
-        key = currStrList[0]
-
-        # remove '#' and any following string characters
-        val = currStrList[1].split("#")[0]
-        val = currStrList[1].split("\n")[0]
-
-        # check if can convert from str to int or float, then do so
-        str2Value(d,key,val)
+        key = currStrList[0].strip()
+        val = currStrList[1].split('#')[0].strip()  # drop the comment and the newline
+        str2Value(d, key, val)
   return d
 
-# creates nested dictionaries corresponding to parts of key
-def createSubDicts(d,key,vec):
+
+def createSubDicts(d, key, vec):
+  """Create nested dictionaries for the parts of an HDF5 path and store vec at the leaf."""
   currd = d
   keylist = key.split('/')
   for subkey in keylist[:-1]:
@@ -146,63 +98,52 @@ def createSubDicts(d,key,vec):
       currd = currd[subkey]
   currd[keylist[-1]] = vec
 
-# append dictionary to existing dictionary
-def appendDict(d,key,d2):
+
+def appendDict(d, key, d2):
   if key in d.keys():
     d[key] = dict(d[key], **d2)
   else:
-    d[key] = d2;
+    d[key] = d2
 
 
-def loadDataSet(currFile,key):
+def loadDataSet(currFile, key):
   try:
-    dataset = np.array(currFile[key])
-    return dataset
+    return np.array(currFile[key])
   except KeyError:
-    pass
+    return np.array([])
 
-  return np.array([])
 
-def reshapeDataSet(vec,Ny,Nz):
-  out = vec
+def reshapeDataSet(vec, Ny, Nz):
+  """Reshape a flat or (Nt, N, 1) dataset to (Ny, Nz[, Nt]) or (N[, Nt]) with time last."""
+  if not (Nz > -1 and Ny > -1 and isinstance(vec, np.ndarray)):
+    return vec
+  if vec.ndim == 1:  # context fields, no time axis
+    if vec.size == Ny * Nz and Ny > 1 and Nz > 1:
+      return vec.reshape(Ny, Nz)
+    return vec
+  Nt = vec.shape[0]
+  N = vec.size // Nt if Nt > 0 else 0
+  if N == Ny * Nz and Ny > 1 and Nz > 1:
+    return np.moveaxis(vec.reshape(Nt, Ny, Nz), 0, -1)
+  if N == 1:
+    return vec.reshape(Nt)
+  return np.moveaxis(vec.reshape(Nt, N), 0, -1).squeeze()
 
-  # check that vec can be reshaped
-  if not (Nz > -1 and Ny > -1 and isinstance(vec,np.ndarray)):
-    return out
-
-  # otherwise reshape vec
-  Nt = vec.shape[0];
-  if vec.size == Ny*Nz:
-    out = (vec.reshape(Ny,Nz)).squeeze();
-  if vec.size == Nt*Ny*Nz:
-    out = np.moveaxis(vec.reshape(Nt,Ny,Nz),0,-1).squeeze();
-  if vec.size == Nt*Ny:
-    out = np.moveaxis(vec.reshape(Nt,Ny),0,-1).squeeze();
-  if vec.size == Nt*Nz and Nz != 1:
-    out = np.moveaxis(vec.reshape(Nt,Nz),0,-1).squeeze();
-  if vec.size == Nt*Nz and Nz == 1:
-    out = vec.squeeze();
-  return out
 
 def str2FloatList(insStr):
-  # convert string containing a list of floats into an array
+  """Convert '[a b c]' to a list of floats; return False if insStr is not such a list."""
   if '[' in insStr and ']' in insStr:
-    temp = insStr.rstrip('\n').lstrip('[').lstrip(' ').rstrip(']').rstrip(' ')
-    strList = temp.split(' ')
-
+    strList = insStr.strip().lstrip('[').rstrip(']').split()
     try:
-      float(strList[0])
-    except:
+      return [float(x) for x in strList]
+    except ValueError:
       return False
+  return False
 
-    finalList = [float(x) for x in strList]
-    return finalList
-  else:
-    return False
 
-def str2Value(d,key,val):
+def str2Value(d, key, val):
   temp = str2FloatList(val)
-  if not isinstance(temp,bool):
+  if not isinstance(temp, bool):
     d[key] = temp
   else:
     try:
@@ -212,6 +153,3 @@ def str2Value(d,key,val):
         d[key] = float(val)
       except ValueError:
         d[key] = val
-
-
-
