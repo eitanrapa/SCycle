@@ -34,6 +34,11 @@
  * top and bottom boundary terms) and on q through its y-part, so the ratio is the discrete
  * -(mu delta')'/mu, consistent with A up to the free surface.
  *
+ * With a body source S in the momentum balance, A u = rhs + S + J (the viscous strains of the power
+ * law, S = d/dy(mu gVxy) + d/dz(mu gVxz)), S itself can jump across the fault: gVxz does wherever
+ * the fault slips. w is then C2 only if A Ut matches that jump, [S] = S(iRow + 1) - S(iRow), so
+ * c = -(A delta - [S])/(A q). In fully relaxed viscous regions [S] cancels most of A delta.
+ *
  * Requires mu continuous across the fault and the fault at least 6 rows from the y-boundaries
  * (the boundary closures of the y-operators span 6 rows).
  */
@@ -64,11 +69,14 @@ public:
   InteriorFaultLift(Domain& D, const PetscInt iRow, const bool kinkLift = true);
   ~InteriorFaultLift();
 
-  // set U and Ut from the slip (size Nz); with B+ also c, from the momentum-balance operator A
-  PetscErrorCode setSlip(const Vec& slip, const Mat& A);
+  // set U and Ut from the slip (size Nz); with B+ also c, from the momentum-balance operator A and,
+  // if given, the body source S on the right-hand side (body field)
+  PetscErrorCode setSlip(const Vec& slip, const Mat& A, const Vec* source = NULL);
   PetscErrorCode addToRhs(const Mat& A, Vec& rhs);   // rhs += A U - step .* (A Ut)
   // sxy = mu D_y u on entry; on the band rows it becomes mu D_y (u - U) (+ mu c (y - yf) past the fault)
   PetscErrorCode correctStress(Vec& sxy, SbpOps* sbp, const Vec& mu);
+  // the same for a strain: gxy = D_y u on entry; on the band rows it becomes D_y (u - U) (+ c (y - yf) past the fault)
+  PetscErrorCode correctStrain(Vec& gxy, SbpOps* sbp);
   // fault traction from the physical sxy: average of the two rows, less this lift's own dK/dy term
   PetscErrorCode traction(const Vec& sxy, const Vec& mu, Vec& tau);
 

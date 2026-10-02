@@ -8,6 +8,7 @@
 #include <petscviewerhdf5.h>
 #include "genFuncs.hpp"
 #include "domain.hpp"
+#include "interiorFaultLift.hpp"
 #include "heatEquation.hpp"
 #include "sbpOps.hpp"
 #include "sbpOps_m_constGrid.hpp"
@@ -62,6 +63,7 @@ class PowerLaw
     Vec                   _u,_surfDisp;
     Vec                   _sxy,_sxz,_sdev; // sigma_xz (MPa), deviatoric stress (MPa)
     Vec                   _gTxy,_gVxy,_dgVxy; // total strain, viscous strain, and viscous strain rate
+    std::vector<InteriorFaultLift*> _lifts; // interior faults: gTxy is corrected near each (not owned)
     Vec                   _gTxz,_gVxz,_dgVxz; // total strain, viscous strain, and viscous strain rate
     Vec                   _dgVdev,_dgVdev_disl; // deviatoric strain rate
 
@@ -129,6 +131,7 @@ class PowerLaw
     PetscErrorCode computeViscStrainRates(const PetscScalar time);
     PetscErrorCode computeViscousStrainRateSAT(Vec &u, Vec &gL, Vec &gR, Vec &out);
     PetscErrorCode computeTotalStrains();
+    PetscErrorCode setInteriorFaults(const std::vector<InteriorFaultLift*>& lifts); // NULL entries are skipped
     PetscErrorCode computeStresses();
     PetscErrorCode computeSDev();
     PetscErrorCode computeDevViscStrainRates(); // deviatoric strains and strain rates

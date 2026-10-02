@@ -140,7 +140,7 @@ PetscErrorCode InteriorFaultLift::locate(Domain& D, const PetscScalar yWanted, P
 
 
 // Ut = slip (+ Kt with B+) on every row, U = Ut on rows past the fault
-PetscErrorCode InteriorFaultLift::setSlip(const Vec& slip, const Mat& A)
+PetscErrorCode InteriorFaultLift::setSlip(const Vec& slip, const Mat& A, const Vec* source)
 {
   PetscErrorCode ierr = 0;
   ierr = VecScatterBegin(_fault2body,slip,_Ut,INSERT_VALUES,SCATTER_FORWARD); CHKERRQ(ierr);
@@ -153,10 +153,18 @@ PetscErrorCode InteriorFaultLift::setSlip(const Vec& slip, const Mat& A)
       ierr = VecScatterBegin(*_rowMinus,_work,_Aq,INSERT_VALUES,SCATTER_FORWARD); CHKERRQ(ierr);
       ierr = VecScatterEnd(*_rowMinus,_work,_Aq,INSERT_VALUES,SCATTER_FORWARD); CHKERRQ(ierr);
     }
-    // c = -(A delta)/(A q) on row _iRow, the jump of w_yy across the fault, copied to every row
+    // c = -(A delta - [S])/(A q) on row _iRow, the jump of w_yy across the fault, copied to every row
     ierr = MatMult(A,_Ut,_work); CHKERRQ(ierr);
     ierr = VecScatterBegin(*_rowMinus,_work,_cFault,INSERT_VALUES,SCATTER_FORWARD); CHKERRQ(ierr);
     ierr = VecScatterEnd(*_rowMinus,_work,_cFault,INSERT_VALUES,SCATTER_FORWARD); CHKERRQ(ierr);
+    if (source != NULL) { // [S] = S(_iRow + 1) - S(_iRow)
+      ierr = VecScatterBegin(*_rowPlus,*source,_tauPlus,INSERT_VALUES,SCATTER_FORWARD); CHKERRQ(ierr);
+      ierr = VecScatterEnd(*_rowPlus,*source,_tauPlus,INSERT_VALUES,SCATTER_FORWARD); CHKERRQ(ierr);
+      ierr = VecScatterBegin(*_rowMinus,*source,_cPlus,INSERT_VALUES,SCATTER_FORWARD); CHKERRQ(ierr);
+      ierr = VecScatterEnd(*_rowMinus,*source,_cPlus,INSERT_VALUES,SCATTER_FORWARD); CHKERRQ(ierr);
+      ierr = VecAXPY(_tauPlus,-1.0,_cPlus); CHKERRQ(ierr);
+      ierr = VecAXPY(_cFault,-1.0,_tauPlus); CHKERRQ(ierr);
+    }
     ierr = VecPointwiseDivide(_cFault,_cFault,_Aq); CHKERRQ(ierr);
     ierr = VecScale(_cFault,-1.0); CHKERRQ(ierr);
     ierr = VecScatterBegin(_fault2body,_cFault,_c,INSERT_VALUES,SCATTER_FORWARD); CHKERRQ(ierr);
@@ -198,6 +206,22 @@ PetscErrorCode InteriorFaultLift::correctStress(Vec& sxy, SbpOps* sbp, const Vec
   }
   ierr = VecPointwiseMult(_work,_work,_band); CHKERRQ(ierr);
   ierr = VecAXPY(sxy,-1.0,_work); CHKERRQ(ierr);
+  return ierr;
+}
+
+
+// The strain version of correctStress: gxy = D_y u becomes D_y (u - U) + c (y - yf) step on the band.
+PetscErrorCode InteriorFaultLift::correctStrain(Vec& gxy, SbpOps* sbp)
+{
+  PetscErrorCode ierr = 0;
+  ierr = sbp->Dy(_U,_work); CHKERRQ(ierr);              // D_y U
+  if (_kinkLift) {
+    ierr = VecPointwiseMult(_work2,_c,_dy); CHKERRQ(ierr);
+    ierr = VecPointwiseMult(_work2,_work2,_step); CHKERRQ(ierr);
+    ierr = VecAXPY(_work,-1.0,_work2); CHKERRQ(ierr);   // - c (y - yf) past the fault
+  }
+  ierr = VecPointwiseMult(_work,_work,_band); CHKERRQ(ierr);
+  ierr = VecAXPY(gxy,-1.0,_work); CHKERRQ(ierr);
   return ierr;
 }
 

@@ -1116,6 +1116,8 @@ PetscErrorCode PowerLaw::computeTotalStrains()
 
   if (_Ny > 1) {
     _sbp->Dy(_u,_gTxy);
+    // near an interior fault the y-strain comes from u without its jump (the z-strain keeps it)
+    for (size_t i = 0; i < _lifts.size(); i++) { ierr = _lifts[i]->correctStrain(_gTxy,_sbp); CHKERRQ(ierr); }
   }
   if (_Nz > 1) {
     _sbp->Dz(_u,_gTxz);
@@ -1127,6 +1129,15 @@ PetscErrorCode PowerLaw::computeTotalStrains()
   #endif
   return ierr;
 }
+
+// interior faults whose jumps computeTotalStrains removes from the y-strain near each fault
+PetscErrorCode PowerLaw::setInteriorFaults(const std::vector<InteriorFaultLift*>& lifts)
+{
+  _lifts.clear();
+  for (size_t i = 0; i < lifts.size(); i++) { if (lifts[i] != NULL) { _lifts.push_back(lifts[i]); } }
+  return 0;
+}
+
 
 // computes sigmaxy, sigmaxz, and sigmadev = sqrt(sigmaxy^2 + sigmaxz^2)
 PetscErrorCode PowerLaw::computeStresses()
