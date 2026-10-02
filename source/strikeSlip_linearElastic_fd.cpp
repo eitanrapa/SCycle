@@ -176,7 +176,7 @@ PetscErrorCode StrikeSlip_LinearElastic_fd::checkInput()
 
   // check boundary condition types for momentum balance equation
   assert(_bcRType.compare("freeSurface")==0 || _bcRType.compare("outGoingCharacteristics")==0);
-  assert(_bcLType.compare("symmFault")==0 || _bcRType.compare("rigidFault")==0);
+  assert(_bcLType.compare("symmFault")==0 || _bcLType.compare("rigidFault")==0 || _bcLType.compare("outGoingCharacteristics")==0);
   assert(_bcTType.compare("freeSurface")==0 || _bcTType.compare("outGoingCharacteristics")==0);
   assert(_bcBType.compare("freeSurface")==0 || _bcBType.compare("outGoingCharacteristics")==0);
 

@@ -979,7 +979,7 @@ PetscErrorCode StrikeSlip_LinearElastic_qd_fd::prepare_qd2fd()
 
   // switch strides to qd values
   _stride1D = _stride1D_fd;
-  _stride2D = _stride1D_fd;
+  _stride2D = _stride2D_fd;
 
   // save current variables as n-1 time step
   ierr = VecCopy(_fault_qd->_slip,_varFDPrev["slip"]); CHKERRQ(ierr);

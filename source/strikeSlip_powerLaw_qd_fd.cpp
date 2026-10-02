@@ -224,7 +224,10 @@ PetscErrorCode StrikeSlip_PowerLaw_qd_fd::loadSettings(const char *file)
     else if (var.compare("stride1D_fd_end")==0){ _stride1D_fd_end = (int)atof( rhs.c_str() ); }
     else if (var.compare("stride2D_fd_end")==0){ _stride2D_fd_end = (int)atof( rhs.c_str() ); }
 
-    else if (var.compare("initTime")==0) { _initTime = atof( rhs.c_str() ); }
+    else if (var.compare("initTime")==0) {
+      _initTime = atof( rhs.c_str() );
+      _currTime = _initTime;
+    }
     else if (var.compare("maxTime")==0) { _maxTime = atof( rhs.c_str() ); }
     else if (var.compare("maxStepCount")==0) { _maxStepCount = (int)atof( rhs.c_str() ); }
     else if (var.compare("minDeltaT")==0) { _minDeltaT = atof( rhs.c_str() ); }
@@ -1458,13 +1461,13 @@ PetscErrorCode StrikeSlip_PowerLaw_qd_fd::prepare_qd2fd()
 
   // switch strides to qd values
   _stride1D = _stride1D_fd;
-  _stride2D = _stride1D_fd;
+  _stride2D = _stride2D_fd;
 
   // save current variables as n-1 time step
   VecCopy(_fault_qd->_slip,_varFDPrev["slip"]);
   VecCopy(_fault_qd->_psi,_varFDPrev["psi"]);
   VecCopy(_material->_u,_varFDPrev["u"]);
-  if (_thermalCoupling.compare("no")!=0 ) { VecCopy(_varIm["Temp"], _varFDPrev["Temp"]); } // if solving the heat equation
+  if (_evolveTemperature == 1) { VecCopy(_varIm["Temp"], _varFDPrev["Temp"]); } // if evolving temperature (Temp is only integrated then)
 
   // take 1 quasidynamic time step to compute variables at time n
   _inDynamic = 0;
@@ -1475,7 +1478,7 @@ PetscErrorCode StrikeSlip_PowerLaw_qd_fd::prepare_qd2fd()
   VecCopy(_fault_qd->_slip,_varFD["slip"]);
   VecCopy(_fault_qd->_psi,_varFD["psi"]);
   VecCopy(_material->_u,_varFD["u"]);
-  if (_thermalCoupling.compare("no")!=0 ) { VecCopy(_varIm["Temp"], _varFD["Temp"]); } // if solving the heat equation
+  if (_evolveTemperature == 1) { VecCopy(_varIm["Temp"], _varFD["Temp"]); } // if evolving temperature (Temp is only integrated then)
 
   // now change u to du
   VecAXPY(_varFD["u"],-1.0,_varFDPrev["u"]);
