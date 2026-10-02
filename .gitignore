@@ -8,12 +8,6 @@ data/**
 in/**
 log_*
 
-# test binaries and generated test data
-tests/memoryLeak/main
-tests/testIO/output
-tests/testIO/test_io
-tests/testIO/test_io.info
-
 # OS, editor and tool clutter
 .DS_Store
 .vscode

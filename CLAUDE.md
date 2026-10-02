@@ -134,7 +134,6 @@ mpirun -n 4 ./source/main examples/ex2.in
 - Explicit slip-dependent permeability is unstable when |V| dt > ~2.8 kL_p; with quasi-dynamic
   minimum steps this happens during events. Use `hydraulicTimeIntType = implicit` (exact relaxation).
 - `momBal_bcT_qd`/`momBal_bcB_qd = remoteLoading` stay at their initial displacement.
-- `tests/` holds old, diverged copies of sources and cluster scripts; it does not build. Do not use it.
 
 ## Testing
 
