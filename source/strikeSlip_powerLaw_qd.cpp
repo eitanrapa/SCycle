@@ -271,8 +271,8 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::checkInput()
   assert(_bcLType == "symmFault"   || _bcLType == "rigidFault" );
   assert(_bcBType == "freeSurface" || _bcBType == "remoteLoading");
   if (_bcTType == "remoteLoading" || _bcBType == "remoteLoading") {
-    PetscPrintf(PETSC_COMM_WORLD,"Note: bcTType/bcBType = remoteLoading holds that boundary at its initial (steady-state) displacement;\n"
-      "      unlike bcRType it is not moved with vL*t during the simulation (that update is commented out in d_dt).\n");
+    PetscPrintf(PETSC_COMM_WORLD,"Note: momBal_bcT_qd/momBal_bcB_qd = remoteLoading holds that boundary at its initial (steady-state) displacement;\n"
+      "      unlike momBal_bcR_qd it is not moved with vL*t during the simulation (that update is commented out in d_dt).\n");
   }
 
   if (_bcTType == "atan_u") { assert(_bcT_L > 0.); }

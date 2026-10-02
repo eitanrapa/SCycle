@@ -5,10 +5,10 @@
 # set up computational domain, directories for ICs and output
 
 # directory for ICs
-inputDir = /data/dunham/kallison/scycle/SEAS_benchmarks/BP1/ICs/
+inputDir = SEAS_benchmarks/BP1/ICs/ # written by SEAS_benchmarks/BP1/createICs.py (run from the repository root)
 
 # directory for output
-outputDir = /data/dunham/kallison/scycle/SEAS_benchmarks/BP1/output/
+outputDir = data/BP1_
 
 # set up the computational domain
 Ny = 401
@@ -17,7 +17,6 @@ Ly = 500
 Lz = 500
 
 # specify what problem to simulate
-problemType = strikeSlip
 bulkDeformationType = linearElastic
 momentumBalanceType = quasidynamic
 vL = 1e-9 # (m/s) loading rate
@@ -49,7 +48,8 @@ sNDepths = [0 500] # (km)
 momBal_computeSxz = 1
 
 # algorithm for momentum balance equation
-linSolver = MUMPSCHOLESKY
+linSolverSS = MUMPSCHOLESKY
+linSolverTrans = MUMPSCHOLESKY
 
 muVals = [32.0381 32.0381] # (GPa) shear modulus
 muDepths = [0 200] # (km)
@@ -57,7 +57,8 @@ rhoVals = [2.670 2.670] # (g/cm^3)
 rhoDepths = [0 200] # (km)
 
 
-# boundary condition for remote boundary (bcR):
+# boundary condition for remote boundary (bcR): BP1 loads the fault through the creeping
+# region below 40 km (lockedVals = -1), so the remote side is traction free.
 # if displacing bcR at 1/2 tectonic plate rate
 #momBal_bcR_qd = remoteLoading
 
