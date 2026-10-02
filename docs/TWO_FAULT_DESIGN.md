@@ -1,6 +1,7 @@
 # Two-fault extension: design note
 
-Status: design agreed, not yet implemented. Stage 0 is done on branch `audit/fixes-2026-10`.
+Status: Stages 0 and 1 are done (branches `audit/fixes-2026-10` and `stage1/fault-generalization`);
+Stage 2 is next.
 Line numbers refer to upstream commit `74a132f` and will drift; function names are the stable
 reference.
 
@@ -124,19 +125,32 @@ can replace it without touching the mediators.
   creeping nodes in fully dynamic phases, viscous dissipation in the heat and grain-size equations,
   and atomic checkpoints for long runs.
 
-### Stage 1: generalize the fault class, still one fault, bit-identical
-- `Fault` / `Fault_qd` already take the body-to-fault scatter as a constructor argument.
-  Add a name (default `"fault"`) that sets:
-  - integrand keys: `slip`, `psi` for the default fault, `<name>_slip`, `<name>_psi` otherwise
-    (hard-coded today in `Fault_qd::initiateIntegrand`, `updateFields`, `d_dt`),
-  - HDF5 groups `/<name>` and `/<name>_qd` (hard-coded `/fault`, `/fault_qd`),
-  - per-fault radiation-damping scale (replaces the global `_faultTypeScale` in the `Fault_qd`
-    constructor; `η = √(μρ)/2` for an interior fault between identical materials),
-  - per-fault creep rate for `lockedVals < −0.5` (today `_D->_vL`, in both `ComputeVel_qd` and
-    `Fault_fd::d_dt`).
-- Mediator holds `std::vector<Fault_qd*>` and one scatter per fault; `HeatEquation::be` and
-  `PressureEq::dk_dt` take the slip-rate key instead of `"slip"`.
-- `Domain`: add `makeRowScatter(iy)` next to the `body2L` construction in `setScatters`.
+### Stage 1: generalize the fault class, still one fault, bit-identical (done)
+Done on branch `stage1/fault-generalization` (commits `8d78596`, `3967df3`, `64c6ea0`); ex1, ex2 and
+a spot suite (ex5 with heat and flash heating, implicit pore pressure through an event, BP1, the
+combined quasi-dynamic and dynamic mode) stay bit-identical, and so does a restart.
+- **Named faults.** `Fault`, `Fault_qd` and `Fault_fd` take a name, default `"fault"`, which keeps
+  everything as before. A fault named `<name>`:
+  - reads every unprefixed key, then lets `<name>_<key>` override it; lists are replaced, not
+    appended. For example `fault2_aVals`, `fault2_lockedVals`, `fault2_stateLaw`;
+  - loads its initial conditions from `<name>_psi`, `<name>_slip`, `<name>_prestress`, ...,
+    `<name>_a`, `<name>_b`, `<name>_Dc` in `inputDir`;
+  - writes the HDF5 groups `/<name>`, `/<name>_qd` and the file `<name>.txt`;
+  - integrates `<name>_slip` and `<name>_psi` (`Fault::_slipKey`, `_psiKey`).
+- **Per-fault settings.** `vCreep` (new key, default `vL`) is the slip velocity of creeping nodes,
+  in `ComputeVel_qd` and `Fault_fd::d_dt`. The radiation damping is `_etaScale*sqrt(mu*rho)`, with
+  default `1/faultTypeScale`; `Fault_qd::setEtaScale(0.5)` gives the interior-fault value.
+- **Mediator.** `StrikeSlip_LinearElastic_qd` owns `std::vector<Fault_qd*> _faults`, with `_fault`,
+  the boundary fault at y = 0, first. Stress scatter, rates, output and checkpoints loop over the
+  faults, each through its own scatter. The boundary fault alone sets `bcL` and carries the
+  steady-state solve, the heat source and the pore pressure (`PressureEq::setSlipKey`).
+- **Rows.** `Domain::makeRowScatter(iy, scatter)` returns a scatter from a body field to grid row
+  `iy`, created once and kept in `_scatters` as `"body2row<iy>"`; row 0 equals `body2L`, row Ny-1
+  `body2R`, also in parallel.
+- Not done, by design: the power-law and combined-mode classes still hold one fault, and no input
+  key yet declares an additional fault. Stage 2 adds the declaration (and teaches
+  `tools/checkkeys.py` the prefixed keys), creates interior faults from it, and treats a model
+  without a boundary fault (`_fault` then is NULL and the boundary-only couplings must be skipped).
 
 ### Stage 2: one interior fault
 - New `InteriorFaultLift` (Route B). `LinearElastic::setRHS` adds `J`; `computeStresses`

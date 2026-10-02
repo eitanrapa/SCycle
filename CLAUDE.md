@@ -86,6 +86,11 @@ mpirun -n 4 ./source/main examples/ex2.in
   (not implemented), implicit pressure with an explicit-only integrator.
 - Initial conditions can be loaded as PETSc binary Vecs named `y`, `z`, `psi`, `slip`, `prestress`,
   `tauQS`, `tau`, `fault_a`, ... from `inputDir` (see `SEAS_benchmarks/BP1/createICs.py`).
+- Faults have names. The default fault, `fault`, reads the plain keys. A fault named `<name>` reads
+  them too, then `<name>_<key>` overrides any of them (`fault2_aVals`, `fault2_vCreep`, ...); it uses
+  the files `<name>_psi`, ..., the HDF5 groups `/<name>`, `/<name>_qd` and integrand keys
+  `<name>_slip`, `<name>_psi`. `vCreep` sets the slip velocity of creeping nodes (default `vL`).
+  No input key declares an additional fault yet (Stage 2 of `docs/TWO_FAULT_DESIGN.md`).
 
 ## Architecture
 
@@ -95,6 +100,8 @@ mpirun -n 4 ./source/main examples/ex2.in
   material (`LinearElastic` or `PowerLaw`), the fault(s) (`Fault_qd`, `Fault_fd`), optional
   `HeatEquation`, `PressureEq`, `GrainSizeEvolution`, the time integrator, and all output.
   They are largely copy-pasted: **a fix in one usually has to be mirrored in the others.**
+  `StrikeSlip_LinearElastic_qd` holds a list of faults (`_faults`, boundary fault `_fault` first) and
+  loops over it for per-fault work; the other mediators still hold a single fault.
 - **Integrand**: `map<string,Vec>`. Explicit (`varEx`): `slip`, `psi`, `gVxy`/`gVxz` (power law),
   `grainSize`, and `pressure`/`permeability` when `hydraulicTimeIntType = explicit`. Implicit
   (`varIm`, backward Euler inside IMEX): `Temp`, and `pressure`/`permeability` when implicit.
