@@ -125,6 +125,10 @@ mpirun -n 4 ./source/main examples/ex2.in
   frictional-heat kernel, so it needs `wVals > 0`; the heat equation gets the rest) and the Zener
   cap `grainSizeEv_dZVals`. Pore pressure (every fault's `PressureEq`): `bcB_q0` prescribes the
   basal flux, `bcB_pulse*` pulse it, `bcB_sourceDepth`/`bcB_sourceWidth` deliver it at depth.
+  Fault cohesion (both quasi-dynamic mediators, per fault): `cohesionEvolution = explicit |
+  implicit` with `cohesionMaxVals`, `cohesionTauHeal`, `cohesionDheal` (and `cohesionReseal`);
+  implicit needs an IMEX integrator and bounds the step (`cohesionStepFrac`), explicit puts
+  `<name>_cohesion` under error control and is slow in events when `cohesionDheal` is millimetres.
 
 ## Architecture
 

@@ -977,7 +977,13 @@ message says why not.
    dataset is `qb` (m/s), not `bcB`. Found and fixed on the way: A-100 (`e0ae91a`, the bottom flux
    from the list ends, the pitfall named above) and A-101 (`6e39b4d`, `linSolver` ignored).
 8. Evolving cohesion (4.6) on the elastic mediator first (no Stage 4 dependency; can be done in
-   parallel with 3-7). Small to medium.
+   parallel with 3-7). Small to medium. **Done** (`c2f556e`), both quasi-dynamic mediators, with reseal
+   hardening: gate 5.6a (spring slider, Dheal = 0.1 m: 0.66% explicit, 0.40% implicit against the
+   single-degree-of-freedom recurrence; Dheal = 1 mm: implicit within 0.40% of explicit, whose
+   events cost 12 times the steps) and 5.6b (bit-identical without the keys). The implicit update
+   needs a step bound (`cohesionStepFrac`): one step must not remove the cohesion at once. Found and
+   fixed on the way: A-102 (`b03b76e`, the monitor's step bound lost on restart). The sign test
+   with two faults (c) belongs to the run matrix.
 9. Fabric and cement states (4.5). Small once 3 exists.
 10. Diagnostics (section 5) and the run matrix; the library.
 11. Optional: fixed anisotropy (4.7).
