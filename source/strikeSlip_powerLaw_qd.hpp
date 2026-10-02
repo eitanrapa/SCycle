@@ -140,6 +140,8 @@ public:
   Vec                             _vel, _rhsVel, _surfVel, _viscSourceRate;
   Vec                             _bcLRate, _bcRRate, _bcTRate, _bcBRate;
   FaultSeries                     _series;
+  FaultWorkKernel                 _faultWork; // interior faults with heat: frictional work spread into the body
+  Vec                             _Qfault;    // its result, the heat equation's frictional source
 
   PowerLaw               *_material; // power-law viscoelastic off-fault material properties
   HeatEquation           *_he;

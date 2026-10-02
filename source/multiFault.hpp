@@ -10,6 +10,7 @@
 #include "domain.hpp"
 #include "fault.hpp"
 #include "interiorFaultLift.hpp"
+#include "sbpOps.hpp"
 
 /*
  * Helpers shared by the quasi-dynamic mediators for models with several faults
@@ -58,6 +59,36 @@ public:
   PetscErrorCode write(const std::string& outputDir, const bool append, const PetscInt stepCount,
     const PetscScalar time, const PetscScalar deltaT, const std::vector<Fault_qd*>& faults);
   PetscErrorCode flush();
+};
+
+// Frictional work of the interior faults spread into the body, Q = sum_k MapV(tau_k V_k) .* Gw_k,
+// with Gw_k a Gaussian of width w(z) centred on fault k (docs/REVERSIBLE_STRENGTH_PLAN.md,
+// section 3.4). Each Gw_k is normalized on the grid, sum_i Wy_i Gw_k(y_i, z) = 1 at every depth with
+// Wy the y-quadrature weights of the SBP norm, so the body integral of Q equals the faults' work
+// integrated over depth, whatever w is relative to the cell size. Units: tau (MPa) times V (m/s)
+// times Gw (1/km) gives kW/m^3, the unit of the heat equation's sources.
+class FaultWorkKernel
+{
+private:
+  FaultWorkKernel(const FaultWorkKernel& that);
+  FaultWorkKernel& operator=(const FaultWorkKernel& rhs);
+
+  std::vector<InteriorFaultLift*> _lifts; // not owned
+  Vec                             _work;  // body work vector
+  Vec                             _workFault; // fault-size work vector
+
+public:
+  std::vector<Vec> _Gw; // per fault: the normalized kernel (body field), NULL for a boundary fault
+
+  FaultWorkKernel();
+  ~FaultWorkKernel();
+  // w: the width (km) at every body node, as HeatEquation::_w; sbp: the momentum balance's operators (for the norm)
+  PetscErrorCode setup(Domain& D, SbpOps* sbp, const Vec& w, const std::vector<Fault_qd*>& faults,
+    const std::vector<InteriorFaultLift*>& lifts);
+  // Q = sum over interior faults of MapV(tau_k V_k) .* Gw_k, with tau_k = tauP and V_k = slipVel
+  PetscErrorCode spread(const std::vector<Fault_qd*>& faults, Vec& Q);
+  // each kernel as dataset Gw in its fault's group of data_context.h5
+  PetscErrorCode writeContext(PetscViewer& viewer, const std::vector<Fault_qd*>& faults);
 };
 
 #endif

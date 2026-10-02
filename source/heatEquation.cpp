@@ -22,7 +22,7 @@ HeatEquation::HeatEquation(Domain& D)
   _linSolveTime(0),_factorTime(0),_beTime(0),_writeTime(0),_miscTime(0),
   _linSolveCount(0),
   _Tamb(NULL),_dT(NULL),_T(NULL),
-  _k(NULL),_rho(NULL),_c(NULL),_Qrad(NULL),_Qfric(NULL),_Qvisc(NULL),_Q(NULL)
+  _k(NULL),_rho(NULL),_c(NULL),_Qrad(NULL),_Qfric(NULL),_Qvisc(NULL),_Q(NULL),_faultHeat(NULL)
 {
   #if VERBOSE > 1
     string funcName = "HeatEquation::HeatEquation";
@@ -1592,6 +1592,13 @@ PetscErrorCode HeatEquation::computeFrictionalShearHeating(const Vec& tau, const
     CHKERRQ(ierr);
   #endif
 
+  // interior faults: the mediator has spread each fault's work into the body (tau, slipVel unused)
+  if (_faultHeat != NULL) {
+    ierr = VecCopy(*_faultHeat,_Qfric); CHKERRQ(ierr);
+    ierr = VecSet(_bcL,0.); CHKERRQ(ierr); // no flux through the left boundary
+    return ierr;
+  }
+
   // compute bcL = q = tau * slipVel
   VecPointwiseMult(_bcL,tau,slipVel);
 
@@ -1613,6 +1620,14 @@ PetscErrorCode HeatEquation::computeFrictionalShearHeating(const Vec& tau, const
     CHKERRQ(ierr);
   #endif
   return ierr;
+}
+
+
+// interior faults: the frictional heat source, a body field (kW/m^3) the caller keeps up to date
+PetscErrorCode HeatEquation::setFaultHeatSource(const Vec* Q)
+{
+  _faultHeat = Q;
+  return 0;
 }
 
 

@@ -171,3 +171,124 @@ PetscErrorCode FaultSeries::flush()
   if (_file != NULL) { fflush(_file); }
   return 0;
 }
+
+
+FaultWorkKernel::FaultWorkKernel() : _work(NULL), _workFault(NULL) {}
+
+FaultWorkKernel::~FaultWorkKernel()
+{
+  for (size_t i = 0; i < _Gw.size(); i++) { VecDestroy(&_Gw[i]); }
+  VecDestroy(&_work);
+  VecDestroy(&_workFault);
+}
+
+
+PetscErrorCode FaultWorkKernel::setup(Domain& D, SbpOps* sbp, const Vec& w, const vector<Fault_qd*>& faults,
+  const vector<InteriorFaultLift*>& lifts)
+{
+  PetscErrorCode ierr = 0;
+  _lifts = lifts;
+
+  // Quadrature of the body: (H J) x = H (J .* x), with J = (dy/dq)(dz/dr) on a curvilinear grid.
+  // H J is separable, (Hy Jy)(Hz Jz), and the y-part integrates dy/dq = Dq y exactly (SBP), so the
+  // depth weights are Wz = (sum over rows of H J 1)/Ly; normalizing each kernel so that the sum over
+  // rows of H J Gw equals Wz gives sum_i (Hy Jy)_i Gw_i = 1 at every depth.
+  Vec Jd = NULL, hj = NULL, Wz = NULL, Nk = NULL;
+  ierr = VecDuplicate(D._y,&_work); CHKERRQ(ierr);
+  ierr = VecDuplicate(D._y,&hj); CHKERRQ(ierr);
+  if (D._gridSpacingType == "variableGridSpacing") {
+    Mat J,Jinv,qy,rz,yq,zr;
+    ierr = sbp->getCoordTrans(J,Jinv,qy,rz,yq,zr); CHKERRQ(ierr);
+    ierr = VecDuplicate(D._y,&Jd); CHKERRQ(ierr);
+    ierr = MatGetDiagonal(J,Jd); CHKERRQ(ierr);
+  }
+
+  InteriorFaultLift *any = NULL; // the row sums use a lift's fault-to-rows scatter (the same for every fault)
+  for (size_t k = 0; k < lifts.size(); k++) { if (lifts[k] != NULL) { any = lifts[k]; break; } }
+
+  for (size_t k = 0; k < faults.size(); k++) {
+    if (lifts[k] == NULL) { _Gw.push_back(NULL); continue; }
+    if (_workFault == NULL) {
+      ierr = VecDuplicate(faults[k]->_slip,&_workFault); CHKERRQ(ierr);
+      ierr = VecDuplicate(faults[k]->_slip,&Wz); CHKERRQ(ierr);
+      ierr = VecDuplicate(faults[k]->_slip,&Nk); CHKERRQ(ierr);
+      // Wz = (sum over rows of H J 1) / Ly
+      ierr = VecSet(_work,1.0); CHKERRQ(ierr);
+      if (Jd != NULL) { ierr = VecPointwiseMult(_work,_work,Jd); CHKERRQ(ierr); }
+      ierr = sbp->H(_work,hj); CHKERRQ(ierr);
+      ierr = VecSet(Wz,0.0); CHKERRQ(ierr);
+      ierr = VecScatterBegin(any->_fault2body,hj,Wz,ADD_VALUES,SCATTER_REVERSE); CHKERRQ(ierr);
+      ierr = VecScatterEnd(any->_fault2body,hj,Wz,ADD_VALUES,SCATTER_REVERSE); CHKERRQ(ierr);
+      ierr = VecScale(Wz,1.0/D._Ly); CHKERRQ(ierr);
+    }
+    // Gaussian in the distance from the fault, scaled by its value at the nearest rows (half a row
+    // spacing away) so that a width far below the spacing does not underflow; the normalization
+    // below removes any constant factor
+    Vec g;
+    ierr = VecDuplicate(D._y,&g); CHKERRQ(ierr);
+    const PetscScalar yf = lifts[k]->_yFault, d0 = lifts[k]->_dyPlus;
+    PetscInt Istart, Iend;
+    ierr = VecGetOwnershipRange(g,&Istart,&Iend); CHKERRQ(ierr);
+    const PetscScalar *y, *wA;
+    PetscScalar *gA;
+    ierr = VecGetArrayRead(D._y,&y); CHKERRQ(ierr);
+    ierr = VecGetArrayRead(w,&wA); CHKERRQ(ierr);
+    ierr = VecGetArray(g,&gA); CHKERRQ(ierr);
+    for (PetscInt Jj = 0; Jj < Iend - Istart; Jj++) {
+      if (!(wA[Jj] > 0)) { SETERRQ(PETSC_COMM_SELF,PETSC_ERR_ARG_OUTOFRANGE,"the frictional-heat width w must be > 0 at every depth"); }
+      const PetscScalar d = y[Jj] - yf;
+      gA[Jj] = exp(-(d*d - d0*d0)/(2.*wA[Jj]*wA[Jj]));
+    }
+    ierr = VecRestoreArrayRead(D._y,&y); CHKERRQ(ierr);
+    ierr = VecRestoreArrayRead(w,&wA); CHKERRQ(ierr);
+    ierr = VecRestoreArray(g,&gA); CHKERRQ(ierr);
+
+    // N = (sum over rows of H J g) / Wz; g /= N
+    if (Jd != NULL) { ierr = VecPointwiseMult(_work,g,Jd); CHKERRQ(ierr); }
+    else { ierr = VecCopy(g,_work); CHKERRQ(ierr); }
+    ierr = sbp->H(_work,hj); CHKERRQ(ierr);
+    ierr = VecSet(Nk,0.0); CHKERRQ(ierr);
+    ierr = VecScatterBegin(lifts[k]->_fault2body,hj,Nk,ADD_VALUES,SCATTER_REVERSE); CHKERRQ(ierr);
+    ierr = VecScatterEnd(lifts[k]->_fault2body,hj,Nk,ADD_VALUES,SCATTER_REVERSE); CHKERRQ(ierr);
+    ierr = VecPointwiseDivide(Nk,Nk,Wz); CHKERRQ(ierr);
+    ierr = VecScatterBegin(lifts[k]->_fault2body,Nk,_work,INSERT_VALUES,SCATTER_FORWARD); CHKERRQ(ierr);
+    ierr = VecScatterEnd(lifts[k]->_fault2body,Nk,_work,INSERT_VALUES,SCATTER_FORWARD); CHKERRQ(ierr);
+    ierr = VecPointwiseDivide(g,g,_work); CHKERRQ(ierr);
+    ierr = PetscObjectSetName((PetscObject) g, "Gw"); CHKERRQ(ierr);
+    _Gw.push_back(g);
+  }
+  ierr = VecDestroy(&Jd); CHKERRQ(ierr);
+  ierr = VecDestroy(&hj); CHKERRQ(ierr);
+  ierr = VecDestroy(&Wz); CHKERRQ(ierr);
+  ierr = VecDestroy(&Nk); CHKERRQ(ierr);
+  return ierr;
+}
+
+
+PetscErrorCode FaultWorkKernel::spread(const vector<Fault_qd*>& faults, Vec& Q)
+{
+  PetscErrorCode ierr = 0;
+  ierr = VecSet(Q,0.0); CHKERRQ(ierr);
+  for (size_t k = 0; k < faults.size(); k++) {
+    if (_Gw[k] == NULL) { continue; }
+    ierr = VecPointwiseMult(_workFault,faults[k]->_tauP,faults[k]->_slipVel); CHKERRQ(ierr);
+    ierr = VecScatterBegin(_lifts[k]->_fault2body,_workFault,_work,INSERT_VALUES,SCATTER_FORWARD); CHKERRQ(ierr);
+    ierr = VecScatterEnd(_lifts[k]->_fault2body,_workFault,_work,INSERT_VALUES,SCATTER_FORWARD); CHKERRQ(ierr);
+    ierr = VecPointwiseMult(_work,_work,_Gw[k]); CHKERRQ(ierr);
+    ierr = VecAXPY(Q,1.0,_work); CHKERRQ(ierr);
+  }
+  return ierr;
+}
+
+
+PetscErrorCode FaultWorkKernel::writeContext(PetscViewer& viewer, const vector<Fault_qd*>& faults)
+{
+  PetscErrorCode ierr = 0;
+  for (size_t k = 0; k < faults.size(); k++) {
+    if (_Gw[k] == NULL) { continue; }
+    ierr = PetscViewerHDF5PushGroup(viewer, faults[k]->group().c_str()); CHKERRQ(ierr);
+    ierr = VecView(_Gw[k], viewer); CHKERRQ(ierr);
+    ierr = PetscViewerHDF5PopGroup(viewer); CHKERRQ(ierr);
+  }
+  return ierr;
+}

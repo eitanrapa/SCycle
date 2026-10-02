@@ -139,6 +139,8 @@ public:
   Vec                             _vel, _rhsVel, _surfVel;
   Vec                             _bcLRate, _bcRRate, _bcTRate, _bcBRate;
   FaultSeries                     _series;
+  FaultWorkKernel                 _faultWork; // interior faults with heat: frictional work spread into the body
+  Vec                             _Qfault;    // its result, the heat equation's frictional source
   LinearElastic    *_material; // linear elastic off-fault material properties
   HeatEquation     *_he;
   PressureEq       *_p;

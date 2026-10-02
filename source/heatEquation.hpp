@@ -141,6 +141,8 @@ public:
   Vec _Tamb,_dT,_T; // full domain: ambient temperature, change in temperature from ambiant, and total temperature
   Vec _k,_rho,_c; // thermal conductivity, density, heat capacity,
   Vec _Qrad,_Qfric,_Qvisc,_Q; // source terms: radioactive decay, frictional, viscous, total heat generation
+  const Vec *_faultHeat; // if set, the frictional source (body field, kW/m^3) of interior faults, used for Qfric
+  PetscErrorCode setFaultHeatSource(const Vec* Q); // see FaultWorkKernel (multiFault.hpp)
 
   // constructor and destructor
   HeatEquation(Domain& D);

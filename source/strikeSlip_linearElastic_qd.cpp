@@ -26,7 +26,7 @@ StrikeSlip_LinearElastic_qd::StrikeSlip_LinearElastic_qd(Domain &D)
   _bcRType("remoteLoading"),_bcTType("freeSurface"),_bcLType("symmFault"),_bcBType("freeSurface"),
   _quadEx(NULL),_quadImex(NULL),_fault(NULL),_interiorFaultKinkLift(1),
   _computeSurfVel(-1),_strideSeries(-1),_vel(NULL),_rhsVel(NULL),_surfVel(NULL),
-  _bcLRate(NULL),_bcRRate(NULL),_bcTRate(NULL),_bcBRate(NULL),
+  _bcLRate(NULL),_bcRRate(NULL),_bcTRate(NULL),_bcBRate(NULL),_Qfault(NULL),
   _material(NULL),_he(NULL),_p(NULL)
 {
   #if VERBOSE > 1
@@ -54,9 +54,6 @@ StrikeSlip_LinearElastic_qd::StrikeSlip_LinearElastic_qd(Domain &D)
     _fault = new Fault_qd(D,D._scatters["body2L"],_faultTypeScale);
     _faults.push_back(_fault);
     _lifts.push_back(NULL);
-    if (_thermalCoupling != "no" && _stateLaw == "flashHeating") {
-      _fault->setThermalFields(_he->_Tamb,_he->_k,_he->_c);
-    }
   }
 
   // interior faults, each midway between two grid rows
@@ -67,6 +64,9 @@ StrikeSlip_LinearElastic_qd::StrikeSlip_LinearElastic_qd(Domain &D)
 
   // a timeIntInds listing slip or psi covers every fault
   extendTimeIntInds(_timeIntInds,_scale,_faults);
+  if (_thermalCoupling != "no" && _stateLaw == "flashHeating") {
+    for (size_t i = 0; i < _faults.size(); i++) { _faults[i]->setThermalFields(_he->_Tamb,_he->_k,_he->_c); }
+  }
 
   // pressure diffusion equation
   if (_hydraulicCoupling != "no") {
@@ -90,6 +90,19 @@ StrikeSlip_LinearElastic_qd::StrikeSlip_LinearElastic_qd(Domain &D)
 
   // near each interior fault, sxy is computed from u without its jump
   _material->setInteriorFaults(_lifts);
+
+  // interior faults with heat: each fault's work spread over a Gaussian of width wVals centred on it
+  if (!_interiorFaultNames.empty() && _he != NULL) {
+    if (!(_he->_wMax > 0)) {
+      PetscPrintf(PETSC_COMM_WORLD,"Error: interior faults need a finite-width frictional heat source, wVals > 0 (wVals = 0 puts\n"
+        "       it into a boundary flux, which only a boundary fault has).\n");
+      assert(0);
+    }
+    PetscErrorCode ierr = _faultWork.setup(D,_material->_sbp,_he->_w,_faults,_lifts); CHKERRABORT(PETSC_COMM_WORLD,ierr);
+    VecDuplicate(D._y,&_Qfault);
+    VecSet(_Qfault,0.0);
+    _he->setFaultHeatSource(&_Qfault);
+  }
 
   // surface velocity: work vectors; the boundary data of the top and bottom do not change in time
   if (_computeSurfVel == 1) {
@@ -159,6 +172,7 @@ StrikeSlip_LinearElastic_qd::~StrikeSlip_LinearElastic_qd()
   VecDestroy(&_bcRRate);
   VecDestroy(&_bcTRate);
   VecDestroy(&_bcBRate);
+  VecDestroy(&_Qfault);
   delete _he;          _he = NULL;
   delete _p;           _p = NULL;
 
@@ -332,8 +346,9 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::checkInput()
         "       with <name>_stateVals and <name>_prestressScalar, or with the files <name>_psi and <name>_prestress.\n");
       assert(0);
     }
-    if (_thermalCoupling != "no" || _evolveTemperature == 1 || _computeSSHeatEq == 1 || _hydraulicCoupling != "no") {
-      PetscPrintf(PETSC_COMM_WORLD,"Error: heat and pore pressure are not yet coupled to interior faults (stage 4 of docs/TWO_FAULT_DESIGN.md).\n");
+    if (_computeSSHeatEq == 1 || _hydraulicCoupling != "no") {
+      PetscPrintf(PETSC_COMM_WORLD,"Error: the steady-state heat solve (computeSSHeatEq) and pore pressure are not yet coupled to\n"
+        "       interior faults (stage 4 of docs/TWO_FAULT_DESIGN.md).\n");
       assert(0);
     }
     if (_isMMS || _forcingType != "no") {
@@ -1115,6 +1130,7 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::writeContext()
   _D->write(_viewer_context);
   for (size_t i = 0; i < _faults.size(); i++) { _faults[i]->writeContext(_outputDir, _viewer_context); }
   ierr = writeInteriorFaultContext(_viewer_context,_faults,_lifts); CHKERRQ(ierr); // position, row and spacing
+  if (_Qfault != NULL) { ierr = _faultWork.writeContext(_viewer_context,_faults); CHKERRQ(ierr); } // heat kernels
   _material->writeContext(_outputDir, _viewer_context);
 
 
@@ -1344,8 +1360,11 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::d_dt(const PetscScalar time,const ma
   // heat equation
   // solve heat equation implicitly
   if (varIm.find("Temp") != varIm.end()) {
-    Vec V = dvarEx.find(_fault->_slipKey)->second; // heat source from the boundary fault
-    Vec tau = _fault->_tauP;
+    // heat source: the boundary fault's stress and slip rate, or the interior faults' work spread
+    // into the body (then the heat equation ignores V and tau)
+    Vec V = NULL, tau = NULL;
+    if (_fault != NULL) { V = dvarEx.find(_fault->_slipKey)->second; tau = _fault->_tauP; }
+    if (_Qfault != NULL) { ierr = _faultWork.spread(_faults,_Qfault); CHKERRQ(ierr); }
     Vec Told = varImo.find("Temp")->second;
     // arguments: time, slipVel, txy, sigmadev, dgxy, dgxz, T, old T, dt
     ierr = _he->be(time,V,tau,NULL,NULL,varIm["Temp"],Told,dt); CHKERRQ(ierr);

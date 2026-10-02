@@ -33,7 +33,7 @@ StrikeSlip_PowerLaw_qd::StrikeSlip_PowerLaw_qd(Domain&D)
     _quadEx(NULL),_quadImex(NULL),
     _fault(NULL),_interiorFaultKinkLift(1),_interiorFaultKinkSource(0),
     _computeSurfVel(-1),_strideSeries(-1),_vel(NULL),_rhsVel(NULL),_surfVel(NULL),_viscSourceRate(NULL),
-    _bcLRate(NULL),_bcRRate(NULL),_bcTRate(NULL),_bcBRate(NULL),
+    _bcLRate(NULL),_bcRRate(NULL),_bcTRate(NULL),_bcBRate(NULL),_Qfault(NULL),
     _material(NULL),_he(NULL),_p(NULL),_grainDist(NULL)
 {
   #if VERBOSE > 1
@@ -67,12 +67,6 @@ StrikeSlip_PowerLaw_qd::StrikeSlip_PowerLaw_qd(Domain&D)
     _fault = new Fault_qd(D,D._scatters["body2L"],_faultTypeScale); // fault
     _faults.push_back(_fault);
     _lifts.push_back(NULL);
-    if (_thermalCoupling.compare("no")!=0 && _stateLaw.compare("flashHeating")==0) {
-      Vec T; VecDuplicate(_D->_y,&T);
-      _he->getTemp(T);
-      _fault->setThermalFields(T,_he->_k,_he->_c);
-      VecDestroy(&T);
-    }
   }
 
   // interior faults, each midway between two grid rows; near each, the y-strain comes from u
@@ -83,6 +77,25 @@ StrikeSlip_PowerLaw_qd::StrikeSlip_PowerLaw_qd(Domain&D)
   }
   _material->setInteriorFaults(_lifts);
   extendTimeIntInds(_timeIntInds,_scale,_faults); // a timeIntInds listing slip or psi covers every fault
+  if (_thermalCoupling.compare("no")!=0 && _stateLaw.compare("flashHeating")==0) {
+    Vec T; VecDuplicate(_D->_y,&T);
+    _he->getTemp(T);
+    for (size_t i = 0; i < _faults.size(); i++) { _faults[i]->setThermalFields(T,_he->_k,_he->_c); }
+    VecDestroy(&T);
+  }
+
+  // interior faults with heat: each fault's work spread over a Gaussian of width wVals centred on it
+  if (!_interiorFaultNames.empty() && _evolveTemperature == 1) {
+    if (!(_he->_wMax > 0)) {
+      PetscPrintf(PETSC_COMM_WORLD,"Error: interior faults need a finite-width frictional heat source, wVals > 0 (wVals = 0 puts\n"
+        "       it into a boundary flux, which only a boundary fault has).\n");
+      assert(0);
+    }
+    PetscErrorCode ierr = _faultWork.setup(D,_material->_sbp,_he->_w,_faults,_lifts); CHKERRABORT(PETSC_COMM_WORLD,ierr);
+    VecDuplicate(D._y,&_Qfault);
+    VecSet(_Qfault,0.0);
+    _he->setFaultHeatSource(&_Qfault);
+  }
 
   //~ // pressure diffusion equation
   if (_hydraulicCoupling != "no") {
@@ -159,6 +172,7 @@ StrikeSlip_PowerLaw_qd::~StrikeSlip_PowerLaw_qd()
   VecDestroy(&_bcRRate);
   VecDestroy(&_bcTRate);
   VecDestroy(&_bcBRate);
+  VecDestroy(&_Qfault);
   delete _he;          _he = NULL;
   delete _p;           _p = NULL;
   delete _grainDist;   _grainDist = NULL;
@@ -345,9 +359,9 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::checkInput()
         "       <name>_psi and <name>_prestress; the viscous strains start at zero.\n");
       assert(0);
     }
-    if (_evolveTemperature == 1 || _computeSSTemperature == 1 || _hydraulicCoupling != "no" || _stateLaw == "flashHeating") {
-      PetscPrintf(PETSC_COMM_WORLD,"Error: evolving temperature, flash heating and pore pressure are not yet coupled to interior faults\n"
-        "       (stage 4 of docs/TWO_FAULT_DESIGN.md); thermalCoupling with evolveTemperature = 0 uses the static geotherm.\n");
+    if (_computeSSTemperature == 1 || _hydraulicCoupling != "no") {
+      PetscPrintf(PETSC_COMM_WORLD,"Error: the steady-state heat solve (computeSSHeatEq) and pore pressure are not yet coupled to\n"
+        "       interior faults (stage 4 of docs/TWO_FAULT_DESIGN.md).\n");
       assert(0);
     }
     if (_isMMS || _forcingType != "no" || _bcTType == "atan_u") {
@@ -1040,6 +1054,7 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::writeContext()
   _D->write(_viewer_context);
   for (size_t i = 0; i < _faults.size(); i++) { _faults[i]->writeContext(_outputDir, _viewer_context); }
   ierr = writeInteriorFaultContext(_viewer_context,_faults,_lifts); CHKERRQ(ierr); // position, row and spacing
+  if (_Qfault != NULL) { ierr = _faultWork.writeContext(_viewer_context,_faults); CHKERRQ(ierr); } // heat kernels
   _material->writeContext(_outputDir, _viewer_context);
   if (_he != NULL) { _he->writeContext(_outputDir, _viewer_context); }
   if (_hydraulicCoupling!="no") { _p->writeContext(_outputDir, _viewer_context); }
@@ -1290,9 +1305,11 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::d_dt(const PetscScalar time,const map<str
   // heat equation
   if (_evolveTemperature == 1 && varIm.find("Temp") != varIm.end()) {
 
-    // frictional shear heating source terms (the boundary fault; interior faults refuse heat for now)
-    Vec V = dvarEx.find(_fault->_slipKey)->second;
-    Vec tau = _fault->_tauP;
+    // frictional shear heating source terms: the boundary fault's stress and slip rate, or the
+    // interior faults' work spread into the body (then the heat equation ignores V and tau)
+    Vec V = NULL, tau = NULL;
+    if (_fault != NULL) { V = dvarEx.find(_fault->_slipKey)->second; tau = _fault->_tauP; }
+    if (_Qfault != NULL) { ierr = _faultWork.spread(_faults,_Qfault); CHKERRQ(ierr); }
 
     // compute viscous strain rate that contributes to viscous shear heating:
     Vec dgV_sh;
