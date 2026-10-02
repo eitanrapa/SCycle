@@ -23,6 +23,7 @@
 #include "fault.hpp"
 #include "multiFault.hpp"
 #include "hardeningState.hpp"
+#include "waterState.hpp"
 #include "pressureEq.hpp"
 #include "heatEquation.hpp"
 #include "powerLaw.hpp"

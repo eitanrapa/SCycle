@@ -28,6 +28,9 @@ PowerLaw::PowerLaw(Domain& D,std::string bcRType,std::string bcTType,std::string
   #endif
 
   _hardH = NULL;
+  _wDislWetDry = "no";
+  _wetMix = "log";
+  _wetChi = NULL;
   loadSettings(_file);
   checkInput();
   allocateFields(); // initialize fields
@@ -70,6 +73,7 @@ PowerLaw::PowerLaw(Domain& D,std::string bcRType,std::string bcTType,std::string
 PowerLaw::~PowerLaw()
 {
   VecDestroy(&_hardH);
+  VecDestroy(&_wetChi);
   #if VERBOSE > 1
     string funcName = "PowerLaw::~PowerLaw";
     PetscPrintf(PETSC_COMM_WORLD,"Starting %s in %s\n",funcName.c_str(),FILENAME);
@@ -162,6 +166,7 @@ PetscErrorCode PowerLaw::loadSettings(const char *file)
     else if (var.compare("wDislCreep2")==0) { _wDislCreep2 = rhs.c_str(); }
     else if (var.compare("wDiffCreep")==0) { _wDiffCreep = rhs.c_str(); }
     else if (var.compare("wLinearMaxwell")==0) { _wLinearMaxwell = rhs.c_str(); }
+    else if (var.compare("wDislWetDry")==0) { _wDislWetDry = rhs.c_str(); }
 
     // linear Maxwell viscosity
     else if (var.compare("effViscVals_lm")==0) { loadVectorFromInputFile(rhsFull,_effViscVals_lm); }
@@ -205,6 +210,10 @@ PetscErrorCode PowerLaw::checkInput()
 // ensure wDislCreep2 only yes if wDislCreep is also yes
 PetscPrintf(PETSC_COMM_WORLD,"wDislCreep = %s\n",_wDislCreep.c_str());
 PetscPrintf(PETSC_COMM_WORLD,"wDislCreep2 = %s\n",_wDislCreep2.c_str());
+if (_wDislWetDry != "no" && (_wDislWetDry != "yes" || _wDislCreep != "yes" || _wDislCreep2 != "yes")) {
+    PetscPrintf(PETSC_COMM_WORLD,"Error: wDislWetDry = yes mixes disl_ (dry) and disl2_ (wet): it needs wDislCreep = yes and wDislCreep2 = yes.\n");
+    assert(0);
+}
 if (_wDislCreep=="no" && _wDislCreep2=="yes") {
     assert(0);
   }
@@ -996,6 +1005,7 @@ PetscErrorCode PowerLaw::computeViscosity(const PetscScalar viscCap)
     if (_wDislCreep.compare("yes")==0) { ierr = applyHardening(_disl->_invEffVisc,_disl->_n,true); CHKERRQ(ierr); }
     if (_wDislCreep2.compare("yes")==0) { ierr = applyHardening(_disl2->_invEffVisc,_disl2->_n,true); CHKERRQ(ierr); }
   }
+  if (_wDislWetDry == "yes") { ierr = mixWetDry(); CHKERRQ(ierr); }
   if (_wDiffCreep.compare("yes")==0) { _diff->computeInvEffVisc(_T,_sdev,_grainSize); }
 
   // 1 / effVisc = 1/(plastic eff visc) + 1/(disl eff visc) + 1/(diff eff visc) + 1/(max eff visc)
@@ -1135,6 +1145,58 @@ PetscErrorCode PowerLaw::computeTotalStrains()
   #endif
   return ierr;
 }
+
+// water content (WaterState): chi for the wet-dry mix of dislocation creep, and the wetted fraction
+// max(0, (chi - chiC)/(1 - chiC)) for pressure solution (wetDist)
+PetscErrorCode PowerLaw::updateWetDist(const Vec& chi, const PetscScalar chiC, const std::string& mix)
+{
+  PetscErrorCode ierr = 0;
+  if (_wetChi == NULL) {
+    ierr = VecDuplicate(chi,&_wetChi); CHKERRQ(ierr);
+    ierr = PetscObjectSetName((PetscObject) _wetChi, "wetChi"); CHKERRQ(ierr);
+  }
+  ierr = VecCopy(chi,_wetChi); CHKERRQ(ierr);
+  _wetMix = mix;
+  ierr = VecCopy(chi,_wetDist); CHKERRQ(ierr);
+  if (chiC > 0) {
+    ierr = VecShift(_wetDist,-chiC); CHKERRQ(ierr);
+    ierr = VecScale(_wetDist,1.0/(1.0 - chiC)); CHKERRQ(ierr);
+    PetscInt Istart, Iend;
+    ierr = VecGetOwnershipRange(_wetDist,&Istart,&Iend); CHKERRQ(ierr);
+    PetscScalar *w;
+    ierr = VecGetArray(_wetDist,&w); CHKERRQ(ierr);
+    for (PetscInt Jj = 0; Jj < Iend - Istart; Jj++) { w[Jj] = PetscMax(0.0,w[Jj]); }
+    ierr = VecRestoreArray(_wetDist,&w); CHKERRQ(ierr);
+  }
+  return ierr;
+}
+
+
+// disl_ is the dry and disl2_ the wet end-member: their mix, by the wetness chi (WaterState) or
+// wetDist, goes into disl_ and disl2_ is set to 0, so the sum and dgVdev_disl count it once.
+// log: (1/eta_wet)^chi (1/eta_dry)^(1 - chi); arithmetic: chi/eta_wet + (1 - chi)/eta_dry.
+PetscErrorCode PowerLaw::mixWetDry()
+{
+  PetscErrorCode ierr = 0;
+  PetscInt Istart, Iend;
+  ierr = VecGetOwnershipRange(_disl->_invEffVisc,&Istart,&Iend); CHKERRQ(ierr);
+  PetscScalar *dry, *wet;
+  const PetscScalar *chi;
+  ierr = VecGetArray(_disl->_invEffVisc,&dry); CHKERRQ(ierr);
+  ierr = VecGetArray(_disl2->_invEffVisc,&wet); CHKERRQ(ierr);
+  ierr = VecGetArrayRead(_wetChi != NULL ? _wetChi : _wetDist,&chi); CHKERRQ(ierr);
+  const bool logMix = (_wetMix == "log");
+  for (PetscInt Jj = 0; Jj < Iend - Istart; Jj++) {
+    const PetscScalar c = chi[Jj];
+    dry[Jj] = logMix ? pow(wet[Jj],c)*pow(dry[Jj],1.0 - c) : c*wet[Jj] + (1.0 - c)*dry[Jj];
+    wet[Jj] = 0.0;
+  }
+  ierr = VecRestoreArray(_disl->_invEffVisc,&dry); CHKERRQ(ierr);
+  ierr = VecRestoreArray(_disl2->_invEffVisc,&wet); CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(_wetChi != NULL ? _wetChi : _wetDist,&chi); CHKERRQ(ierr);
+  return ierr;
+}
+
 
 // strain hardening (HardeningState): keep H(S) for computeViscosity and guessSteadyStateEffVisc
 PetscErrorCode PowerLaw::updateHardening(const Vec& H)
@@ -1380,6 +1442,7 @@ PetscErrorCode PowerLaw::guessSteadyStateEffVisc(const PetscScalar strainRate)
     if (_wDislCreep.compare("yes")==0) { ierr = applyHardening(_disl->_invEffVisc,_disl->_n,false); CHKERRQ(ierr); }
     if (_wDislCreep2.compare("yes")==0) { ierr = applyHardening(_disl2->_invEffVisc,_disl2->_n,false); CHKERRQ(ierr); }
   }
+  if (_wDislWetDry == "yes") { ierr = mixWetDry(); CHKERRQ(ierr); } // the same mix of the two guesses
   if (_wDiffCreep.compare("yes")==0) { _diff->guessInvEffVisc(_T,strainRate,_grainSize); }
 
   // 1 / effVisc = 1/(plastic eff visc) + 1/(disl eff visc) + 1/(diff eff visc) + 1/(max eff visc)

@@ -116,6 +116,8 @@ StrikeSlip_PowerLaw_qd::StrikeSlip_PowerLaw_qd(Domain&D)
   {
     HardeningState *h = new HardeningState(D,_material->_T);
     if (h->_type == "off") { delete h; } else { _bulkStates.push_back(h); }
+    WaterState *w = new WaterState(D,_material->_wetDist);
+    if (w->_type == "off") { delete w; } else { _bulkStates.push_back(w); }
   }
   if (!_bulkStates.empty()) {
     if (_material->_wLinearMaxwell == "yes" || _isMMS) {
@@ -125,6 +127,11 @@ StrikeSlip_PowerLaw_qd::StrikeSlip_PowerLaw_qd(Domain&D)
     for (size_t i = 0; i < _bulkStates.size(); i++) {
       if (_bulkStates[i]->_name == "hard" && _material->_wDislCreep != "yes") {
         PetscPrintf(PETSC_COMM_WORLD,"Error: strain hardening (hard_type) acts on dislocation creep: it needs wDislCreep = yes.\n");
+        assert(0);
+      }
+      if (_bulkStates[i]->_name == "water" && _material->_wDislWetDry != "yes" && _material->_wDissPrecCreep != "yes") {
+        PetscPrintf(PETSC_COMM_WORLD,"Error: water content (water_type) acts through the wet-dry mix of dislocation creep (wDislWetDry = yes)\n"
+          "       or pressure solution (wDissPrecCreep = yes); neither is on.\n");
         assert(0);
       }
       _bulkStates[i]->addErrorControl(_timeIntInds,_scale);

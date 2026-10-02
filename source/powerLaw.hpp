@@ -65,6 +65,9 @@ class PowerLaw
     Vec                   _gTxy,_gVxy,_dgVxy; // total strain, viscous strain, and viscous strain rate
     std::vector<InteriorFaultLift*> _lifts; // interior faults: gTxy is corrected near each (not owned)
     Vec                   _hardH; // strain hardening H(S) (HardeningState), NULL when off
+    std::string           _wDislWetDry; // yes: disl_ is the dry, disl2_ the wet end-member, mixed by the wetness
+    std::string           _wetMix;      // log (default) or arithmetic
+    Vec                   _wetChi;      // the wetness of the mix (WaterState), NULL: wetDist
     Vec                   _gTxz,_gVxz,_dgVxz; // total strain, viscous strain, and viscous strain rate
     Vec                   _dgVdev,_dgVdev_disl; // deviatoric strain rate
 
@@ -135,6 +138,8 @@ class PowerLaw
     PetscErrorCode setInteriorFaults(const std::vector<InteriorFaultLift*>& lifts); // NULL entries are skipped
     PetscErrorCode updateHardening(const Vec& H); // strain hardening: dislocation creep at a given stress / H^n
     PetscErrorCode applyHardening(Vec& invEffVisc, const Vec& n, const bool atGivenStress);
+    PetscErrorCode updateWetDist(const Vec& chi, const PetscScalar chiC, const std::string& mix); // WaterState
+    PetscErrorCode mixWetDry(); // disl_ (dry) and disl2_ (wet) into disl_, by the wetness
     PetscErrorCode computeStresses();
     PetscErrorCode computeSDev();
     PetscErrorCode computeDevViscStrainRates(); // deviatoric strains and strain rates
