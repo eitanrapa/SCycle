@@ -235,12 +235,12 @@ struct ComputeVel_qd : public RootFinderContext
 struct ComputeVel_fd : public RootFinderContext
 {
   // shallow copies of contextual fields
-  const PetscScalar  *_locked, *_Phi, *_an, *_psi, *_fricPen, *_a, *_sNEff;
+  const PetscScalar  *_locked, *_Phi, *_an, *_psi, *_fricPen, *_a, *_sNEff, *_Co;
   const PetscInt      _N; // length of the arrays
   const PetscScalar   _v0, _vL;
 
-  // constructor
-  ComputeVel_fd(const PetscScalar* locked, const PetscInt N,const PetscScalar* Phi, const PetscScalar* an, const PetscScalar* psi, const PetscScalar* fricPen,const PetscScalar* a,const PetscScalar* sneff, const PetscScalar v0, const PetscScalar vL);
+  // constructor (Co: cohesion, MPa)
+  ComputeVel_fd(const PetscScalar* locked, const PetscInt N,const PetscScalar* Phi, const PetscScalar* an, const PetscScalar* psi, const PetscScalar* fricPen,const PetscScalar* a,const PetscScalar* sneff, const PetscScalar v0, const PetscScalar vL, const PetscScalar* Co);
 
   // command to perform root-finding process, once contextual variables have been set
   PetscErrorCode computeVel(PetscScalar* slipVelA, const PetscScalar rootTol, PetscInt64& rootIts, const PetscInt maxNumIts);

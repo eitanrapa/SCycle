@@ -1414,13 +1414,6 @@ Fault_fd::Fault_fd(Domain &D, VecScatter& scatter2fault, const int& faultTypeSca
     loadVecFromInputFile(_tau0,_D->_inputDir,"prestress");
   }
 
-  {
-    PetscScalar maxCohesion = 0;
-    VecMax(_cohesion,NULL,&maxCohesion);
-    if (maxCohesion > 0) {
-      PetscPrintf(PETSC_COMM_WORLD,"Warning: cohesion is not included in the fully dynamic friction law (Fault_fd).\n");
-    }
-  }
 
   #if VERBOSE > 1
     PetscPrintf(PETSC_COMM_WORLD,"Ending %s in %s\n",funcName.c_str(),FILENAME);
@@ -1601,8 +1594,11 @@ PetscErrorCode Fault_fd::computeVel()
   ierr = VecGetOwnershipRange(_slipVel,&Istart,&Iend);CHKERRQ(ierr);
   PetscInt N = Iend - Istart;
 
-  ComputeVel_fd temp(locked, N,Phi,an,psi,fricPen,a,sneff, _v0, _D->_vL);
+  const PetscScalar *Co;
+  VecGetArrayRead(_cohesion,&Co);
+  ComputeVel_fd temp(locked, N,Phi,an,psi,fricPen,a,sneff, _v0, _D->_vL, Co);
   ierr = temp.computeVel(slipVel, _rootTol, _rootIts, _maxNumIts); CHKERRQ(ierr);
+  VecRestoreArrayRead(_cohesion,&Co);
 
   VecRestoreArray(_Phi,&Phi);
   VecRestoreArray(_an,&an);
@@ -1780,8 +1776,9 @@ PetscErrorCode Fault_fd::d_dt(const PetscScalar time,const PetscScalar deltaT, m
   ierr = VecGetArrayRead(_a, &a);
   ierr = VecGetArrayRead(_Phi, &Phi);
   ierr = VecGetArrayRead(_alphay, &alphay);
-  const PetscScalar *locked;
+  const PetscScalar *locked, *Co;
   ierr = VecGetArrayRead(_locked, &locked);
+  ierr = VecGetArrayRead(_cohesion, &Co);
 
   PetscInt Jj = 0;
   for (Ii = Istart; Ii < Iend; Ii++) {
@@ -1798,7 +1795,7 @@ PetscErrorCode Fault_fd::d_dt(const PetscScalar time,const PetscScalar deltaT, m
       // slipVel[Jj] = 0;
     }
     else {
-      PetscScalar fric = strength_psi(sNEff[Jj], psi[Jj], slipVel[Jj], a[Jj], _v0);
+      PetscScalar fric = Co[Jj] + strength_psi(sNEff[Jj], psi[Jj], slipVel[Jj], a[Jj], _v0); // cohesion plus friction
       PetscScalar alpha = 1.0 / (rho[Jj] * alphay[Jj]) * fric / slipVel[Jj];
       PetscScalar A = 1.0 + alpha * deltaT;
       slipVel[Jj] = Phi[Jj] / (1. + _deltaT * alpha);
@@ -1819,6 +1816,7 @@ PetscErrorCode Fault_fd::d_dt(const PetscScalar time,const PetscScalar deltaT, m
   ierr = VecRestoreArrayRead(_Phi, &Phi);
   ierr = VecRestoreArrayRead(_alphay, &alphay);
   ierr = VecRestoreArrayRead(_locked, &locked);
+  ierr = VecRestoreArrayRead(_cohesion, &Co);
 
   // update state variable
   computeStateEvolution(varNext["psi"], var.find("psi")->second, varPrev.find("psi")->second);
@@ -1830,6 +1828,7 @@ PetscErrorCode Fault_fd::d_dt(const PetscScalar time,const PetscScalar deltaT, m
 
   // compute frictional strength of fault
   strength_psi_Vec(_strength, _psi, _slipVel, _a, _sNEff, _v0);
+  VecAXPY(_strength,1.0,_cohesion); // plus the cohesion (magnitudes, as in the dynamic solve)
 
   #if VERBOSE > 1
     PetscPrintf(PETSC_COMM_WORLD,"Ending %s in %s\n",funcName.c_str(),FILENAME);
@@ -2064,8 +2063,8 @@ PetscErrorCode Fault_fd::writeCheckpoint(PetscViewer& viewer)
 // ===========================================================================
 
 // constructor
-ComputeVel_fd::ComputeVel_fd(const PetscScalar* locked, const PetscInt N,const PetscScalar* Phi, const PetscScalar* an, const PetscScalar* psi, const PetscScalar* fricPen,const PetscScalar* a,const PetscScalar* sneff, const PetscScalar v0, const PetscScalar vL)
-: _locked(locked), _Phi(Phi),_an(an),_psi(psi),_fricPen(fricPen),_a(a),_sNEff(sneff),_N(N), _v0(v0), _vL(vL)
+ComputeVel_fd::ComputeVel_fd(const PetscScalar* locked, const PetscInt N,const PetscScalar* Phi, const PetscScalar* an, const PetscScalar* psi, const PetscScalar* fricPen,const PetscScalar* a,const PetscScalar* sneff, const PetscScalar v0, const PetscScalar vL, const PetscScalar* Co)
+: _locked(locked), _Phi(Phi),_an(an),_psi(psi),_fricPen(fricPen),_a(a),_sNEff(sneff),_Co(Co),_N(N), _v0(v0), _vL(vL)
 { }
 
 // compute absolute value of slip velocity for fully dynamic case
@@ -2089,8 +2088,12 @@ PetscErrorCode ComputeVel_fd::computeVel(PetscScalar* slipVelA, const PetscScala
       slipVelA[Jj] = _vL;
     }
     else {
+      // V solves |Phi| - V = fricPen*(Co + rate-and-state strength(V)); the node stays stuck while
+      // the drive |Phi| cannot overcome the cohesion (with Co = 0 this is the original problem)
+      const PetscScalar PhiEff = abs(_Phi[Jj]) - _fricPen[Jj]*_Co[Jj];
+      if (_Co[Jj] > 0 && PhiEff <= 0) { slipVelA[Jj] = 0.; continue; }
       left = 0.;
-      right = abs(_Phi[Jj]);
+      right = PhiEff;
       // check bounds
       if (PetscIsNanReal(left)) {
         PetscPrintf(PETSC_COMM_WORLD,"\n\nError in ComputeVel_fd::computeVel: left bound evaluated to NaN.\n");
@@ -2133,7 +2136,7 @@ PetscErrorCode ComputeVel_fd::getResid(const PetscInt Jj,const PetscScalar vel,P
 {
   PetscErrorCode ierr = 0;
   PetscScalar strength = strength_psi(_sNEff[Jj], _psi[Jj], vel, _a[Jj] , _v0); // frictional strength
-  PetscScalar stress = abs(_Phi[Jj]) - vel; // stress on fault
+  PetscScalar stress = abs(_Phi[Jj]) - _fricPen[Jj]*_Co[Jj] - vel; // stress on fault, less the cohesion
 
   *out = _fricPen[Jj] * strength - stress;
   assert(!PetscIsNanReal(*out));
@@ -2155,7 +2158,7 @@ PetscErrorCode ComputeVel_fd::getResid(const PetscInt Jj,const PetscScalar vel,P
     Phi_temp = -Phi_temp;
   }
 
-  PetscScalar stress = Phi_temp - vel; // stress on fault
+  PetscScalar stress = Phi_temp - _fricPen[Jj]*_Co[Jj] - vel; // stress on fault, less the cohesion
 
   *out = constraints - stress;
   PetscScalar A = _a[Jj] * _sNEff[Jj];
