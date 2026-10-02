@@ -1,0 +1,53 @@
+# Method-of-manufactured-solutions (MMS) convergence test for the linear-elastic
+# quasi-dynamic momentum balance (StrikeSlip_LinearElastic_qd).
+#
+# Run from the repository root:   ./source/main tools/mms.in
+# main.cpp loops over Ny = Nz = 21, 41, 81 and prints one line per grid:
+#   order  Ny  dy  L2 error in u  log2  L2 error in sigma_xy  log2
+# Manufactured fields (LinearElastic::zzmms_*): mu = sin(y)sin(z) + 30, u = f(y,z) g(t).
+# Boundary data come from the exact solution, so the displacement error is purely spatial
+# and a few time steps suffice. Expected convergence rates for order = 4: about 3.5 for u
+# and 2.5 for sigma_xy (errors 4.3e-9 and 1.2e-4 at Ny = 81); about 2.2 for u with order = 2
+# (October 2026, PETSc 3.26).
+# Change order (2 or 4) and gridSpacingType (variableGridSpacing / constantGridSpacing).
+
+order = 4
+gridSpacingType = variableGridSpacing
+Ny = 21
+Nz = 21
+Ly = 1
+Lz = 1
+isMMS = 1
+bulkDeformationType = linearElastic
+momentumBalanceType = quasidynamic
+
+# fault parameters (required by the input checks; they do not affect the MMS error)
+stateLaw = agingLaw
+DcVals = [20e-3 20e-3]
+DcDepths = [0 60]
+aVals = [0.015 0.015]
+aDepths = [0 60]
+bVals = [0.02 0.02]
+bDepths = [0 60]
+sNVals = [50 50]
+sNDepths = [0 60]
+muVals = [30 30]
+muDepths = [0 60]
+rhoVals = [3 3]
+rhoDepths = [0 60]
+
+timeIntegrator = RK43
+maxStepCount = 5
+initTime = 0
+maxTime = 100
+initDeltaT = 1e-3
+minDeltaT = 1e-3
+timeStepTol = 1e-8
+timeIntInds = [psi slip]
+stride1D = 0
+stride2D = 0
+
+outputDir = data/mms_
+saveChkpts = 0
+restartFromChkpt = 0
+restartFromChkptSS = 0
