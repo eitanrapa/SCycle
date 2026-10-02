@@ -21,7 +21,8 @@ strains faster by (2 km)/w_c, so gamma_h = 1.25e-3 here stands for 0.06 in a 40 
   lockin  both, beta 2, T_D 0.3 (N_loc = 9)            (0D: lock-in)
   share   both, beta 0.5, T_D 0.1 (N_loc = 0.75)       (0D: equal sharing)
 
-Each runs 3.8e11 s (12,000 yr). Usage:
+Each runs 3.8e11 s (12,000 yr), with a checkpoint every 2000 steps and a 2D snapshot every 20000.
+Usage:
   python3 examples/two_faults/stage5_batch1.py OUTDIR
   for n in null hard fab alt lockin share; do ./source/main OUTDIR/$n.in > OUTDIR/$n/run.log & done
   python3 tools/two_fault.py OUTDIR/alt/ --zref 10 --window 1000
@@ -43,5 +44,5 @@ for name, keys in cases.items():
     for k in keys: args += ['--set', k]
     subprocess.run(args, check=True)
     p = os.path.join(out, name + '.in')
-    s = open(p).read().replace('strideChkpt = 500', 'strideChkpt = 2000')
+    s = open(p).read().replace('strideChkpt = 500', 'strideChkpt = 2000').replace('stride2D = 0', 'stride2D = 20000')
     open(p, 'w').write(s)
