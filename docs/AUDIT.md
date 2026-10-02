@@ -4,7 +4,7 @@
 
 This document records an audit of SCycle, the C++/PETSc code for 2D antiplane earthquake-cycle simulations, and the fixes made on branch `audit/fixes-2026-10`. The audit started from an unmodified clone of upstream master (github.com/kali-allison/SCycle, last upstream commit `74a132f` of 19 December 2024).
 
-The branch adds 67 commits to master: 58 fixes, 3 tool commits, and one commit each for the build, the repository contents, the example inputs, a code comment, the SEAS BP1 benchmark with an input-key checker, and this documentation. Together they fix 94 distinct findings (32 Critical, 25 High, 25 Medium, 12 Low), listed in section 3. Three are fixed only in part (A-35, A-45, A-57), and the MATLAB tools of A-93 were not run. Section 5 lists 16 open items and documented limitations. Each commit message records its finding: what was wrong, the failure it caused, the fix and the test evidence (`git show <hash>`). A few spot tests from early in the audit appear only in this document; their entries say so.
+The branch adds 69 commits to master: 58 fixes, 3 tool commits, 2 commits for the repository contents, 2 for this documentation, and one each for the build, the example inputs, a code comment, and the SEAS BP1 benchmark with an input-key checker. Together they fix 94 distinct findings (32 Critical, 25 High, 25 Medium, 12 Low), listed in section 3. Three are fixed only in part (A-35, A-45, A-57), and the MATLAB tools of A-93 were not run. Section 5 lists 15 open items and documented limitations. Each commit message records its finding: what was wrong, the failure it caused, the fix and the test evidence (`git show <hash>`). A few spot tests from early in the audit appear only in this document; their entries say so.
 
 How the fixes were verified:
 
@@ -380,9 +380,9 @@ Section 4 summarizes how much each of these changes results.
 - Defect: the hand-written dependency list named files that do not exist (`mainLinearElastic.cpp`, `sbpOps_sc.hpp`) and missed headers, -Werror was always on although new compilers warn on this code, and an FDP target pointed at sources in `source/sfsbp/`.
 - Evidence: dependencies come from `-MMD -MP` and -Werror is opt-in (`WERROR=1`); after `009d188` and `2005eed` the code compiles without warnings.
 
-**A-82. Binaries and OS files were tracked.** Low. `8c44ddc`. `.gitignore`.
-- Defect: two Linux ELF test executables, generated test data and .DS_Store files were in git, and `.gitignore` ignored itself.
-- Evidence: untracked (the files stay on disk) and covered by `.gitignore`.
+**A-82. Binaries, OS files and stale test sources were tracked.** Low. `8c44ddc`, `f82d430`. `.gitignore`, `tests/`.
+- Defect: two Linux ELF test executables, generated test data and .DS_Store files were in git, and `.gitignore` ignored itself. `tests/` also held old copies of source files that had diverged from `source/` (last changed upstream in March 2019), test drivers that no longer built against the current code, and cluster scripts such as `runMazama.sh`.
+- Evidence: the binaries are untracked and covered by `.gitignore`; `tests/` was removed at the repository owner's request. The maintained checks are `tools/regress.sh`, `tools/mms.in` and `tools/checkkeys.py`.
 
 **A-83. There was no automated regression check.** Low. `26139e7`, `9c0cc61`. `tools/regress.sh`.
 - Defect: nothing compared output across code changes; the first version of the script also passed runs whose datasets had a different shape, because h5diff exits 0 when objects are not comparable.
@@ -394,7 +394,7 @@ Section 4 summarizes how much each of these changes results.
 
 **A-85. Misspelled or retired input keys were ignored without a warning.** Low. `df64c96`. `tools/checkkeys.py`.
 - Defect: SCycle silently ignores keys it does not read (for example `retartFromChkptSS` in ex1 and ex2); the code still does, but `tools/checkkeys.py` now lists them.
-- Evidence: all examples, `SEAS_benchmarks/BP1/BP1.in` and `tools/mms.in` pass; for its limit see O-16.
+- Evidence: all examples, `SEAS_benchmarks/BP1/BP1.in` and `tools/mms.in` pass; for its limit see O-15.
 
 **A-86. Unreachable debug drivers with hard-coded paths.** Low. `89a6b0b`. `source/main.cpp`.
 - Defect: `runTests`, `initiateFields`, `runFirstStep`, `runSecondStep`, `testHDF5` and `computeGreensFunction_test` were referenced only in comments and contained hard-coded /Users/kallison paths.
@@ -493,21 +493,19 @@ These are not fixed, or are handled only by a startup message or a refusal.
 
 **O-08. `maxStepCount` on restart.** On restart, `maxStepCount` counts the steps taken after the restart, not the total: the mediators add the checkpointed step count to it.
 
-**O-09. MATLAB tools not run** (`f3b5829`). The MATLAB loaders and example scripts (A-93) were rewritten but not run: the MATLAB license on the test machine has expired.
+**O-09. MATLAB tools not run** (`f3b5829`). The MATLAB loaders and example scripts (A-93) were rewritten but not run: the MATLAB license on the test machine has expired, and MATLAB is not used in this project.
 
-**O-10. `tests/` is not maintained.** It holds old copies of source files that have diverged from `source/` (last changed upstream in March 2019) and cluster scripts such as `tests/memoryLeak/runMazama.sh`. It does not build against the current code. The maintained checks are `tools/regress.sh`, `tools/mms.in` and `tools/checkkeys.py`.
+**O-10. Unused and duplicated code.** About half of `source/genFuncs.cpp` is unused (a name search finds 21 of the 43 functions declared in `source/genFuncs.hpp` with no caller outside `genFuncs.cpp`). The five problem classes (`source/strikeSlip_*.cpp`) are largely copy-pasted, so a fix in one usually has to be mirrored in the others; many entries in section 3 touch two or four of them.
 
-**O-11. Unused and duplicated code.** About half of `source/genFuncs.cpp` is unused (a name search finds 21 of the 43 functions declared in `source/genFuncs.hpp` with no caller outside `genFuncs.cpp`). The five problem classes (`source/strikeSlip_*.cpp`) are largely copy-pasted, so a fix in one usually has to be mirrored in the others; many entries in section 3 touch two or four of them.
+**O-11. Per-step Vec allocation** (`8916df7`). `VecDuplicate`/`VecDestroy` pairs in `propagateWaves` and `checkSwitchRegime` run every step. They cost time but do not leak.
 
-**O-12. Per-step Vec allocation** (`8916df7`). `VecDuplicate`/`VecDestroy` pairs in `propagateWaves` and `checkSwitchRegime` run every step. They cost time but do not leak.
+**O-12. Constant pore-pressure fields in the time series.** The pore-pressure 1D output writes the constant material fields `beta_p`, `eta_p`, `n_p` and `rho_f` at every output step.
 
-**O-13. Constant pore-pressure fields in the time series.** The pore-pressure 1D output writes the constant material fields `beta_p`, `eta_p`, `n_p` and `rho_f` at every output step.
+**O-13. `quasidynamic_and_dynamic` with Nz = 1 is refused** (`b78b1cb`). On a 1D grid (a spring slider) the fully dynamic phase runs away (the slip rate grows linearly past 1e4 m/s), in the original code as well; 2D grids work. The run now stops at startup with a message, and `momentumBalanceType = dynamic` with Nz = 1 prints a warning.
 
-**O-14. `quasidynamic_and_dynamic` with Nz = 1 is refused** (`b78b1cb`). On a 1D grid (a spring slider) the fully dynamic phase runs away (the slip rate grows linearly past 1e4 m/s), in the original code as well; 2D grids work. The run now stops at startup with a message, and `momentumBalanceType = dynamic` with Nz = 1 prints a warning.
+**O-14. The off-fault Green's function cannot resume from a crashed run.** `computeGreensFunction_offFault` cannot continue a `G_offFault.h5` that a crashed run left unclosed, because HDF5 cannot open it. Delete the file and rerun.
 
-**O-15. The off-fault Green's function cannot resume from a crashed run.** `computeGreensFunction_offFault` cannot continue a `G_offFault.h5` that a crashed run left unclosed, because HDF5 cannot open it. Delete the file and rerun.
-
-**O-16. Limit of `tools/checkkeys.py`** (`df64c96`). It cannot detect a key that is read by a different component than the user intended, for example `linSolver`, which only the pore-pressure solver reads.
+**O-15. Limit of `tools/checkkeys.py`** (`df64c96`). It cannot detect a key that is read by a different component than the user intended, for example `linSolver`, which only the pore-pressure solver reads.
 
 
 
