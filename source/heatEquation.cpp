@@ -44,6 +44,9 @@ HeatEquation::HeatEquation(Domain& D)
   if (_heatEquationType == "transient" ) { setUpTransientProblem();}
   else if (_heatEquationType == "steadyState" ) { setUpSteadyStateProblem(); }
 
+  // a finite-width shear zone at the boundary fault: normalize its kernel on the grid
+  if (_wFrictionalHeating.compare("yes")==0 && _wMax > 0 && _sbp != NULL) { normalizeGw(); }
+
   #if VERBOSE > 1
     PetscPrintf(PETSC_COMM_WORLD,"Ending %s in %s\n",funcName.c_str(),FILENAME);
   #endif
@@ -557,6 +560,49 @@ PetscErrorCode HeatEquation::constructMapV()
   #if VERBOSE > 1
     ierr = PetscPrintf(PETSC_COMM_WORLD,"Ending %s in %s\n",funcName.c_str(),FILENAME); CHKERRQ(ierr);
   #endif
+  return ierr;
+}
+
+
+// The boundary fault's shear-zone kernel Gw, a half Gaussian from y = 0, integrates to 1/2 only when
+// the grid resolves w: the half-space receives half the fault's work (the mirror image takes the
+// other half), as with the boundary flux tau V/2 when w = 0. With w at or below the spacing near the
+// fault, the samples of the analytic Gw integrate to much more (17/48 h Gw(0) = 0.14 h/w for order 4).
+// Normalize on the grid with the body's quadrature, as FaultWorkKernel (multiFault.hpp) does for
+// interior faults: H J is separable and Hy Jy integrates dy/dq exactly, so the depth weights are
+// Wz = (row sums of H J 1)/Ly, and scaling Gw so that its row sums of H J Gw equal Wz/2 gives
+// sum_i (Hy Jy)_i Gw_i = 1/2 at every depth.
+PetscErrorCode HeatEquation::normalizeGw()
+{
+  PetscErrorCode ierr = 0;
+  Vec Jd = NULL, x, hx, Wz, N;
+  ierr = VecDuplicate(_Gw,&x); CHKERRQ(ierr);
+  ierr = VecDuplicate(_Gw,&hx); CHKERRQ(ierr);
+  ierr = VecDuplicate(_bcL,&Wz); CHKERRQ(ierr);
+  ierr = VecDuplicate(_bcL,&N); CHKERRQ(ierr);
+  if (_D->_gridSpacingType.compare("variableGridSpacing")==0) {
+    Mat J,Jinv,qy,rz,yq,zr;
+    ierr = _sbp->getCoordTrans(J,Jinv,qy,rz,yq,zr); CHKERRQ(ierr);
+    ierr = VecDuplicate(_Gw,&Jd); CHKERRQ(ierr);
+    ierr = MatGetDiagonal(J,Jd); CHKERRQ(ierr);
+  }
+  // Wz = (row sums of H J 1)/Ly
+  ierr = VecSet(x,1.0); CHKERRQ(ierr);
+  if (Jd != NULL) { ierr = VecPointwiseMult(x,x,Jd); CHKERRQ(ierr); }
+  ierr = _sbp->H(x,hx); CHKERRQ(ierr);
+  ierr = MatMultTranspose(_MapV,hx,Wz); CHKERRQ(ierr);
+  ierr = VecScale(Wz,1.0/_Ly); CHKERRQ(ierr);
+  // N = (row sums of H J Gw)/Wz, then Gw *= (1/2)/N
+  if (Jd != NULL) { ierr = VecPointwiseMult(x,_Gw,Jd); CHKERRQ(ierr); }
+  else { ierr = VecCopy(_Gw,x); CHKERRQ(ierr); }
+  ierr = _sbp->H(x,hx); CHKERRQ(ierr);
+  ierr = MatMultTranspose(_MapV,hx,N); CHKERRQ(ierr);
+  ierr = VecPointwiseDivide(N,N,Wz); CHKERRQ(ierr);
+  ierr = VecReciprocal(N); CHKERRQ(ierr);
+  ierr = VecScale(N,0.5); CHKERRQ(ierr);
+  ierr = MatMult(_MapV,N,x); CHKERRQ(ierr);
+  ierr = VecPointwiseMult(_Gw,_Gw,x); CHKERRQ(ierr);
+  VecDestroy(&Jd); VecDestroy(&x); VecDestroy(&hx); VecDestroy(&Wz); VecDestroy(&N);
   return ierr;
 }
 

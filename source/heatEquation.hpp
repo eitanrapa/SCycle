@@ -129,6 +129,7 @@ public:
 
   PetscErrorCode constructScatters(Vec& T, Vec& T_l);
   PetscErrorCode constructMapV();
+  PetscErrorCode normalizeGw(); // the boundary fault's kernel: half the fault's work at every depth, on the grid
   PetscErrorCode computeInitialSteadyStateTemp();
   PetscErrorCode setUpSteadyStateProblem();
   PetscErrorCode setUpTransientProblem();
