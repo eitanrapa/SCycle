@@ -1571,7 +1571,11 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::solveSSViscoelasticProblem(const PetscInt
   Vec effVisc_old; VecDuplicate(_varSS["effVisc"],&effVisc_old);
 
   Vec temp; VecDuplicate(_varSS["effVisc"],&temp); VecSet(temp,0.);
-  double err = 1e10;
+  double err = 1e10, errPrev = 1e10;
+  // damping factor of the fixed-point iteration; halved whenever the change grows, because the
+  // damped iteration can oscillate and diverge when it is too strong for the local stress
+  // sensitivity (ex4 at 301 x 351 diverges with 0.2 but converges with 0.1)
+  PetscScalar fss = _fss_EffVisc;
   int Ii = 0;
   while (Ii < _maxSSIts_effVisc && err >= _atolSS_effVisc) {
     VecCopy(_varSS["effVisc"],effVisc_old);
@@ -1586,15 +1590,20 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::solveSSViscoelasticProblem(const PetscInt
     _material->computeViscosity(_material->_effViscCap); // new viscosity
 
     // update effective viscosity: log10(accepted viscosity) = (1-f)*log10(old viscosity) + f*log10(new viscosity):
-    MyVecLog10AXPBY(temp,1.-_fss_EffVisc,effVisc_old,_fss_EffVisc,_varSS["effVisc"]);
+    MyVecLog10AXPBY(temp,1.-fss,effVisc_old,fss,_varSS["effVisc"]);
     VecCopy(temp,_varSS["effVisc"]);
 
     // evaluate convergence of this iteration
     err = computeMaxDiff_scaleVec1(effVisc_old,_varSS["effVisc"]); // total eff visc
 
-    PetscPrintf(PETSC_COMM_WORLD,"    effective viscosity loop: %i %e\n",Ii,err);
+    PetscPrintf(PETSC_COMM_WORLD,"    effective viscosity loop: %i %e (damping %g)\n",Ii,err,fss);
+    if (Ii > 0 && err > errPrev && fss > 0.01*_fss_EffVisc) { fss *= 0.5; }
+    errPrev = err;
     //~ ierr = writeViscLoopSS(Ii); CHKERRQ(ierr);
     Ii++;
+  }
+  if (err >= _atolSS_effVisc) {
+    PetscPrintf(PETSC_COMM_WORLD,"    Warning: effective viscosity did not converge in %i iterations (change %e > atolSS_effVisc = %e)\n",Ii,err,_atolSS_effVisc);
   }
   VecDestroy(&effVisc_old);
   VecDestroy(&temp);
