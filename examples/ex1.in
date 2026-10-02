@@ -18,6 +18,7 @@ systemEvolutionType = transient # solve for steady-state or time evolution of th
 bulkDeformationType = linearElastic # off-fault constitutive law
 #momentumBalanceType = quasidynamic # form of the momentum balance equation
 guessSteadyStateICs = 1 # estimate steady-state initial conditions
+computeSSMomBal = 1 # with guessSteadyStateICs: solve the steady-state momentum balance, which sets the initial fault stress
 
 
 #======================================================================
@@ -62,7 +63,7 @@ outputDir = data/ex1_
 # settings for checkpoints
 saveChkpts = 1 # enable checkpointing if 1, disable if 0
 restartFromChkpt = 1 # allow to restart from previous checkpoint if 1, ignore previous checkpoint if 0
-retartFromChkptSS = 1 # allow to restart from previous checkpoint if 1, ignore previous checkpoint if 0
+restartFromChkptSS = 0 # restart from a previous steady-state iteration (power-law steadyStateIts runs) if 1
 strideChkpt = 300 # time step interval at which to write checkpoint files
 
 

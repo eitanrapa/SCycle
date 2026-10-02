@@ -21,8 +21,9 @@ inputDir = examples/ex3_
 # specify what problem to simulate
 systemEvolutionType = transient # solve for steady-state or time evolution of the system
 bulkDeformationType = linearElastic # off-fault constitutive law
-#momentumBalanceType = quasidynamic_and_dynamic # form of the momentum balance equation
+momentumBalanceType = quasidynamic_and_dynamic # form of the momentum balance equation
 guessSteadyStateICs = 1 # estimate steady-state initial conditions
+computeSSMomBal = 1 # with guessSteadyStateICs: solve the steady-state momentum balance, which sets the initial fault stress
 
 #=======================================================================
 # rate-and-state parameters
@@ -67,12 +68,13 @@ stride2D_fd_end = 200
 
 #=======================================================================
 # settings to control switching between quasidynamic and fully dynamic periods
+# the switching quantity is the maximum fault slip velocity (m/s)
 
 limit_fd = 1e-1
 limit_qd = 1e-7
-limit_stride_fd = 5e-2 # value of R to switch strides from stride*D_fd to stride_*D_fd_end
-trigger_qd2fd = 1e-3 # value of R used to transition from quasidynamic to fully dynamic
-trigger_fd2qd = 1e-4 # value of R used to transition from fully dynamic to quasidynamic
+limit_stride_fd = 5e-2 # max slip velocity (m/s) at which strides switch from stride*D_fd to stride*D_fd_end
+trigger_qd2fd = 1e-3 # max slip velocity (m/s) above which the run switches from quasidynamic to fully dynamic
+trigger_fd2qd = 1e-4 # max slip velocity (m/s) below which the run switches from fully dynamic to quasidynamic
 CFL = 0.5 # CFL condition used to determine time step size in coseismic period
 
 

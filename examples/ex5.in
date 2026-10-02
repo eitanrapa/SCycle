@@ -17,7 +17,6 @@ guessSteadyStateICs = 1 # estimate steady-state initial conditions
 
 # coordinate transformation
 bCoordTrans = 8.0
-sbpType = mfc_coordTrans
 
 #======================================================================
 # rate-and-state parameters
@@ -27,8 +26,11 @@ stateLaw = flashHeating
 v0 = 1e-6
 f0 = 0.6
 fw = 0
-Vw = 0.1
-Tw = 1.732e+03 # (K) = 900 C
+VwType = constant # weakening velocity: constant, or function_of_Tw
+VwVals = [0.1 0.1] # (m/s) weakening velocity
+VwDepths = [0 60] # (km)
+TwVals = [1.732e+03 1.732e+03] # (K) weakening temperature (about 1459 C); used when VwType = function_of_Tw
+TwDepths = [0 60] # (km)
 D = 5 # um
 tau_c = 3
 
@@ -47,7 +49,8 @@ sNDepths = [0 60] # (km)
 # off-fault linear elastic parameters
 
 # algorithm for momentum balance equation
-linSolver = MUMPSCHOLESKY
+linSolverSS = MUMPSCHOLESKY # linear solver for the steady-state momentum balance
+linSolverTrans = MUMPSCHOLESKY # linear solver during time integration
 
 muVals = [30 30] # (GPa) shear modulus
 muDepths = [0 60] # (km)
@@ -58,11 +61,8 @@ rhoDepths = [0 60] # (km)
 # heat equation parameters
 
 # heat equation properties
-heatFieldsDistribution = layered
 kVals = [1.89e-9 1.89e-9]  # crustal conductivity (km^2 kPa/K/s)
 kDepths = [0 60]
-hVals = [0 0]
-hDepths = [0 60]
 cVals = [900 900] # in m^2/s^2/K = J/g/K,  for granite, J/K/g
 cDepths = [0 60]
 
@@ -76,7 +76,7 @@ wDepths = [0 500]
 
 heatEquationType = transient
 thermalCoupling = coupled
-withShearHeating = no
+evolveTemperature = 1 # evolve temperature with the transient heat equation
 withFrictionalHeating = yes
 
 #======================================================================

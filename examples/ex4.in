@@ -18,6 +18,7 @@ bCoordTrans = 13.5 # controls grid stretching perpendicular to the fault: larger
 # specify what problem to simulate
 bulkDeformationType = powerLaw
 momentumBalanceType = quasidynamic
+systemEvolutionType = steadyStateIts # fixed-point iteration for the steady state
 
 # whether or not to estimate steady state initial conditions
 guessSteadyStateICs = 1
@@ -37,17 +38,16 @@ aDepths = [0 11.0000 19.3333 60]
 bVals = [0.0230 0.0379 0.0350 0.0375 0.0497]
 bDepths = [0 10 11 19.3333 60]
 
-sNVals = [50 50] # (MPa)
-sNDepths = [0 60] # (km)
 sNVals = [0 267.4] # (MPa) effective normal stress, some overpressure, lambda = 0.8
 sNDepths = [0 60]
-sN_floor = 5.5; # MPa
+sN_floor = 5.5 # MPa
 
 #=======================================================================
 # off-fault material parameters
 
 # algorithm for momentum balance equation
-linSolver = MUMPSCHOLESKY
+linSolverSS = MUMPSCHOLESKY # linear solver for the steady-state momentum balance
+linSolverTrans = MUMPSCHOLESKY # linear solver during time integration
 
 muVals = [30 30] # (GPa) shear modulus
 muDepths = [0 60] # (km)
@@ -55,12 +55,12 @@ rhoVals = [3 3] # (g/cm^3)
 rhoDepths = [0 60] # (km)
 
 # power law properties: wet feldspar
-AVals = [1585 1585]
-ADepths = [0 100]
-BVals = [4.157e4 4.157e4]
-BDepths = [0 100]
-nVals = [3 3]
-nDepths = [0 100]
+disl_AVals = [1585 1585] # (MPa^-n s^-1)
+disl_ADepths = [0 100]
+disl_QRVals = [4.157e4 4.157e4] # Q/R (K)
+disl_QRDepths = [0 100]
+disl_nVals = [3 3]
+disl_nDepths = [0 100]
 
 maxEffVisc = 1e18 # GPa s
 
@@ -68,11 +68,8 @@ maxEffVisc = 1e18 # GPa s
 # off-fault material parameters
 
 # heat equation properties
-heatFieldsDistribution = layered
 kVals = [1.89e-9 1.89e-9]  # crustal conductivity (km^2 kPa/K/s)
 kDepths = [0 60]
-hVals = [0 0]
-hDepths = [0 60]
 cVals = [900 900] # in m^2/s^2/K = J/g/K,  for granite, J/K/g
 cDepths = [0 60]
 
@@ -85,6 +82,7 @@ wVals = [10 10]  # (m)
 wDepths = [0 500]
 
 thermalCoupling = coupled
+computeSSHeatEq = 1 # solve the steady-state heat equation in each fixed-point iteration
 heatEquationType = transient
 withViscShearHeating = yes
 withFrictionalHeating = yes

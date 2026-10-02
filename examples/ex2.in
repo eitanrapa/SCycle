@@ -17,6 +17,7 @@ systemEvolutionType = transient # solve for steady-state or time evolution of th
 bulkDeformationType = linearElastic # off-fault constitutive law
 #momentumBalanceType = quasidynamic # form of the momentum balance equation
 guessSteadyStateICs = 1 # estimate steady-state initial conditions
+computeSSMomBal = 1 # with guessSteadyStateICs: solve the steady-state momentum balance, which sets the initial fault stress
 
 #=======================================================================
 # rate-and-state parameters
@@ -38,7 +39,8 @@ sNDepths = [0 60] # (km)
 # off-fault material parameters
 
 # algorithm for momentum balance equation: MUMPSCHOLESKY (direct solver), CG (iterative solver), AMG (iterative solver)
-linSolver = MUMPSCHOLESKY
+linSolverSS = MUMPSCHOLESKY # linear solver for the steady-state momentum balance
+linSolverTrans = MUMPSCHOLESKY # linear solver during time integration
 
 muVals = [30 30] # (GPa) shear modulus
 muDepths = [0 60] # (km)
@@ -63,5 +65,5 @@ outputDir = data/ex2_
 # settings for checkpoints
 saveChkpts = 1 # enable checkpointing if 1, disable if 0
 restartFromChkpt = 1 # allow to restart from previous checkpoint if 1, ignore previous checkpoint if 0
-retartFromChkptSS = 1 # allow to restart from previous checkpoint if 1, ignore previous checkpoint if 0
+restartFromChkptSS = 0 # restart from a previous steady-state iteration (power-law steadyStateIts runs) if 1
 strideChkpt = 50 # time step interval at which to write checkpoint files
