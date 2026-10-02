@@ -811,24 +811,6 @@ double startTime = MPI_Wtime();
     // checkpointing
   PetscInt strideChkpt = _strideChkpt_qd;
   if (_inDynamic) {strideChkpt = _strideChkpt_fd;}
-  if ( _D->_saveChkpts == 1 && ((strideChkpt > 0 && stepCount % strideChkpt == 0) || (_currTime == _maxTime)) ) {
-    ierr = writeCheckpoint();                                           CHKERRQ(ierr);
-    ierr = _D->writeCheckpoint(_viewer_chkpt);                          CHKERRQ(ierr);
-    ierr = _material->writeCheckpoint(_viewer_chkpt);                   CHKERRQ(ierr);
-    ierr = _fault_qd->writeCheckpoint(_viewer_chkpt);                   CHKERRQ(ierr);
-    ierr = _fault_fd->writeCheckpoint(_viewer_chkpt);                   CHKERRQ(ierr);
-    ierr = _he->writeCheckpoint(_viewer_chkpt);                         CHKERRQ(ierr);
-    if (_quadEx_qd != NULL && !_inDynamic) { ierr = _quadEx_qd->writeCheckpoint(_viewer_chkpt); CHKERRQ(ierr); }
-    if (_quadImex_qd != NULL && !_inDynamic) { ierr = _quadImex_qd->writeCheckpoint(_viewer_chkpt); CHKERRQ(ierr); }
-    if (_quadWaveEx != NULL && _inDynamic) { ierr = _quadWaveEx->writeCheckpoint(_viewer_chkpt); CHKERRQ(ierr); }
-    if (_evolveGrainSize == 1) { ierr = _grainDist->writeCheckpoint(_viewer_chkpt);CHKERRQ(ierr); }
-    if (_hydraulicCoupling != "no") { ierr = _p->writeCheckpoint(_viewer_chkpt);  CHKERRQ(ierr); }
-    // output so far is made consistent on disk first, then the checkpoint replaces the old one
-    ierr = flushHDF5Viewer(_viewer1D); CHKERRQ(ierr);
-    ierr = flushHDF5Viewer(_viewer2D); CHKERRQ(ierr);
-    ierr = commitCheckpoint(_viewer_chkpt, _outputDir); CHKERRQ(ierr);
-  }
-
   // prevent adaptive time stepper from taking time steps > Maxwell time
   PetscScalar maxTimeStep_tot, maxDeltaT_momBal = 0.0;
   ierr = _material->computeMaxTimeStep(maxDeltaT_momBal);CHKERRQ(ierr);
@@ -847,6 +829,25 @@ double startTime = MPI_Wtime();
   else if (_quadEx_qd!=NULL) {
     _quadEx_qd->setTimeStepBounds(_minDeltaT,maxTimeStep_tot);CHKERRQ(ierr);
   }
+
+  if ( _D->_saveChkpts == 1 && ((strideChkpt > 0 && stepCount % strideChkpt == 0) || (_currTime == _maxTime)) ) {
+    ierr = writeCheckpoint();                                           CHKERRQ(ierr);
+    ierr = _D->writeCheckpoint(_viewer_chkpt);                          CHKERRQ(ierr);
+    ierr = _material->writeCheckpoint(_viewer_chkpt);                   CHKERRQ(ierr);
+    ierr = _fault_qd->writeCheckpoint(_viewer_chkpt);                   CHKERRQ(ierr);
+    ierr = _fault_fd->writeCheckpoint(_viewer_chkpt);                   CHKERRQ(ierr);
+    ierr = _he->writeCheckpoint(_viewer_chkpt);                         CHKERRQ(ierr);
+    if (_quadEx_qd != NULL && !_inDynamic) { ierr = _quadEx_qd->writeCheckpoint(_viewer_chkpt); CHKERRQ(ierr); }
+    if (_quadImex_qd != NULL && !_inDynamic) { ierr = _quadImex_qd->writeCheckpoint(_viewer_chkpt); CHKERRQ(ierr); }
+    if (_quadWaveEx != NULL && _inDynamic) { ierr = _quadWaveEx->writeCheckpoint(_viewer_chkpt); CHKERRQ(ierr); }
+    if (_evolveGrainSize == 1) { ierr = _grainDist->writeCheckpoint(_viewer_chkpt);CHKERRQ(ierr); }
+    if (_hydraulicCoupling != "no") { ierr = _p->writeCheckpoint(_viewer_chkpt);  CHKERRQ(ierr); }
+    // output so far is made consistent on disk first, then the checkpoint replaces the old one
+    ierr = flushHDF5Viewer(_viewer1D); CHKERRQ(ierr);
+    ierr = flushHDF5Viewer(_viewer2D); CHKERRQ(ierr);
+    ierr = commitCheckpoint(_viewer_chkpt, _outputDir); CHKERRQ(ierr);
+  }
+
 
   // check if time to switch from quasidynamic to fully dynamic
   stopIntegration = 0;

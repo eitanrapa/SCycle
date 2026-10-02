@@ -737,6 +737,11 @@ PetscErrorCode RK32::loadCheckpoint(const std::string inputDir)
   ierr = PetscViewerHDF5ReadAttribute(viewer, "odeSolver_chkpt_data", "totErr", PETSC_SCALAR, NULL, &_totErr); CHKERRQ(ierr);
   ierr = PetscViewerHDF5ReadAttribute(viewer, "odeSolver_chkpt_data", "deltaT", PETSC_SCALAR, NULL, &_deltaT); CHKERRQ(ierr);
   ierr = PetscViewerHDF5ReadAttribute(viewer, "odeSolver_chkpt_data", "deltaT", PETSC_SCALAR, NULL, &_newDeltaT); CHKERRQ(ierr);
+  { // the step bound in force when the checkpoint was written: the next step proposal uses it, before the
+    // mediator's timeMonitor sets a new one (older checkpoints lack it and keep the input maxDeltaT)
+    const PetscScalar maxDeltaT0 = _maxDeltaT;
+    ierr = PetscViewerHDF5ReadAttribute(viewer, "odeSolver_chkpt_data", "maxDeltaT", PETSC_SCALAR, &maxDeltaT0, &_maxDeltaT); CHKERRQ(ierr);
+  }
   ierr = PetscViewerHDF5PopGroup(viewer);                                                              CHKERRQ(ierr);
   ierr = PetscViewerDestroy(&viewer);                                    CHKERRQ(ierr);
 
@@ -770,6 +775,7 @@ PetscErrorCode RK32::writeCheckpoint(PetscViewer &viewer)
   ierr = PetscViewerHDF5WriteAttribute(viewer, "odeSolver_chkpt_data", "errA0", PETSC_SCALAR, &_errA[0]);    CHKERRQ(ierr);
   ierr = PetscViewerHDF5WriteAttribute(viewer, "odeSolver_chkpt_data", "errA1", PETSC_SCALAR, &_errA[1]);    CHKERRQ(ierr);
   ierr = PetscViewerHDF5WriteAttribute(viewer, "odeSolver_chkpt_data", "deltaT", PETSC_SCALAR, &_newDeltaT); CHKERRQ(ierr);
+  ierr = PetscViewerHDF5WriteAttribute(viewer, "odeSolver_chkpt_data", "maxDeltaT", PETSC_SCALAR, &_maxDeltaT); CHKERRQ(ierr); // the bound in force, set by the mediator's timeMonitor
   ierr = PetscViewerHDF5WriteAttribute(viewer, "odeSolver_chkpt_data", "totErr", PETSC_SCALAR, &_totErr);    CHKERRQ(ierr);
   ierr = PetscViewerHDF5PopGroup(viewer); CHKERRQ(ierr);
   VecDestroy(&temp);
@@ -1370,6 +1376,11 @@ PetscErrorCode RK43::loadCheckpoint(const std::string inputDir)
   ierr = PetscViewerHDF5ReadAttribute(viewer, "odeSolver_chkpt_data", "totErr", PETSC_SCALAR, NULL, &_totErr); CHKERRQ(ierr);
   ierr = PetscViewerHDF5ReadAttribute(viewer, "odeSolver_chkpt_data", "deltaT", PETSC_SCALAR, NULL, &_deltaT); CHKERRQ(ierr);
   ierr = PetscViewerHDF5ReadAttribute(viewer, "odeSolver_chkpt_data", "deltaT", PETSC_SCALAR, NULL, &_newDeltaT); CHKERRQ(ierr);
+  { // the step bound in force when the checkpoint was written: the next step proposal uses it, before the
+    // mediator's timeMonitor sets a new one (older checkpoints lack it and keep the input maxDeltaT)
+    const PetscScalar maxDeltaT0 = _maxDeltaT;
+    ierr = PetscViewerHDF5ReadAttribute(viewer, "odeSolver_chkpt_data", "maxDeltaT", PETSC_SCALAR, &maxDeltaT0, &_maxDeltaT); CHKERRQ(ierr);
+  }
   ierr = PetscViewerHDF5PopGroup(viewer);                                                              CHKERRQ(ierr);
   ierr = PetscViewerDestroy(&viewer);                                    CHKERRQ(ierr);
 
@@ -1403,6 +1414,7 @@ PetscErrorCode RK43::writeCheckpoint(PetscViewer &viewer)
   ierr = PetscViewerHDF5WriteAttribute(viewer, "odeSolver_chkpt_data", "errA0", PETSC_SCALAR, &_errA[0]);    CHKERRQ(ierr);
   ierr = PetscViewerHDF5WriteAttribute(viewer, "odeSolver_chkpt_data", "errA1", PETSC_SCALAR, &_errA[1]);    CHKERRQ(ierr);
   ierr = PetscViewerHDF5WriteAttribute(viewer, "odeSolver_chkpt_data", "deltaT", PETSC_SCALAR, &_newDeltaT); CHKERRQ(ierr);
+  ierr = PetscViewerHDF5WriteAttribute(viewer, "odeSolver_chkpt_data", "maxDeltaT", PETSC_SCALAR, &_maxDeltaT); CHKERRQ(ierr); // the bound in force, set by the mediator's timeMonitor
   ierr = PetscViewerHDF5WriteAttribute(viewer, "odeSolver_chkpt_data", "totErr", PETSC_SCALAR, &_totErr);    CHKERRQ(ierr);
   ierr = PetscViewerHDF5PopGroup(viewer); CHKERRQ(ierr);
   VecDestroy(&temp);

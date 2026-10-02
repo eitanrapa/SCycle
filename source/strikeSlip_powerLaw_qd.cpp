@@ -760,24 +760,6 @@ double startTime = MPI_Wtime();
     for (size_t i = 0; i < _bulkStates.size(); i++) { ierr = _bulkStates[i]->writeStep(_viewer2D); CHKERRQ(ierr); }
   }
 
-  if ( _D->_saveChkpts == 1 && ((_strideChkpt > 0 && stepCount % _strideChkpt == 0) || (_currTime == _maxTime)) ) {
-    ierr = writeCheckpoint();                                           CHKERRQ(ierr);
-    ierr = _D->writeCheckpoint(_viewer_chkpt);                          CHKERRQ(ierr);
-    ierr = _material->writeCheckpoint(_viewer_chkpt);                   CHKERRQ(ierr);
-    for (size_t i = 0; i < _faults.size(); i++) { ierr = _faults[i]->writeCheckpoint(_viewer_chkpt); CHKERRQ(ierr); }
-    ierr = _he->writeCheckpoint(_viewer_chkpt);                         CHKERRQ(ierr);
-    if (_quadEx != NULL) { ierr = _quadEx->writeCheckpoint(_viewer_chkpt); CHKERRQ(ierr); }
-    if (_quadImex != NULL) { ierr = _quadImex->writeCheckpoint(_viewer_chkpt); CHKERRQ(ierr); }
-    if (_grainDist != NULL) { ierr =  _grainDist->writeCheckpoint(_viewer_chkpt);CHKERRQ(ierr); }
-    for (size_t i = 0; i < _bulkStates.size(); i++) { ierr = _bulkStates[i]->writeCheckpoint(_viewer_chkpt); CHKERRQ(ierr); }
-    for (size_t i = 0; i < _pressures.size(); i++) { ierr = _pressures[i]->writeCheckpoint(_viewer_chkpt); CHKERRQ(ierr); }
-    // output so far is made consistent on disk first, then the checkpoint replaces the old one
-    ierr = flushHDF5Viewer(_viewer1D); CHKERRQ(ierr);
-    ierr = flushHDF5Viewer(_viewer2D); CHKERRQ(ierr);
-    ierr = commitCheckpoint(_viewer_chkpt, _outputDir); CHKERRQ(ierr);
-    _series.flush();
-  }
-
   // ensure time step does not exceed limits: Maxwell time, and characteristic time step of grain size evolution
   PetscScalar maxTimeStep_tot, maxDeltaT_momBal = 0.0;
   ierr =  _material->computeMaxTimeStep(maxDeltaT_momBal);              CHKERRQ(ierr);
@@ -803,6 +785,25 @@ double startTime = MPI_Wtime();
     ierr = _quadImex->setTimeStepBounds(_minDeltaT,maxTimeStep_tot);CHKERRQ(ierr);
   }
   else { ierr = _quadEx->setTimeStepBounds(_minDeltaT,maxTimeStep_tot);CHKERRQ(ierr); }
+
+  if ( _D->_saveChkpts == 1 && ((_strideChkpt > 0 && stepCount % _strideChkpt == 0) || (_currTime == _maxTime)) ) {
+    ierr = writeCheckpoint();                                           CHKERRQ(ierr);
+    ierr = _D->writeCheckpoint(_viewer_chkpt);                          CHKERRQ(ierr);
+    ierr = _material->writeCheckpoint(_viewer_chkpt);                   CHKERRQ(ierr);
+    for (size_t i = 0; i < _faults.size(); i++) { ierr = _faults[i]->writeCheckpoint(_viewer_chkpt); CHKERRQ(ierr); }
+    ierr = _he->writeCheckpoint(_viewer_chkpt);                         CHKERRQ(ierr);
+    if (_quadEx != NULL) { ierr = _quadEx->writeCheckpoint(_viewer_chkpt); CHKERRQ(ierr); }
+    if (_quadImex != NULL) { ierr = _quadImex->writeCheckpoint(_viewer_chkpt); CHKERRQ(ierr); }
+    if (_grainDist != NULL) { ierr =  _grainDist->writeCheckpoint(_viewer_chkpt);CHKERRQ(ierr); }
+    for (size_t i = 0; i < _bulkStates.size(); i++) { ierr = _bulkStates[i]->writeCheckpoint(_viewer_chkpt); CHKERRQ(ierr); }
+    for (size_t i = 0; i < _pressures.size(); i++) { ierr = _pressures[i]->writeCheckpoint(_viewer_chkpt); CHKERRQ(ierr); }
+    // output so far is made consistent on disk first, then the checkpoint replaces the old one
+    ierr = flushHDF5Viewer(_viewer1D); CHKERRQ(ierr);
+    ierr = flushHDF5Viewer(_viewer2D); CHKERRQ(ierr);
+    ierr = commitCheckpoint(_viewer_chkpt, _outputDir); CHKERRQ(ierr);
+    _series.flush();
+  }
+
 
   // stopping criteria for time integration
   if (_D->_systemEvolutionType == "steadyStateIts") {
