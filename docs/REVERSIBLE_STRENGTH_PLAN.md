@@ -984,8 +984,23 @@ message says why not.
    needs a step bound (`cohesionStepFrac`): one step must not remove the cohesion at once. Found and
    fixed on the way: A-102 (`b03b76e`, the monitor's step bound lost on restart). The sign test
    with two faults (c) belongs to the run matrix.
-9. Fabric and cement states (4.5). Small once 3 exists.
-10. Diagnostics (section 5) and the run matrix; the library.
+9. Fabric and cement states (4.5). Small once 3 exists. **Done** (`986f39c`): gate 5.5a (unit
+   solutions to 2e-12; frozen at zero bit-identical; the strength factor exact to 3e-16). The
+   two-fault sign tests 5.5b and 5.5c belong to the run matrix.
+10. Diagnostics (section 5) and the run matrix; the library. **Diagnostics done** (`6e48e56`,
+   `3b2bf77`): root-strength probes in `faultSeries.txt` (`seriesDepth`), `switches.csv`, and the
+   generator options `--lock-depth`, `--series-depth`, `--set`. **Run matrix: blocked on the root
+   geometry.** Measured in the stage 4 baseline (two faults 20 km apart, ex4 creep and geotherm):
+   the faults reach the bottom of the domain and below 15 km creep frictionally at 0.3 to 0.9 vL, so
+   the viscous strain rate next to them is 1e-21 /s at 12-18 km and 4e-17 to 4e-14 /s at 25-40 km.
+   Locked below 20 km (`--lock-depth 20`, 440 yr), the flow beneath is broad: 8e-15 /s below
+   30 km with half-widths over 15 km and the far field at half that rate, so the two roots merge
+   into one substrate and do not form the two roots in series of section 2. Bulk state fields
+   driven by these rates act on 1e5-yr scales with laboratory strains. Distinct, localized roots
+   need a choice: a prescribed weak band beneath each fault (`disl_A` as a body field from a file),
+   a localizing feedback (grain-size-sensitive creep with the wattmeter), or a wider fault
+   separation; and the state strain scales then follow from the root width through the 0D screen
+   (alternation for n = 3, R = 10, beta = 2, T_D = 0.1, T_h = 10: period 24.7 w gamma/vL).
 11. Optional: fixed anisotropy (4.7).
 
 Each physics commit is marked as altering published behaviour only when it is on, so it can be
