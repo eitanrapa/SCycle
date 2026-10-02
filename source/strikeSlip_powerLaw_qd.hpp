@@ -21,6 +21,7 @@
 #include "sbpOps_m_constGrid.hpp"
 #include "sbpOps_m_varGrid.hpp"
 #include "fault.hpp"
+#include "multiFault.hpp"
 #include "pressureEq.hpp"
 #include "heatEquation.hpp"
 #include "powerLaw.hpp"
@@ -117,7 +118,29 @@ public:
   OdeSolver              *_quadEx; // explicit time stepping
   OdeSolverImex          *_quadImex; // implicit time stepping
 
-  Fault_qd               *_fault;
+  // Faults, as in StrikeSlip_LinearElastic_qd: _fault is the boundary fault at y = 0 (symmFault or
+  // rigidFault), NULL in the full domain (momBal_bcL_qd = remoteLoading); it carries the
+  // single-fault couplings (steady-state solve, heat source, pore pressure). _faults holds every
+  // fault, _fault first, and _lifts runs parallel to it with NULL for the boundary fault. This class
+  // owns the faults and lifts.
+  Fault_qd                       *_fault;
+  std::vector<Fault_qd*>          _faults;
+  std::vector<string>             _interiorFaultNames;
+  std::map<string,PetscScalar>    _faultPositions; // every <name>_y value in the input file
+  std::vector<InteriorFaultLift*> _lifts;
+  int                             _interiorFaultKinkLift;   // 1 (default): B+, second-order fault traction
+  // 1: the B+ curvature also includes the jump of the viscous source across the fault. Off by
+  // default: in the stage 4 test it changed the fault traction against the half-space by no more
+  // than the half-space's own discretization error, and with it a fault that never slips still
+  // perturbs the solution (its estimate of the jump includes the smooth change over one row).
+  int                             _interiorFaultKinkSource;
+
+  // multi-fault outputs, on by default with interior faults (see StrikeSlip_LinearElastic_qd)
+  int                             _computeSurfVel, _strideSeries;
+  Vec                             _vel, _rhsVel, _surfVel, _viscSourceRate;
+  Vec                             _bcLRate, _bcRRate, _bcTRate, _bcBRate;
+  FaultSeries                     _series;
+
   PowerLaw               *_material; // power-law viscoelastic off-fault material properties
   HeatEquation           *_he;
   PressureEq             *_p;
@@ -170,6 +193,7 @@ public:
   PetscErrorCode timeMonitor(PetscScalar time, PetscScalar deltaT, PetscInt stepCount, int& stopIntegration);
   PetscErrorCode writeStep1D(PetscInt stepCount, PetscScalar time);
   PetscErrorCode writeStep2D(PetscInt stepCount, PetscScalar time);
+  PetscErrorCode computeSurfVel(); // _surfVel from the current slip, viscous strain and loading rates
   PetscErrorCode writeCheckpoint();
   PetscErrorCode loadCheckpoint();
   PetscErrorCode loadCheckpointSS();
