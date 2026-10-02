@@ -22,7 +22,11 @@ Stage 5 (docs/REVERSIBLE_STRENGTH_PLAN.md): --lock-depth Z locks both faults bel
 the plate motion beneath them flows viscously (without it the deep fault creeps and the viscous roots
 barely strain); --series-depth Z writes the root-strength probes at Z km to faultSeries.txt; and
 --set KEY=VALUE (repeatable) appends any input line, for the bulk state fields and the other stage 5
-keys.
+keys. --weak-band W gives each fault its own viscous root: a band W km wide beneath it, below
+--weak-top km and above --weak-bottom km, where the dislocation-creep prefactor is --weak-factor
+times larger (the file
+ic/disl_A, which the power law reads as a body field; log-linear cosine tapers of --weak-taper km at
+the edges). Without one the flow beneath the faults is broad and the two roots merge.
 
 Both faults start at steady sliding at vL. A smooth patch of fault (or f2, --trigger) near 8 km
 depth starts at 1e-6 m/s, so the first event nucleates within hours, the same way in every run;
@@ -129,6 +133,12 @@ def main():
     p.add_argument('--series-depth', type=float, default=None, help='depth of the root-strength probes in faultSeries.txt (km)')
     p.add_argument('--series-width', type=float, default=2.0, help='half-width of the probe average around each fault (km)')
     p.add_argument('--set', action='append', default=[], metavar='KEY=VALUE', help='append the input line "KEY = VALUE" (repeatable)')
+    p.add_argument('--weak-band', type=float, default=None, help='power law: full width (km) of a weak creep band beneath each fault')
+    p.add_argument('--weak-factor', type=float, default=1000.0, help='factor on the dislocation-creep prefactor in the band')
+    p.add_argument('--weak-top', type=float, default=None, help='top of the band (km; default the lock depth, else 20)')
+    p.add_argument('--weak-bottom', type=float, default=30.0, help='bottom of the band (km): deeper, the hot mantle is weak already and\n'
+                   'a weaker band shortens the Maxwell time that caps the steps')
+    p.add_argument('--weak-taper', type=float, default=0.5, help='width of the band edges (km)')
     p.add_argument('--name', default=None, help='run name (default from the options)')
     p.add_argument('--out', default='data/two_faults', help='directory for inputs, initial conditions and output')
     args = p.parse_args()
@@ -224,6 +234,20 @@ def main():
                   'lockedDepths = [0 %g %g 500]' % (args.lock_depth, args.lock_depth)]
     if args.series_depth is not None:
         lines += ['seriesDepth = %g # (km) root-strength probes in faultSeries.txt' % args.series_depth, 'seriesWidth = %g # (km)' % args.series_width]
+    if args.weak_band is not None:
+        if args.rheology != 'powerlaw': raise SystemExit('--weak-band needs --rheology powerlaw')
+        A0 = float([l for l in lines if l.startswith('disl_AVals')][0].split('[')[1].split()[0])
+        top = args.weak_top if args.weak_top is not None else (args.lock_depth if args.lock_depth is not None else 20.0)
+        T = args.weak_taper
+        def ramp(x):  # 0 for x <= 0, 1 for x >= 1, cosine between
+            x = np.clip(x, 0.0, 1.0); return 0.5*(1.0 - np.cos(np.pi*x))
+        faults_y = [y1] if args.single else [y1, y2]
+        my = np.max([ramp((0.5*args.weak_band + T - np.abs(y - yk))/T) for yk in faults_y], axis=0)
+        mz = ramp((z - (top - T))/T)*ramp((args.weak_bottom + T - z)/T)
+        m = my[:, None]*mz[None, :]
+        write_vec(os.path.join(d, 'ic', 'disl_A'), (A0*args.weak_factor**m).ravel())  # index iy*Nz + iz
+        lines.append('# weak band: ic/disl_A is %g x the prefactor within %g km of each fault from %g to %g km (tapers %g km)'
+                     % (args.weak_factor, 0.5*args.weak_band, top, args.weak_bottom, T))
     for kv in args.set:
         k, v = kv.split('=', 1)
         lines.append('%s = %s' % (k.strip(), v.strip()))
