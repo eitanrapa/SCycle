@@ -5,7 +5,7 @@
 
 //================= constructor and destructor ========================
 SbpOps_m_varGrid::SbpOps_m_varGrid(const int order,const PetscInt Ny,const PetscInt Nz,const PetscScalar Ly,const PetscScalar Lz,Vec& muVec)
-: _order(order),_Ny(Ny),_Nz(Nz),_dy(1./(Ny-1.)),_dz(1./(Nz-1.)),
+: _order(order),_Ny(Ny),_Nz(Nz),_dy(1./(Ny-1.)),_dz(1./(Nz-1.)),_y(NULL),_z(NULL),
   _bcRType("unspecified"),_bcTType("unspecified"),
   _bcLType("unspecified"),_bcBType("unspecified"),
   _runTime(0),_compatibilityType("fullyCompatible"),_D2type("yz"),

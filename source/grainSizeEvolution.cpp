@@ -11,7 +11,7 @@ GrainSizeEvolution::GrainSizeEvolution(Domain& D)
   _grainSizeEvType("transient"),_grainSizeEvTypeSS("steadyState"),
   _order(D._order),_Ny(D._Ny),_Nz(D._Nz),
   _Ly(D._Ly),_Lz(D._Lz),_dy(D._dq),_dz(D._dr),_y(&D._y),_z(&D._z),
-  _A(NULL),_QR(NULL),_p(NULL),_f(NULL),_gamma(NULL),_piez_A(NULL),_piez_n(NULL),_d(NULL),_d_t(NULL),
+  _A(NULL),_QR(NULL),_p(NULL),_f(NULL),_gamma(NULL),_c(0),_piez_A(NULL),_piez_n(NULL),_d(NULL),_d_t(NULL),
   _viewer(NULL)
 {
   #if VERBOSE > 1
@@ -171,6 +171,7 @@ PetscErrorCode GrainSizeEvolution::checkInput()
     assert(_QRVals.size() >= 2);
     assert(_pVals.size() >= 2);
     assert(_gammaVals.size() >= 2);
+    if (!(_c > 0)) { PetscPrintf(PETSC_COMM_WORLD,"Error: grainSizeEv_c (geometric constant) must be given and > 0\n"); }
     assert(_c > 0);
   }
 

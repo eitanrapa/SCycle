@@ -1386,7 +1386,8 @@ PetscErrorCode ComputeVel_qd::getResid(const PetscInt Jj,const PetscScalar vel,P
 Fault_fd::Fault_fd(Domain &D, VecScatter& scatter2fault, const int& faultTypeScale)
 : Fault(D, scatter2fault,faultTypeScale),
   _Phi(NULL), _an(NULL), _fricPen(NULL),
-  _u(NULL), _uPrev(NULL), _d2u(NULL),_alphay(NULL),
+  _u(NULL), _uPrev(NULL), _d2u(NULL),_deltaT(0),_alphay(NULL),
+  _tCenterTau(0),_tStdTau(1),_zCenterTau(0),_zStdTau(1),_ampTau(0),
   _timeMode("None")
 {
   #if VERBOSE > 1
