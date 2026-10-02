@@ -262,7 +262,7 @@ PetscErrorCode DislocationCreep::guessInvEffVisc(const Vec& Temp, const double d
   VecGetArray(_invEffVisc,&invEffVisc);
   PetscInt Jj = 0;
   for (Ii=Istart;Ii<Iend;Ii++) {
-    PetscScalar temp = A[Jj] * exp(-QR[Jj]/T[Jj]);
+    PetscScalar temp = 1e3 * A[Jj] * exp(-QR[Jj]/T[Jj]); // 1e3: strain rates are in 1e-3/s, as in computeInvEffVisc
     PetscScalar s = pow( dg/temp, 1.0/n[Jj] );
     invEffVisc[Jj] = dg / s;
     Jj++;

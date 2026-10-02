@@ -228,6 +228,7 @@ if (_wDislCreep=="no" && _wDislCreep2=="yes") {
     _wDissPrecCreep = "no";
     _wDiffCreep = "no";
     _wDislCreep = "no";
+    _wDislCreep2 = "no";
   }
   if (_wDiffCreep.compare("yes") == 0 || _wDissPrecCreep.compare("yes") == 0) {
     assert(_grainSizeVals.size() >= 2);
@@ -1217,11 +1218,12 @@ PetscErrorCode PowerLaw::computeDevViscStrainRates()
     VecRestoreArray(_dgVdev,&dgVdev);
   }
 
-  // compute deviatoric strain rate from dislocation creep only
+  // compute deviatoric strain rate from dislocation creep only (both mechanisms if disl2 is on)
   if (_wDislCreep.compare("yes")==0) {
-    PetscScalar const *invVisc_disl,*sxy,*sxz;
+    PetscScalar const *invVisc_disl,*invVisc_disl2 = NULL,*sxy,*sxz;
     PetscScalar *dgVdev;
     VecGetArrayRead(_disl->_invEffVisc,&invVisc_disl);
+    if (_wDislCreep2.compare("yes")==0) { VecGetArrayRead(_disl2->_invEffVisc,&invVisc_disl2); }
     VecGetArrayRead(_sxy,&sxy);
     VecGetArrayRead(_sxz,&sxz);
     VecGetArray(_dgVdev_disl,&dgVdev);
@@ -1229,12 +1231,15 @@ PetscErrorCode PowerLaw::computeDevViscStrainRates()
     VecGetOwnershipRange(_dgVdev_disl,&Istart,&Iend);
     PetscInt Jj = 0;
     for (Ii=Istart;Ii<Iend;Ii++) {
-      PetscScalar dgVxy = sxy[Jj] * invVisc_disl[Jj];
-      PetscScalar dgVxz = sxz[Jj] * invVisc_disl[Jj];
+      PetscScalar invVisc = invVisc_disl[Jj];
+      if (invVisc_disl2 != NULL) { invVisc += invVisc_disl2[Jj]; }
+      PetscScalar dgVxy = sxy[Jj] * invVisc;
+      PetscScalar dgVxz = sxz[Jj] * invVisc;
       dgVdev[Jj] = sqrt(dgVxy*dgVxy + dgVxz*dgVxz);
       Jj++;
     }
     VecRestoreArrayRead(_disl->_invEffVisc,&invVisc_disl);
+    if (invVisc_disl2 != NULL) { VecRestoreArrayRead(_disl2->_invEffVisc,&invVisc_disl2); }
     VecRestoreArrayRead(_sxy,&sxy);
     VecRestoreArrayRead(_sxz,&sxz);
     VecRestoreArray(_dgVdev_disl,&dgVdev);
@@ -1315,6 +1320,7 @@ PetscErrorCode PowerLaw::guessSteadyStateEffVisc(const PetscScalar strainRate)
   if (_wPlasticity.compare("yes")==0) { _plastic->guessInvEffVisc(strainRate); }
   //~ if (_wDissPrecCreep.compare("yes")==0) { assert(0); } // this requires a nonlinear solve, and may not be wanted
   if (_wDislCreep.compare("yes")==0) { _disl->guessInvEffVisc(_T,strainRate); }
+  if (_wDislCreep2.compare("yes")==0) { _disl2->guessInvEffVisc(_T,strainRate); }
   if (_wDiffCreep.compare("yes")==0) { _diff->guessInvEffVisc(_T,strainRate,_grainSize); }
 
   // 1 / effVisc = 1/(plastic eff visc) + 1/(disl eff visc) + 1/(diff eff visc) + 1/(max eff visc)
@@ -1322,6 +1328,7 @@ PetscErrorCode PowerLaw::guessSteadyStateEffVisc(const PetscScalar strainRate)
   if (_wPlasticity.compare("yes")==0) { VecAXPY(_effVisc,1.0,_plastic->_invEffVisc); }
   //~ if (_wDissPrecCreep.compare("yes")==0) { VecAXPY(_effVisc,1.0,_disl->_invEffVisc); }
   if (_wDislCreep.compare("yes")==0) { VecAXPY(_effVisc,1.0,_disl->_invEffVisc); }
+  if (_wDislCreep2.compare("yes")==0) { VecAXPY(_effVisc,1.0,_disl2->_invEffVisc); }
   if (_wDiffCreep.compare("yes")==0) { VecAXPY(_effVisc,1.0,_diff->_invEffVisc); }
   VecReciprocal(_effVisc);
 
