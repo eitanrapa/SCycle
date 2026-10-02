@@ -545,6 +545,47 @@ PetscErrorCode ierr = 0;
 }
 
 
+PetscErrorCode sbp_midpointCoef(const Vec& coef,const Mat& diagTemplate,const PetscInt Ny,
+                const PetscInt Nz,const PetscBool alongY,Mat& out)
+{
+  PetscErrorCode ierr = 0;
+  PetscInt Istart,Iend;
+  ierr = VecGetOwnershipRange(coef,&Istart,&Iend);CHKERRQ(ierr);
+  const PetscInt n = Iend - Istart;
+  const PetscInt N = Ny*Nz;
+
+  // global index of each locally owned point's neighbour (the point itself at the end of a line)
+  std::vector<PetscInt> nb(n > 0 ? n : 1);
+  for (PetscInt Ii = Istart; Ii < Iend; Ii++) {
+    PetscInt Jj = Ii;
+    if (alongY) { if (Ii + Nz < N) { Jj = Ii + Nz; } }
+    else { if (Ii % Nz != Nz - 1) { Jj = Ii + 1; } }
+    nb[Ii - Istart] = Jj;
+  }
+
+  IS isFrom,isTo;
+  ierr = ISCreateGeneral(PETSC_COMM_WORLD,n,nb.data(),PETSC_COPY_VALUES,&isFrom);CHKERRQ(ierr);
+  ierr = ISCreateStride(PETSC_COMM_WORLD,n,Istart,1,&isTo);CHKERRQ(ierr);
+  Vec coefMid;
+  ierr = VecDuplicate(coef,&coefMid);CHKERRQ(ierr);
+  VecScatter scatter;
+  ierr = VecScatterCreate(coef,isFrom,coefMid,isTo,&scatter);CHKERRQ(ierr);
+  ierr = VecScatterBegin(scatter,coef,coefMid,INSERT_VALUES,SCATTER_FORWARD);CHKERRQ(ierr);
+  ierr = VecScatterEnd(scatter,coef,coefMid,INSERT_VALUES,SCATTER_FORWARD);CHKERRQ(ierr);
+
+  ierr = VecAXPY(coefMid,1.0,coef);CHKERRQ(ierr); // coef(Jj) + coef(Ii)
+  ierr = VecScale(coefMid,0.5);CHKERRQ(ierr);
+  ierr = MatDuplicate(diagTemplate,MAT_COPY_VALUES,&out);CHKERRQ(ierr);
+  ierr = MatDiagonalSet(out,coefMid,INSERT_VALUES);CHKERRQ(ierr);
+
+  ierr = VecScatterDestroy(&scatter);CHKERRQ(ierr);
+  ierr = ISDestroy(&isFrom);CHKERRQ(ierr);
+  ierr = ISDestroy(&isTo);CHKERRQ(ierr);
+  ierr = VecDestroy(&coefMid);CHKERRQ(ierr);
+  return ierr;
+}
+
+
 PetscErrorCode sbp_Spmat4(const PetscInt N,const PetscScalar scale,
                 Spmat& D3, Spmat& D4, Spmat& C3, Spmat& C4)
 {

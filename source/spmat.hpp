@@ -78,6 +78,13 @@ public:
 PetscErrorCode sbp_Spmat(const PetscInt order,const PetscInt N,const PetscScalar scale,
                         Spmat& H,Spmat& Hinv,Spmat& D1,Spmat& D1int, Spmat& S, const std::string type);
 PetscErrorCode sbp_Spmat2(const PetscInt N,const PetscScalar scale,Spmat& D2,Spmat& C2);
+// Variable coefficient at grid midpoints for the 4th-order compatible operators' R term:
+// diagonal matrix (copy of diagTemplate's pattern) with entries (coef(Ii) + coef(Jj))/2, where
+// Jj is the next grid point along y (Ii + Nz) if alongY, else along z (Ii + 1). The last point
+// of each grid line keeps coef(Ii) (C3 and C4 vanish there). Neighbours are gathered with a
+// scatter, so the result does not depend on how rows are distributed across MPI ranks.
+PetscErrorCode sbp_midpointCoef(const Vec& coef,const Mat& diagTemplate,const PetscInt Ny,
+                const PetscInt Nz,const PetscBool alongY,Mat& out);
 PetscErrorCode sbp_Spmat4(const PetscInt N,const PetscScalar scale,
                          Spmat& D3, Spmat& D4, Spmat& C3, Spmat& C4);
 

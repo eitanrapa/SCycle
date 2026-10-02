@@ -1284,33 +1284,8 @@ switch ( _order ) {
       Spmat C4z(_Nz,_Nz);
       sbp_Spmat4(_Nz,1/_dz,D3z,D4z,C3z,C4z);
 
-      Mat mu3;
-      {
-        MatDuplicate(_murz,MAT_COPY_VALUES,&mu3);
-        ierr = MatDiagonalSet(mu3,murzV,INSERT_VALUES);CHKERRQ(ierr);
-        PetscScalar mu=0;
-        PetscInt Ii,Jj,Istart,Iend=0;
-        VecGetOwnershipRange(murzV,&Istart,&Iend);
-        if (Istart==0) {
-          Jj = Istart + 1;
-          VecGetValues(murzV,1,&Jj,&mu);
-          MatSetValues(mu3,1,&Istart,1,&Istart,&mu,ADD_VALUES);
-        }
-        if (Iend==_Ny*_Nz) {
-          Jj = Iend - 2;
-          Ii = Iend - 1;
-          VecGetValues(murzV,1,&Jj,&mu);
-          MatSetValues(mu3,1,&Ii,1,&Ii,&mu,ADD_VALUES);
-        }
-        for (Ii=Istart+1;Ii<Iend-1;Ii++) {
-          VecGetValues(murzV,1,&Ii,&mu);
-          Jj = Ii - 1;
-          MatSetValues(mu3,1,&Jj,1,&Jj,&mu,ADD_VALUES);
-        }
-        MatAssemblyBegin(mu3,MAT_FINAL_ASSEMBLY);
-        MatAssemblyEnd(mu3,MAT_FINAL_ASSEMBLY);
-        MatScale(mu3,0.5);
-      }
+      Mat mu3; // mu*r_z at z-midpoints
+      ierr = sbp_midpointCoef(murzV,_murz,_Ny,_Nz,PETSC_FALSE,mu3);CHKERRQ(ierr);
 
       Mat Iy_D3z; kronConvert(tempMats._Iy,D3z,Iy_D3z,6,0);
       Mat Iy_C3z; kronConvert(tempMats._Iy,C3z,Iy_C3z,1,0);
@@ -1436,27 +1411,8 @@ PetscErrorCode SbpOps_m_varGrid::constructRymu(const TempMats_m_varGrid& tempMat
       Spmat C4y(_Ny,_Ny);
       sbp_Spmat4(_Ny,1/_dy,D3y,D4y,C3y,C4y);
 
-      Mat mu3;
-      {
-        MatDuplicate(_muqy,MAT_COPY_VALUES,&mu3);
-        PetscScalar mu=0;
-        PetscInt Ii,Jj,Istart,Iend=0;
-        VecGetOwnershipRange(muqyV,&Istart,&Iend);
-        if (Iend==_Ny*_Nz) {
-          Jj = Iend - 2;
-          Ii = Iend - 1;
-          VecGetValues(muqyV,1,&Jj,&mu);
-          MatSetValues(mu3,1,&Ii,1,&Ii,&mu,ADD_VALUES);
-        }
-        for (Ii=Istart+1;Ii<Iend;Ii++) {
-          VecGetValues(muqyV,1,&Ii,&mu);
-          Jj = Ii - 1;
-          MatSetValues(mu3,1,&Jj,1,&Jj,&mu,ADD_VALUES);
-        }
-        MatAssemblyBegin(mu3,MAT_FINAL_ASSEMBLY);
-        MatAssemblyEnd(mu3,MAT_FINAL_ASSEMBLY);
-        MatScale(mu3,0.5);
-      }
+      Mat mu3; // mu*q_y at y-midpoints
+      ierr = sbp_midpointCoef(muqyV,_muqy,_Ny,_Nz,PETSC_TRUE,mu3);CHKERRQ(ierr);
 
       Mat D3y_Iz;
       kronConvert(D3y,tempMats._Iz,D3y_Iz,6,0);
