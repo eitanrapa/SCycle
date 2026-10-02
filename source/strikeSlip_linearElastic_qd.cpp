@@ -127,7 +127,10 @@ StrikeSlip_LinearElastic_qd::StrikeSlip_LinearElastic_qd(Domain &D)
   }
 
   // fault series: the depth of every fault node, and the weights of the depth integrals
-  if (_strideSeries > 0) { _series.setup(_faults); }
+  if (_strideSeries > 0) {
+    _series.setup(_faults);
+    if (_seriesDepth >= 0) { _series.setProbes(D,_faults,_lifts,_seriesDepth,_seriesWidth); } // evolving cohesion at one depth
+  }
 
   // body forcing term for ice stream
   _forcingTerm = NULL;
@@ -272,6 +275,8 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::loadSettings(const char *file)
     else if (var.compare("interiorFaultKinkLift")==0) { _interiorFaultKinkLift = atoi( rhs.c_str() ); }
     else if (var.compare("computeSurfVel")==0) { _computeSurfVel = atoi( rhs.c_str() ); }
     else if (var.compare("strideSeries")==0) { _strideSeries = (int)atof( rhs.c_str() ); }
+    else if (var.compare("seriesDepth")==0) { _seriesDepth = atof( rhs.c_str() ); }
+    else if (var.compare("seriesWidth")==0) { _seriesWidth = atof( rhs.c_str() ); }
     // interior fault positions <name>_y (km), matched with interiorFaults in checkInput
     else if (var.size() > 2 && var.compare(var.size()-2,2,"_y")==0) { _faultPositions[var.substr(0,var.size()-2)] = atof( rhs.c_str() ); }
   }
@@ -1132,6 +1137,7 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::writeContext()
   }
   ierr = PetscViewerASCIIPrintf(viewer,"computeSurfVel = %i\n",_computeSurfVel);CHKERRQ(ierr);
   ierr = PetscViewerASCIIPrintf(viewer,"strideSeries = %i\n",_strideSeries);CHKERRQ(ierr);
+  if (_seriesDepth >= 0) { ierr = PetscViewerASCIIPrintf(viewer,"seriesDepth = %g # (km)\nseriesWidth = %g # (km)\n",_seriesDepth,_seriesWidth);CHKERRQ(ierr); }
   ierr = PetscViewerASCIIPrintf(viewer,"normType = %s\n",_normType.c_str());CHKERRQ(ierr);
   ierr = PetscViewerASCIIPrintf(viewer,"\n");CHKERRQ(ierr);
 

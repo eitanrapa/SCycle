@@ -141,6 +141,7 @@ public:
 
   // multi-fault outputs, on by default with interior faults (see StrikeSlip_LinearElastic_qd)
   int                             _computeSurfVel, _strideSeries;
+  PetscScalar                     _seriesDepth = -1, _seriesWidth = 0; // probes in faultSeries.txt: depth (km; < 0: none), width (km)
   Vec                             _vel, _rhsVel, _surfVel, _viscSourceRate;
   Vec                             _bcLRate, _bcRRate, _bcTRate, _bcBRate;
   FaultSeries                     _series;

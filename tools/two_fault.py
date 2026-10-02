@@ -11,6 +11,10 @@ outputDir of StrikeSlip_LinearElastic_qd with interior faults; see examples/two_
                  share of the slip at --zref over the trailing --window years
   surfvel.csv    surface position y (km), the mean interseismic surface velocity and the latest
                  interseismic one (mm/yr), from outputs where every fault slips slower than --vinter
+  switches.csv   one row per change of the dominant fault: time (yr), the faults it passes from and to,
+                 the length of the phase that ended (yr) and each fault's slip at --zref during it (m).
+                 The dominant fault has the largest share; a switch needs the new one's share above
+                 0.5 + --margin, so fluctuations about equal sharing are not switches.
 
 and prints a summary with the long-term slip rates and their sum against the plate rate vL.
 
@@ -59,6 +63,24 @@ def events(t, maxV, zMaxV, potency, vseis, merge):
     return out
 
 
+def switches(t, shares, slip, names, margin):
+    """Changes of the dominant fault: rows (time, from, to, phase length, slip of each fault in the phase).
+    shares[n][j] is fault n's share at output j (nan before the window fills); the dominant fault is
+    the first whose share exceeds 0.5 + margin, and keeps dominance until another one does."""
+    rows, dom, start = [], None, None
+    for j in range(t.size):
+        new = None
+        for n in names:
+            if np.isfinite(shares[n][j]) and shares[n][j] > 0.5 + margin and n != dom:
+                new = n
+                break
+        if new is None: continue
+        if dom is not None:
+            rows.append((t[j], dom, new, t[j] - t[start], {n: slip[n][j] - slip[n][start] for n in names}))
+        dom, start = new, j
+    return rows
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('run', help='run directory (the outputDir prefix, ending in /)')
@@ -67,6 +89,7 @@ def main():
     p.add_argument('--vseis', type=float, default=1e-3, help='slip rate above which a fault is in an earthquake (m/s)')
     p.add_argument('--merge', type=float, default=3600.0, help='merge seismic intervals closer than this (s)')
     p.add_argument('--vinter', type=float, default=1e-8, help='interseismic: every fault slower than this (m/s)')
+    p.add_argument('--margin', type=float, default=0.1, help='share above 0.5 that a new dominant fault must reach')
     args = p.parse_args()
     run = args.run if args.run.endswith('/') else args.run + '/'
 
@@ -118,9 +141,27 @@ def main():
     total = sum(slip[n] - slip[n][j0] for n in names)
     with open(run + 'partition.csv', 'w') as f:
         f.write('time_yr,' + ','.join('%s_slip_m' % n for n in names) + ',' + ','.join('%s_share' % n for n in names) + '\n')
+        share = {n: np.full(t1.size, np.nan) for n in names}
         for j in range(t1.size):
             shares = [(slip[n][j] - slip[n][j0[j]])/total[j] if total[j] > 0 and t1[j] - t1[j0[j]] > 0.5*W else np.nan for n in names]
+            for n, x in zip(names, shares): share[n][j] = x
             f.write('%.9g,' % (t1[j]/YEAR) + ','.join('%.9g' % slip[n][j] for n in names) + ',' + ','.join('%.6g' % x for x in shares) + '\n')
+    # switches of the dominant fault
+    sw = switches(t1, share, slip, names, args.margin)
+    with open(run + 'switches.csv', 'w') as f:
+        f.write('time_yr,from,to,phase_yr,' + ','.join('%s_slip_m' % n for n in names) + '\n')
+        for (tj, a, b, dur, ds) in sw:
+            f.write('%.9g,%s,%s,%.9g,' % (tj/YEAR, a, b, dur/YEAR) + ','.join('%.6g' % ds[n] for n in names) + '\n')
+    if sw:
+        print('\n%d switches of the dominant fault (share above %.2f, window %g yr):' % (len(sw), 0.5 + args.margin, args.window))
+        for (tj, a, b, dur, ds) in sw[:20]:
+            print('  %10.2f yr  %s -> %s after %8.2f yr; slip in the phase: %s' % (tj/YEAR, a, b, dur/YEAR, ', '.join('%s %.2f m' % (n, ds[n]) for n in names)))
+        if len(sw) >= 3:
+            per = [sw[k + 2][0] - sw[k][0] for k in range(len(sw) - 2)]  # back to the same fault
+            print('  alternation period %.2f yr (mean of %d); slip per phase on the dominant fault %.2f m (mean)'
+                  % (np.mean(per)/YEAR, len(per), np.mean([ds[a] for (tj, a, b, dur, ds) in sw])))
+    else:
+        print('\nno switch of the dominant fault (share above %.2f, window %g yr)' % (0.5 + args.margin, args.window))
     # long-term rates: between the first and last onsets of the most active fault, if it has 2 or more
     # events spanning at least a quarter of the run (whole cycles), else over the last window
     ev = {n: [e for e in cat if e['fault'] == n] for n in names}
@@ -141,7 +182,7 @@ def main():
     print('  sum      %.4g vL' % (sum(rates.values())/vL))
 
     # interseismic surface velocity
-    wrote = ['events.csv', 'partition.csv']
+    wrote = ['events.csv', 'partition.csv', 'switches.csv']
     if 'momBal/surfVel' in d1:
         V = np.array(d1['momBal/surfVel'])[:, :, 0]*1e3*YEAR  # mm/yr
         yb = np.array(ctx['domain/y']).ravel()

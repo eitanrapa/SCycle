@@ -119,10 +119,12 @@ PetscErrorCode writeInteriorFaultContext(PetscViewer& viewer, const vector<Fault
 }
 
 
-FaultSeries::FaultSeries() : _file(NULL) {}
+FaultSeries::FaultSeries() : _file(NULL), _probeDepth(-1) {}
 
 FaultSeries::~FaultSeries()
 {
+  for (size_t i = 0; i < _probeWeights.size(); i++) { VecDestroy(&_probeWeights[i]); }
+  for (size_t i = 0; i < _probeNode.size(); i++) { VecDestroy(&_probeNode[i]); }
   for (size_t i = 0; i < _weights.size(); i++) { VecDestroy(&_weights[i]); }
   if (_file != NULL) { PetscFClose(PETSC_COMM_WORLD,_file); }
 }
@@ -178,6 +180,12 @@ PetscErrorCode FaultSeries::write(const string& outputDir, const bool append, co
       for (size_t i = 0; i < faults.size(); i++) {
         const char *n = faults[i]->_name.c_str();
         ierr = PetscFPrintf(PETSC_COMM_WORLD,_file," %s_maxV(m/s) %s_zMaxV(km) %s_potencyRate(m^2/s) %s_potency(m^2)",n,n,n,n); CHKERRQ(ierr);
+        if (_probeDepth >= 0) {
+          for (size_t k = 0; k < _probeNames.size(); k++) {
+            ierr = PetscFPrintf(PETSC_COMM_WORLD,_file," %s_%s@%.4gkm%s",n,_probeNames[k].c_str(),_probeDepth,_probeUnits[k].c_str()); CHKERRQ(ierr);
+          }
+          if (faults[i]->cohesionEvolves()) { ierr = PetscFPrintf(PETSC_COMM_WORLD,_file," %s_cohesion@%.4gkm(MPa)",n,_probeDepth); CHKERRQ(ierr); }
+        }
       }
       ierr = PetscFPrintf(PETSC_COMM_WORLD,_file,"\n"); CHKERRQ(ierr);
     }
@@ -191,9 +199,79 @@ PetscErrorCode FaultSeries::write(const string& outputDir, const bool append, co
     ierr = VecDot(faults[i]->_slipVel,_weights[i],&potRate); CHKERRQ(ierr);
     ierr = VecDot(faults[i]->_slip,_weights[i],&pot); CHKERRQ(ierr);
     ierr = PetscFPrintf(PETSC_COMM_WORLD,_file," %.9e %.6g %.9e %.9e",maxV,_depths[i][loc],potRate,pot); CHKERRQ(ierr);
+    if (_probeDepth >= 0) {
+      for (size_t k = 0; k < _probeFields.size(); k++) {
+        PetscScalar v = 0;
+        ierr = VecDot(*_probeFields[k],_probeWeights[i],&v); CHKERRQ(ierr);
+        ierr = PetscFPrintf(PETSC_COMM_WORLD,_file," %.9e",v); CHKERRQ(ierr);
+      }
+      if (faults[i]->cohesionEvolves()) {
+        PetscScalar c = 0;
+        ierr = VecDot(faults[i]->_cohesion,_probeNode[i],&c); CHKERRQ(ierr);
+        ierr = PetscFPrintf(PETSC_COMM_WORLD,_file," %.9e",c); CHKERRQ(ierr);
+      }
+    }
   }
   ierr = PetscFPrintf(PETSC_COMM_WORLD,_file,"\n"); CHKERRQ(ierr);
   return ierr;
+}
+
+
+PetscErrorCode FaultSeries::setProbes(Domain& D, const vector<Fault_qd*>& faults, const vector<InteriorFaultLift*>& lifts,
+  const PetscScalar depth, const PetscScalar width)
+{
+  PetscErrorCode ierr = 0;
+  if (_depths.empty()) { SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_ARG_WRONGSTATE,"FaultSeries::setProbes needs setup first"); }
+  // the grid depth nearest the requested one (the z of a fault's nodes, the same in every row)
+  const vector<PetscScalar>& z = _depths[0];
+  PetscInt iz0 = 0;
+  for (size_t iz = 0; iz < z.size(); iz++) { if (fabs(z[iz] - depth) < fabs(z[iz0] - depth)) { iz0 = (PetscInt) iz; } }
+  _probeDepth = z[iz0];
+  const PetscInt Nz = D._Nz;
+  for (size_t i = 0; i < faults.size(); i++) {
+    // body nodes at depth z[iz0] within width of the fault, and always the rows next to it
+    const bool interior = (i < lifts.size() && lifts[i] != NULL);
+    const PetscScalar yf = interior ? lifts[i]->_yFault : 0.0;
+    Vec w;
+    ierr = VecDuplicate(D._y,&w); CHKERRQ(ierr);
+    ierr = VecSet(w,0.0); CHKERRQ(ierr);
+    PetscInt Istart, Iend;
+    ierr = VecGetOwnershipRange(w,&Istart,&Iend); CHKERRQ(ierr);
+    const PetscScalar *y;
+    PetscScalar *wa;
+    ierr = VecGetArrayRead(D._y,&y); CHKERRQ(ierr);
+    ierr = VecGetArray(w,&wa); CHKERRQ(ierr);
+    for (PetscInt Ii = Istart; Ii < Iend; Ii++) {
+      const PetscInt iy = Ii/Nz, iz = Ii - iy*Nz;
+      if (iz != iz0) { continue; }
+      const bool next = interior ? (iy == lifts[i]->_iRow || iy == lifts[i]->_iRow + 1) : (iy == 0);
+      if (next || fabs(y[Ii - Istart] - yf) <= width) { wa[Ii - Istart] = 1.0; }
+    }
+    ierr = VecRestoreArrayRead(D._y,&y); CHKERRQ(ierr);
+    ierr = VecRestoreArray(w,&wa); CHKERRQ(ierr);
+    PetscScalar count = 0;
+    ierr = VecSum(w,&count); CHKERRQ(ierr);
+    ierr = VecScale(w,1.0/count); CHKERRQ(ierr);
+    _probeWeights.push_back(w);
+    // the fault node at that depth
+    Vec n;
+    ierr = VecDuplicate(faults[i]->_slip,&n); CHKERRQ(ierr);
+    ierr = VecSet(n,0.0); CHKERRQ(ierr);
+    ierr = VecSetValue(n,iz0,1.0,INSERT_VALUES); CHKERRQ(ierr);
+    ierr = VecAssemblyBegin(n); CHKERRQ(ierr);
+    ierr = VecAssemblyEnd(n); CHKERRQ(ierr);
+    _probeNode.push_back(n);
+  }
+  return ierr;
+}
+
+
+PetscErrorCode FaultSeries::addProbe(const string& name, const string& unit, const Vec* field)
+{
+  _probeNames.push_back(name);
+  _probeUnits.push_back(unit);
+  _probeFields.push_back(field);
+  return 0;
 }
 
 

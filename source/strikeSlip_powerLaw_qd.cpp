@@ -177,7 +177,16 @@ StrikeSlip_PowerLaw_qd::StrikeSlip_PowerLaw_qd(Domain&D)
     VecDuplicate(_material->_bcT,&_bcTRate); VecSet(_bcTRate,0.0);
     VecDuplicate(_material->_bcB,&_bcBRate); VecSet(_bcBRate,0.0);
   }
-  if (_strideSeries > 0) { _series.setup(_faults); }
+  if (_strideSeries > 0) {
+    _series.setup(_faults);
+    if (_seriesDepth >= 0) { // the strength of each root at one depth: viscosity, temperature, state fields
+      _series.setProbes(D,_faults,_lifts,_seriesDepth,_seriesWidth);
+      _series.addProbe("effVisc","(GPa*s)",&_material->_effVisc);
+      _series.addProbe("T","(K)",&_material->_T);
+      if (_grainDist != NULL && _grainSizeEvCoupling != "no") { _series.addProbe("grainSize","",&_grainDist->_d); }
+      for (size_t i = 0; i < _bulkStates.size(); i++) { _series.addProbe(_bulkStates[i]->_symbol,"",&_bulkStates[i]->_state); }
+    }
+  }
 
   // compute min allowed time step for adaptive time stepping method
   computeMinTimeStep();
@@ -333,6 +342,8 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::loadSettings(const char *file)
     else if (var.compare("interiorFaultKinkSource")==0) { _interiorFaultKinkSource = atoi( rhs.c_str() ); }
     else if (var.compare("computeSurfVel")==0) { _computeSurfVel = atoi( rhs.c_str() ); }
     else if (var.compare("strideSeries")==0) { _strideSeries = (int)atof( rhs.c_str() ); }
+    else if (var.compare("seriesDepth")==0) { _seriesDepth = atof( rhs.c_str() ); }
+    else if (var.compare("seriesWidth")==0) { _seriesWidth = atof( rhs.c_str() ); }
     // interior fault positions <name>_y (km), matched with interiorFaults in checkInput
     else if (var.size() > 2 && var.compare(var.size()-2,2,"_y")==0) { _faultPositions[var.substr(0,var.size()-2)] = atof( rhs.c_str() ); }
   }
@@ -1111,6 +1122,7 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::writeContext()
   }
   ierr = PetscViewerASCIIPrintf(viewer,"computeSurfVel = %i\n",_computeSurfVel);CHKERRQ(ierr);
   ierr = PetscViewerASCIIPrintf(viewer,"strideSeries = %i\n",_strideSeries);CHKERRQ(ierr);
+  if (_seriesDepth >= 0) { ierr = PetscViewerASCIIPrintf(viewer,"seriesDepth = %g # (km)\nseriesWidth = %g # (km)\n",_seriesDepth,_seriesWidth);CHKERRQ(ierr); }
   ierr = PetscViewerASCIIPrintf(viewer,"normType = %s\n",_normType.c_str());CHKERRQ(ierr);
   ierr = PetscViewerASCIIPrintf(viewer,"\n");CHKERRQ(ierr);
 

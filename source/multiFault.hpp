@@ -55,11 +55,23 @@ private:
   FILE                                   *_file;    // open on the first process only
   std::vector<Vec>                        _weights; // per fault: trapezoid weights in z (m)
   std::vector< std::vector<PetscScalar> > _depths;  // per fault: z (km) of every node, on every process
+  // probes: body fields averaged near each fault at one depth, and the fault's cohesion there
+  PetscScalar                             _probeDepth;   // the grid depth used (km), < 0 without probes
+  std::vector<std::string>                _probeNames, _probeUnits;
+  std::vector<const Vec*>                 _probeFields;
+  std::vector<Vec>                        _probeWeights; // per fault: 1/count on the averaged body nodes
+  std::vector<Vec>                        _probeNode;    // per fault: 1 on the fault node at that depth
 
 public:
   FaultSeries();
   ~FaultSeries();
   PetscErrorCode setup(const std::vector<Fault_qd*>& faults);
+  // probes at the grid depth nearest depth (km): body fields averaged over the nodes within width (km)
+  // of each fault (always the rows next to it), and an evolving cohesion at that depth
+  PetscErrorCode setProbes(Domain& D, const std::vector<Fault_qd*>& faults, const std::vector<InteriorFaultLift*>& lifts,
+    const PetscScalar depth, const PetscScalar width);
+  // a body field, written as <fault>_<name>@<depth>km<unit> (unit "(GPa*s)", without spaces, or "")
+  PetscErrorCode addProbe(const std::string& name, const std::string& unit, const Vec* field);
   PetscErrorCode write(const std::string& outputDir, const bool append, const PetscInt stepCount,
     const PetscScalar time, const PetscScalar deltaT, const std::vector<Fault_qd*>& faults);
   PetscErrorCode flush();

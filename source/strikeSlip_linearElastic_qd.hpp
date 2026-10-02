@@ -137,6 +137,7 @@ public:
   // strideSeries = N appends one line to faultSeries.txt every N steps: per fault, the maximum slip
   // rate, its depth, and the depth integrals of slip rate and slip (potency rate and potency).
   int                             _computeSurfVel, _strideSeries;
+  PetscScalar                     _seriesDepth = -1, _seriesWidth = 0; // probes in faultSeries.txt: depth (km; < 0: none), width (km)
   Vec                             _vel, _rhsVel, _surfVel;
   Vec                             _bcLRate, _bcRRate, _bcTRate, _bcBRate;
   FaultSeries                     _series;
