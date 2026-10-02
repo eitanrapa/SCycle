@@ -258,8 +258,10 @@ PetscErrorCode LinearElastic::setupKSP(KSP& ksp,PC& pc,Mat& A,std::string& linSo
     PetscPrintf(PETSC_COMM_WORLD,"Starting %s in %s\n",funcName.c_str(),FILENAME);
   #endif
 
-  // create linear solver context
-  ierr = KSPCreate(PETSC_COMM_WORLD,&_ksp); CHKERRQ(ierr);
+  // (re)create the solver passed in: creating _ksp regardless leaked any existing context
+  // (and its factorization) and left a different ksp argument uncreated
+  ierr = KSPDestroy(&ksp); CHKERRQ(ierr);
+  ierr = KSPCreate(PETSC_COMM_WORLD,&ksp); CHKERRQ(ierr);
 
   // set operators, here the matrix that defines the linear system also serves as the preconditioning matrix
   ierr = KSPSetOperators(ksp,A,A); CHKERRQ(ierr);

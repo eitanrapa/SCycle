@@ -826,7 +826,7 @@ PetscErrorCode SbpOps_m_constGrid::updateBCMats()
     constructBC_Dirichlet(_AT_D,_alphaDz,_mu,_Iy_Hzinv,_Iy_muxBzSzT,_Iy_E0z,MAT_REUSE_MATRIX);
     constructBC_Dirichlet(_rhsT_D,_alphaDz,_mu,_Iy_Hzinv,_Iy_muxBzSzT,_Iy_e0z,MAT_REUSE_MATRIX);
     _AT = _AT_D; _rhsT = _rhsT_D;
-    MatDestroy(&_AR_D); MatDestroy(&_rhsR_D);
+    MatDestroy(&_AT_N); MatDestroy(&_rhsT_N); // (destroyed _AR_D/_rhsR_D, which _AR/_rhsR may still use)
   }
   else if (_bcTType.compare("Neumann")==0) {
     constructBC_Neumann(_AT_N,_Iy_Hzinv, -1.,_Iy_E0z,_mu,_Iy_Dz,MAT_REUSE_MATRIX);

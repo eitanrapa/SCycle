@@ -1566,10 +1566,13 @@ PetscErrorCode PressureEq::be(const PetscScalar time, const map<string, Vec> &va
 
   Vec tmp1;
   VecDuplicate(_p, &tmp1);
-  Mat tmp2;
-  Mat J, Jinv, qy, rz, yq, zr;
-  ierr = _sbp->getCoordTrans(J, Jinv, qy, rz, yq, zr); CHKERRQ(ierr);
-  MatMatMult(Jinv, D2_rho_n_beta, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &tmp2);
+  Mat tmp2 = NULL;
+  // coordinate transform: only variable grids have one (the constant-grid operators assert)
+  if (_D->_gridSpacingType.compare("variableGridSpacing")==0) {
+    Mat J, Jinv, qy, rz, yq, zr;
+    ierr = _sbp->getCoordTrans(J, Jinv, qy, rz, yq, zr); CHKERRQ(ierr);
+    MatMatMult(Jinv, D2_rho_n_beta, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &tmp2);
+  }
 
   if (_permPressureDependent.compare("no") == 0){
     _maxBeIteration = 1;
