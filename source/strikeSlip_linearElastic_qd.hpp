@@ -23,6 +23,7 @@
 #include "sbpOps_m_varGrid.hpp"
 #include "fault.hpp"
 #include "interiorFaultLift.hpp"
+#include "multiFault.hpp"
 #include "pressureEq.hpp"
 #include "heatEquation.hpp"
 #include "linearElastic.hpp"
@@ -137,9 +138,7 @@ public:
   int                             _computeSurfVel, _strideSeries;
   Vec                             _vel, _rhsVel, _surfVel;
   Vec                             _bcLRate, _bcRRate, _bcTRate, _bcBRate;
-  FILE                           *_seriesFile; // open on the first process only
-  std::vector<Vec>                _depthWeights; // per fault: trapezoid weights in z (m)
-  std::vector< std::vector<PetscScalar> > _faultDepths; // per fault: z (km) of every node, on every process
+  FaultSeries                     _series;
   LinearElastic    *_material; // linear elastic off-fault material properties
   HeatEquation     *_he;
   PressureEq       *_p;
@@ -173,7 +172,6 @@ public:
   PetscErrorCode writeStep2D(PetscInt stepCount, PetscScalar time, PetscScalar deltaT);
   PetscErrorCode writeSS(const int Ii);
   PetscErrorCode computeSurfVel(); // _surfVel from the current slip rates and loading rates
-  PetscErrorCode writeSeries(PetscInt stepCount, PetscScalar time, PetscScalar deltaT);
 
   // checkpointing functions
   PetscErrorCode loadCheckpoint();
