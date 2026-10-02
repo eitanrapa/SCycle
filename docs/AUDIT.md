@@ -4,7 +4,7 @@
 
 This document records an audit of SCycle, the C++/PETSc code for 2D antiplane earthquake-cycle simulations, and the fixes made on branch `audit/fixes-2026-10`. The audit started from an unmodified clone of upstream master (github.com/kali-allison/SCycle, last upstream commit `74a132f` of 19 December 2024).
 
-The branch adds 69 commits to master: 58 fixes, 3 tool commits, 2 commits for the repository contents, 2 for this documentation, and one each for the build, the example inputs, a code comment, and the SEAS BP1 benchmark with an input-key checker. Together they fix 94 distinct findings (32 Critical, 25 High, 25 Medium, 12 Low), listed in section 3. A 95th, A-95 (Critical), was found during stage 3 of the two-fault work and fixed on branch `stage3/two-faults` (`5bb2fee`), two more during stage 4, A-96 (Medium) and A-97 (High), on branch `stage4/viscoelastic` (`ae6c6a8`, `3f402f3`), and A-98 (Low) during stage 5 on branch `stage5/reversible-strength`; the tables below include them. Three are fixed only in part (A-35, A-45, A-57), and the MATLAB tools of A-93 were not run. Section 5 lists 15 open items and documented limitations. Each commit message records its finding: what was wrong, the failure it caused, the fix and the test evidence (`git show <hash>`). A few spot tests from early in the audit appear only in this document; their entries say so.
+The branch adds 69 commits to master: 58 fixes, 3 tool commits, 2 commits for the repository contents, 2 for this documentation, and one each for the build, the example inputs, a code comment, and the SEAS BP1 benchmark with an input-key checker. Together they fix 94 distinct findings (32 Critical, 25 High, 25 Medium, 12 Low), listed in section 3. A 95th, A-95 (Critical), was found during stage 3 of the two-fault work and fixed on branch `stage3/two-faults` (`5bb2fee`), two more during stage 4, A-96 (Medium) and A-97 (High), on branch `stage4/viscoelastic` (`ae6c6a8`, `3f402f3`), and A-98 and A-99 (both Low) during stage 5 on branch `stage5/reversible-strength`; the tables below include them. Three are fixed only in part (A-35, A-45, A-57), and the MATLAB tools of A-93 were not run. Section 5 lists 15 open items and documented limitations. Each commit message records its finding: what was wrong, the failure it caused, the fix and the test evidence (`git show <hash>`). A few spot tests from early in the audit appear only in this document; their entries say so.
 
 How the fixes were verified:
 
@@ -36,11 +36,11 @@ How the scale is applied:
 |---|---|---|---|---|---|
 | 3.1 Crashes, undefined behaviour and memory | A-01 to A-22, A-98 | 17 | 0 | 5 | 1 |
 | 3.2 Physics and numerics (wrong results) | A-23 to A-47, A-97 | 1 | 18 | 4 | 3 |
-| 3.3 Time integration, checkpoints and I/O | A-48 to A-68, A-95, A-96 | 12 | 3 | 7 | 1 |
+| 3.3 Time integration, checkpoints and I/O | A-48 to A-68, A-95, A-96, A-99 | 12 | 3 | 7 | 2 |
 | 3.4 Input handling and error reporting | A-69 to A-79 | 3 | 3 | 4 | 1 |
 | 3.5 Build, repository and tooling | A-80 to A-87 | 0 | 0 | 1 | 7 |
 | 3.6 Examples, benchmarks and post-processing | A-88 to A-94 | 0 | 2 | 5 | 0 |
-| Total | 98 | 33 | 26 | 26 | 13 |
+| Total | 99 | 33 | 26 | 26 | 14 |
 
 "No run reported" means the commit message describes the fix without a dedicated test; the ex1/ex2 regression comparison still applied to it.
 
@@ -343,6 +343,11 @@ Section 4 summarizes how much each of these changes results.
 - Defect: after `Fault_qd::d_dt` had computed the rates, the explicit `d_dt` of `StrikeSlip_PowerLaw_qd` recomputed the boundary fault's strength without cohesion and wrote it as the shear stress (tau = strength(psi, V), tauQS = tau + eta V). Locked nodes (V = 0) reported tau = tauQS = 0, nodes held by cohesion the cohesion-free strength. Only the output was wrong; the implicit-explicit path and the elastic mediators never did this.
 - Fix: the block is removed; `Fault_qd::d_dt` sets tau = tauQS - eta V and the strength with cohesion.
 - Evidence: ex4g with lockedVals = 1 above 5 km: the locked nodes reported 0 MPa and now 33.49 to 34.05 MPa; slip, slip rate, state and strength bit-identical; in ex4s and ex4g only /fault/tau and /fault/tauQS change, by at most 1e-12 MPa.
+
+**A-99. Restarts changed the boundary fault's frictional-heat kernel by roundoff.** Low. `source/heatEquation.cpp`. Found after the audit, during stage 5 of the two-fault work; introduced by A-97 (`3f402f3`).
+- Defect: on a restart the heat equation loaded Gw from the checkpoint (or, for `restartFromChkptSS`, from data_context.h5) after building it, and the constructor then normalized it again (A-97). Normalizing an already normalized kernel rescales it by 1 within roundoff, so with a boundary fault and `wVals` > 0 the restarted run's heat source differed from the uninterrupted run's in the last bits and restarts were not bit-identical. The width `w` was also loaded, through a conversion to m and back.
+- Fix: neither Gw nor w is loaded; both follow from `wVals` and the grid, and the constructor rebuilds them exactly.
+- Evidence: ex4s with `wVals = [10 10]`, 300 steps against 200 plus a restart for 100: Qfric differed (4.5e-19 of its maximum) and is now identical, with T, u, the viscosity and the fault series; ex1, ex2, ex4s, ex4g bit-identical. The `restartFromChkptSS` path has the same change and was not run.
 
 ### 3.4 Input handling and error reporting
 

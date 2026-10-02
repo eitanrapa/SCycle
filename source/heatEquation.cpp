@@ -1977,12 +1977,9 @@ PetscErrorCode HeatEquation::loadCheckpoint()
   ierr = VecLoad(_rho, viewer);                                         CHKERRQ(ierr);
   ierr = VecLoad(_c, viewer);                                           CHKERRQ(ierr);
   ierr = VecLoad(_Tamb, viewer);                                        CHKERRQ(ierr);
-  if (_wFrictionalHeating.compare("yes")==0) {
-    ierr = VecLoad(_Gw, viewer);                                         CHKERRQ(ierr);
-    VecScale(_w,1e3); // output w in m
-    ierr = VecLoad(_w, viewer);                                         CHKERRQ(ierr);
-    VecScale(_w,1e-3); // convert w from m to km
-  }
+  // Gw and w are not loaded: both follow from wVals and the grid, and the constructor rebuilds them
+  // exactly (constructMapV, normalizeGw). Loading the normalized Gw and normalizing it again changed it
+  // by roundoff, and w came back through a conversion to m and back.
   if (_wRadioHeatGen.compare("yes")==0) {
     ierr = VecLoad(_Qrad, viewer);                                        CHKERRQ(ierr);
   }
@@ -2027,12 +2024,9 @@ PetscErrorCode HeatEquation::loadCheckpointSS()
   ierr = VecLoad(_rho, viewer);                                         CHKERRQ(ierr);
   ierr = VecLoad(_c, viewer);                                           CHKERRQ(ierr);
   ierr = VecLoad(_Tamb, viewer);                                        CHKERRQ(ierr);
-  if (_wFrictionalHeating.compare("yes")==0) {
-    ierr = VecLoad(_Gw, viewer);                                         CHKERRQ(ierr);
-    VecScale(_w,1e3); // output w in m
-    ierr = VecLoad(_w, viewer);                                         CHKERRQ(ierr);
-    VecScale(_w,1e-3); // convert w from m to km
-  }
+  // Gw and w are not loaded: both follow from wVals and the grid, and the constructor rebuilds them
+  // exactly (constructMapV, normalizeGw). Loading the normalized Gw and normalizing it again changed it
+  // by roundoff, and w came back through a conversion to m and back.
   if (_wRadioHeatGen.compare("yes")==0) {
     ierr = VecLoad(_Qrad, viewer);                                        CHKERRQ(ierr);
   }
