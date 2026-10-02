@@ -10,7 +10,8 @@
 # Environment:
 #   SCYCLE_BIN     executable (default: source/main)
 #   REGRESS_NP     MPI ranks (default 1; >1 runs through mpirun)
-#   REGRESS_CASES  example names under examples/ (default "ex1 ex2")
+#   REGRESS_CASES  example names under examples/, or paths to other input files
+#                  (default "ex1 ex2"); a path's case name is its file name without .in
 #   REGRESS_DELTA  absolute tolerance for h5diff --delta (default: exact)
 #   REGRESS_WORK   scratch directory for the runs (default: mktemp -d)
 #
@@ -34,12 +35,15 @@ command -v h5diff >/dev/null || { echo "h5diff not found on PATH" >&2; exit 2; }
 [[ "$mode" == compare && ! -d "$ref" ]] && { echo "no baseline at $ref" >&2; exit 2; }
 
 status=0
-for ex in $cases; do
+for case in $cases; do
+  if [[ -f "$case" ]]; then src=$case; ex=$(basename "$case" .in)
+  else src="$root/examples/$case.in"; ex=$case; fi
+  [[ -f "$src" ]] || { echo "FAIL $case: no input file $src"; status=1; continue; }
   out="$work/$ex"; rm -rf "$out"; mkdir -p "$out"
   in="$work/$ex.in"
   sed -e "s|^outputDir = .*|outputDir = $out/|" \
       -e '/^restartFromChkpt/d' -e '/^restartFromChkptSS/d' -e '/^retartFromChkptSS/d' \
-      "$root/examples/$ex.in" > "$in"
+      "$src" > "$in"
   printf 'restartFromChkpt = 0\nrestartFromChkptSS = 0\n' >> "$in"
 
   start=$SECONDS
