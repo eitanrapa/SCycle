@@ -263,7 +263,7 @@ PetscReal RK32_WBE::computeStepSize(const PetscReal totErr)
     PetscReal gamma = 0.1/_ord;
 
     // only do this for the first simulation when _errA is empty
-    if (_stepCount < 4) {
+    if (_stepCount < 4 || _errA[0] <= 0 || _errA[1] <= 0) { // no error history yet (e.g. a new integrator mid-run)
       stepRatio = _kappa*pow(_totTol/totErr,1./(1.+_ord));
     }
     else {
@@ -338,7 +338,12 @@ PetscReal RK32_WBE::computeError()
 
       PetscReal s = 0;
       VecNorm(_y3[key],NORM_2,&s);
-      totErr += err / (s * _scale[i]);
+      if (s > 0) { totErr += err / (s * _scale[i]); }
+      else { // identically zero solution: use the absolute error
+        PetscInt N = 0;
+        VecGetSize(_y3[key],&N);
+        totErr += err / (sqrt(N) * _scale[i]);
+      }
     }
   }
 
@@ -829,7 +834,7 @@ PetscReal RK43_WBE::computeStepSize(const PetscReal totErr)
     PetscReal beta  = 0.34/_ord;
     PetscReal gamma = 0.1/_ord;
     // only do this for the first simulation when _errA is empty
-    if (_stepCount < 4) {
+    if (_stepCount < 4 || _errA[0] <= 0 || _errA[1] <= 0) { // no error history yet (e.g. a new integrator mid-run)
       stepRatio = _kappa*pow(_totTol/totErr,1./(1.+_ord));
     }
     else {
@@ -904,7 +909,12 @@ PetscReal RK43_WBE::computeError()
 
       PetscReal s = 0;
       VecNorm(_y4[key],NORM_2,&s);
-      totErr += err / (s * _scale[i]);
+      if (s > 0) { totErr += err / (s * _scale[i]); }
+      else { // identically zero solution: use the absolute error
+        PetscInt N = 0;
+        VecGetSize(_y4[key],&N);
+        totErr += err / (sqrt(N) * _scale[i]);
+      }
     }
   }
 

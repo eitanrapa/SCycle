@@ -1178,3 +1178,26 @@ PetscErrorCode io_initiateWriteAppend(map<string, pair<PetscViewer,string>> &vwL
 
 
 
+
+
+// max over entries of |a - b| / |b|, using |a - b| where b == 0
+PetscReal maxRelativeDiff(const Vec& a, const Vec& b)
+{
+  const PetscScalar *aA,*bA;
+  PetscInt Istart,Iend;
+  VecGetOwnershipRange(b,&Istart,&Iend);
+  VecGetArrayRead(a,&aA);
+  VecGetArrayRead(b,&bA);
+  PetscReal localMax = 0;
+  for (PetscInt Jj = 0; Jj < Iend-Istart; Jj++) {
+    PetscReal d = PetscAbsScalar(aA[Jj] - bA[Jj]);
+    PetscReal scale = PetscAbsScalar(bA[Jj]);
+    if (scale > 0) { d /= scale; }
+    localMax = PetscMax(localMax,d);
+  }
+  VecRestoreArrayRead(a,&aA);
+  VecRestoreArrayRead(b,&bA);
+  PetscReal globalMax = 0;
+  MPI_Allreduce(&localMax,&globalMax,1,MPIU_REAL,MPIU_MAX,PetscObjectComm((PetscObject)b));
+  return globalMax;
+}

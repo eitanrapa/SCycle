@@ -199,6 +199,7 @@ PetscErrorCode FEuler::integrate(IntegratorContextEx *obj)
     if (_currT>_finalT) { _currT = _finalT; }
     _stepCount++;
     ierr = obj->timeMonitor(_currT,_deltaT,_stepCount,stopIntegration); CHKERRQ(ierr);
+    if (stopIntegration > 0) { PetscPrintf(PETSC_COMM_WORLD,"FEuler: Detected stop time integration request.\n"); break; }
   }
 
   _runTime += MPI_Wtime() - startTime;
@@ -222,7 +223,7 @@ PetscErrorCode FEuler::writeCheckpoint(PetscViewer &viewer)
 
   // initiate Vec to serve as underlying data set for step count and deltaT to be written out as attributes
   Vec temp;
-  VecCreateMPI(PETSC_COMM_WORLD, 1, 1, &temp);
+  VecCreateMPI(PETSC_COMM_WORLD, PETSC_DECIDE, 1, &temp);
   VecSetBlockSize(temp, 1);
   PetscObjectSetName((PetscObject) temp, "odeSolver_chkpt_data");
   VecSet(temp,0.);
@@ -471,7 +472,7 @@ PetscReal RK32::computeStepSize(const PetscReal totErr)
     PetscReal gamma = 0.1/_ord;
 
     // only do this when we're at the first simulation with no history of _errA
-    if (_stepCount < 4) {
+    if (_stepCount < 4 || _errA[0] <= 0 || _errA[1] <= 0) { // no error history yet (e.g. a new integrator mid-run)
       stepRatio = _kappa*pow(_totTol/totErr,1./(1.+_ord));
     }
     else {
@@ -547,7 +548,12 @@ PetscReal RK32::computeError()
 
       PetscReal s = 0;
       VecNorm(_y3[key],NORM_2,&s);
-      totErr += err / (s * _scale[i]);
+      if (s > 0) { totErr += err / (s * _scale[i]); }
+      else { // identically zero solution: use the absolute error
+        PetscInt N = 0;
+        VecGetSize(_y3[key],&N);
+        totErr += err / (sqrt(N) * _scale[i]);
+      }
     }
   }
 
@@ -555,18 +561,12 @@ PetscReal RK32::computeError()
   if (_normType.compare("max_relative")==0) {
     for(vector<int>::size_type i = 0; i != _errInds.size(); i++) {
       string key = _errInds[i];
-      Vec errVec;
-      VecDuplicate(_y3[key],&errVec);
-      VecSet(errVec,0.0);
-      ierr = VecWAXPY(errVec,-1.0,_y4[key],_y3[key]); CHKERRQ(ierr);
-      VecAbs(errVec);
-      VecPointwiseDivide(errVec,errVec,_y4[key]);
-      VecMax(errVec,NULL,&err);
-      VecDestroy(&errVec);
+      err = maxRelativeDiff(_y2[key],_y3[key]);
       assert(!PetscIsInfReal(err));
       totErr += err / (_scale[i]);
     }
   }
+
 
   #if VERBOSE > 1
     PetscPrintf(PETSC_COMM_WORLD,"Ending RK32::computeError in odeSolver.cpp.\n");
@@ -1008,7 +1008,7 @@ PetscReal RK43::computeStepSize(const PetscReal totErr)
     PetscReal alpha = 0.49/_ord;
     PetscReal beta  = 0.34/_ord;
     PetscReal gamma = 0.1/_ord;
-    if (_stepCount < 4) {
+    if (_stepCount < 4 || _errA[0] <= 0 || _errA[1] <= 0) { // no error history yet (e.g. a new integrator mid-run)
       stepRatio = _kappa*pow(_totTol/totErr,1./(1.+_ord));
     }
     else {
@@ -1087,7 +1087,12 @@ PetscReal RK43::computeError()
       VecDestroy(&errVec);
       PetscReal s = 0;
       VecNorm(_y4[key],NORM_2,&s);
-      totErr += err / (s * _scale[i]);
+      if (s > 0) { totErr += err / (s * _scale[i]); }
+      else { // identically zero solution: use the absolute error
+        PetscInt N = 0;
+        VecGetSize(_y4[key],&N);
+        totErr += err / (sqrt(N) * _scale[i]);
+      }
     }
   }
 
@@ -1095,18 +1100,12 @@ PetscReal RK43::computeError()
   if (_normType.compare("max_relative")==0) {
     for(vector<int>::size_type i = 0; i != _errInds.size(); i++) {
       string key = _errInds[i];
-      Vec errVec;
-      VecDuplicate(_y3[key],&errVec);
-      VecSet(errVec,0.0);
-      ierr = VecWAXPY(errVec,-1.0,_y4[key],_y3[key]); CHKERRQ(ierr);
-      VecAbs(errVec);
-      VecPointwiseDivide(errVec,errVec,_y4[key]);
-      VecMax(errVec,NULL,&err);
-      VecDestroy(&errVec);
+      err = maxRelativeDiff(_y3[key],_y4[key]);
       assert(!PetscIsInfReal(err));
       totErr += err / (_scale[i]);
     }
   }
+
 
   #if VERBOSE > 1
     PetscPrintf(PETSC_COMM_WORLD,"Ending RK43::computeError in odeSolver.cpp.\n");

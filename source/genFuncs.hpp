@@ -82,6 +82,8 @@ double computeNormDiff_Mat(const Mat& mat,const Vec& vec1,const Vec& vec2);
 double computeNormDiff_2(const Vec& vec1,const Vec& vec2);
 double computeNormDiff_L2_scaleL2(const Vec& vec1,const Vec& vec2);
 double computeMaxDiff_scaleVec1(const Vec& vec1,const Vec& vec2);
+// max over entries of |a - b| / |b|, using |a - b| where b == 0
+PetscReal maxRelativeDiff(const Vec& a, const Vec& b);
 double computeNorm_Mat(const Mat& mat,const Vec& vec);
 
 // functions to make computing the energy much easier
