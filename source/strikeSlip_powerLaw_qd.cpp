@@ -1190,33 +1190,10 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::d_dt(const PetscScalar time,const map<str
 
   if (_hydraulicCoupling=="coupled") { _fault->setSNEff(_p->_p); }
 
-  // rates for each fault
+  // rates for each fault (Fault_qd::d_dt also sets the shear stress tau = tauQS - eta V and the
+  // strength, cohesion included, that are written out)
   for (size_t i = 0; i < _faults.size(); i++) {
-    if (_faults[i] == _fault) { continue; }
     ierr = _faults[i]->d_dt(time,varEx,dvarEx); CHKERRQ(ierr); // sets rates for slip and state
-  }
-  if (_fault != NULL) {
-    ierr = _fault->d_dt(time,varEx,dvarEx); // sets rates for slip and state
-
-
-    //~ // impose ceiling on fault velocity: slipVel <= vL
-    //~ PetscScalar *V;
-    //~ ierr = VecGetArray(_fault->_slipVel,&V);
-    //~ PetscInt Kk = 0; // local array index
-    //~ PetscInt Istart, Iend;
-    //~ ierr = VecGetOwnershipRange(_fault->_slipVel,&Istart,&Iend); // local portion of global Vec index
-    //~ for (PetscInt Ii = Istart; Ii < Iend; Ii++) {
-      //~ V[Kk] = min(V[Kk],_vL);
-      //~ Kk++;
-    //~ }
-    //~ VecRestoreArray(_fault->_slipVel,&V);
-
-    // compute frictional strength of fault based on updated slip velocity
-    ierr = strength_psi_Vec(_fault->_strength, _fault->_psi, _fault->_slipVel, _fault->_a, _fault->_sNEff, _fault->_v0); CHKERRQ(ierr);
-    ierr = VecCopy(_fault->_strength,_fault->_tauP); CHKERRQ(ierr);
-    ierr = VecCopy(_fault->_slipVel,_fault->_tauQSP); CHKERRQ(ierr); // V -> tauQS
-    ierr = VecPointwiseMult(_fault->_tauQSP,_fault->_eta_rad,_fault->_tauQSP); CHKERRQ(ierr); // tauQS = V * eta_rad
-    ierr = VecAYPX(_fault->_tauQSP,1.0,_fault->_tauP); CHKERRQ(ierr); // tauQS = tau + V*eta_rad
   }
 
   // pressure and permeability rates (after the fault, since dk_dt uses the slip rate in dvarEx["slip"])
