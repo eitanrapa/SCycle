@@ -8,6 +8,7 @@
 #include <assert.h>
 #include <vector>
 #include <map>
+#include <algorithm>
 
 #include "integratorContextEx.hpp"
 #include "integratorContextImex.hpp"
@@ -125,6 +126,20 @@ public:
   std::map<string,PetscScalar>    _faultPositions; // every <name>_y value in the input file
   std::vector<InteriorFaultLift*> _lifts;
   int                             _interiorFaultKinkLift; // 1 (default): B+, second-order fault traction
+
+  // Diagnostics for multi-fault models (docs/TWO_FAULT_DESIGN.md, section 6); both are on by default
+  // when interior faults are declared, off otherwise.
+  // computeSurfVel = 1 writes /momBal/surfVel, the instantaneous surface velocity (m/s), with each
+  // 1D output: the momentum balance is linear in the boundary data and the faults' slip, so the
+  // velocity field solves the same factored system with their rates (one extra back-substitution).
+  // strideSeries = N appends one line to faultSeries.txt every N steps: per fault, the maximum slip
+  // rate, its depth, and the depth integrals of slip rate and slip (potency rate and potency).
+  int                             _computeSurfVel, _strideSeries;
+  Vec                             _vel, _rhsVel, _surfVel;
+  Vec                             _bcLRate, _bcRRate, _bcTRate, _bcBRate;
+  FILE                           *_seriesFile; // open on the first process only
+  std::vector<Vec>                _depthWeights; // per fault: trapezoid weights in z (m)
+  std::vector< std::vector<PetscScalar> > _faultDepths; // per fault: z (km) of every node, on every process
   LinearElastic    *_material; // linear elastic off-fault material properties
   HeatEquation     *_he;
   PressureEq       *_p;
@@ -157,6 +172,8 @@ public:
   PetscErrorCode writeStep1D(PetscInt stepCount, PetscScalar time, PetscScalar deltaT);
   PetscErrorCode writeStep2D(PetscInt stepCount, PetscScalar time, PetscScalar deltaT);
   PetscErrorCode writeSS(const int Ii);
+  PetscErrorCode computeSurfVel(); // _surfVel from the current slip rates and loading rates
+  PetscErrorCode writeSeries(PetscInt stepCount, PetscScalar time, PetscScalar deltaT);
 
   // checkpointing functions
   PetscErrorCode loadCheckpoint();

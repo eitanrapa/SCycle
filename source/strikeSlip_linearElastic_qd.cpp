@@ -24,7 +24,10 @@ StrikeSlip_LinearElastic_qd::StrikeSlip_LinearElastic_qd(Domain &D)
   _miscTime(0),_viewer_context(NULL),_viewer1D(NULL),_viewer2D(NULL),_viewerSS(NULL),_viewer_chkpt(NULL),
   _forcingVal(0),
   _bcRType("remoteLoading"),_bcTType("freeSurface"),_bcLType("symmFault"),_bcBType("freeSurface"),
-  _quadEx(NULL),_quadImex(NULL),_fault(NULL),_interiorFaultKinkLift(1),_material(NULL),_he(NULL),_p(NULL)
+  _quadEx(NULL),_quadImex(NULL),_fault(NULL),_interiorFaultKinkLift(1),
+  _computeSurfVel(-1),_strideSeries(-1),_vel(NULL),_rhsVel(NULL),_surfVel(NULL),
+  _bcLRate(NULL),_bcRRate(NULL),_bcTRate(NULL),_bcBRate(NULL),_seriesFile(NULL),
+  _material(NULL),_he(NULL),_p(NULL)
 {
   #if VERBOSE > 1
     std::string funcName = "StrikeSlip_LinearElastic_qd::StrikeSlip_LinearElastic_qd()";
@@ -74,6 +77,31 @@ StrikeSlip_LinearElastic_qd::StrikeSlip_LinearElastic_qd(Domain &D)
     _lifts.push_back(new InteriorFaultLift(D,iRow,_interiorFaultKinkLift == 1));
   }
 
+  // A timeIntInds that lists slip or psi means those of every fault: the keys of the other faults
+  // (<name>_slip, <name>_psi) are added with the same scale, and slip or psi are dropped if no fault
+  // is named fault. An empty list already means every integrated variable.
+  if (!_timeIntInds.empty()) {
+    vector<double> scale0 = _scale;
+    while (scale0.size() < _timeIntInds.size()) { scale0.push_back(1.0); } // integrators default missing scales to 1
+    vector<string> inds;
+    vector<double> scale;
+    for (size_t k = 0; k < _timeIntInds.size(); k++) {
+      vector<string> keys(1,_timeIntInds[k]);
+      if (_timeIntInds[k] == "slip" || _timeIntInds[k] == "psi") {
+        keys.clear();
+        for (size_t i = 0; i < _faults.size(); i++) { keys.push_back(_timeIntInds[k] == "slip" ? _faults[i]->_slipKey : _faults[i]->_psiKey); }
+      }
+      for (size_t j = 0; j < keys.size(); j++) {
+        if (std::find(inds.begin(),inds.end(),keys[j]) == inds.end()) { inds.push_back(keys[j]); scale.push_back(scale0[k]); }
+      }
+    }
+    if (inds != _timeIntInds) {
+      PetscPrintf(PETSC_COMM_WORLD,"Note: timeIntInds = %s, for the slip and state of every fault.\n",vector2str(inds).c_str());
+      _timeIntInds = inds;
+      _scale = scale;
+    }
+  }
+
   // pressure diffusion equation
   if (_hydraulicCoupling != "no") {
     _p = new PressureEq(D);
@@ -96,6 +124,52 @@ StrikeSlip_LinearElastic_qd::StrikeSlip_LinearElastic_qd(Domain &D)
 
   // near each interior fault, sxy is computed from u without its jump
   _material->setInteriorFaults(_lifts);
+
+  // surface velocity: work vectors; the boundary data of the top and bottom do not change in time
+  if (_computeSurfVel == 1) {
+    VecDuplicate(_material->_u,&_vel);
+    VecDuplicate(_material->_u,&_rhsVel);
+    VecDuplicate(_material->_surfDisp,&_surfVel);
+    PetscObjectSetName((PetscObject) _surfVel, "surfVel");
+    VecSet(_surfVel,0.0);
+    VecDuplicate(_material->_bcL,&_bcLRate);
+    VecDuplicate(_material->_bcR,&_bcRRate);
+    VecDuplicate(_material->_bcT,&_bcTRate); VecSet(_bcTRate,0.0);
+    VecDuplicate(_material->_bcB,&_bcBRate); VecSet(_bcBRate,0.0);
+  }
+
+  // fault series: the depth of every fault node, and trapezoid weights for the depth integrals
+  if (_strideSeries > 0) {
+    for (size_t i = 0; i < _faults.size(); i++) {
+      VecScatter toAll;
+      Vec zAll, w;
+      VecScatterCreateToAll(_faults[i]->_z,&toAll,&zAll);
+      VecScatterBegin(toAll,_faults[i]->_z,zAll,INSERT_VALUES,SCATTER_FORWARD);
+      VecScatterEnd(toAll,_faults[i]->_z,zAll,INSERT_VALUES,SCATTER_FORWARD);
+      PetscInt n = 0;
+      VecGetSize(zAll,&n);
+      const PetscScalar *z;
+      VecGetArrayRead(zAll,&z);
+      _faultDepths.push_back(vector<PetscScalar>(z,z+n));
+      VecRestoreArrayRead(zAll,&z);
+      VecScatterDestroy(&toAll);
+      VecDestroy(&zAll);
+
+      const vector<PetscScalar>& zz = _faultDepths.back();
+      VecDuplicate(_faults[i]->_slip,&w);
+      PetscInt Istart, Iend;
+      VecGetOwnershipRange(w,&Istart,&Iend);
+      for (PetscInt Jj = Istart; Jj < Iend; Jj++) {
+        PetscScalar dz = 0;
+        if (Jj > 0) { dz += 0.5*(zz[Jj] - zz[Jj-1]); }
+        if (Jj < n - 1) { dz += 0.5*(zz[Jj+1] - zz[Jj]); }
+        VecSetValue(w,Jj,1e3*dz,INSERT_VALUES); // km -> m
+      }
+      VecAssemblyBegin(w);
+      VecAssemblyEnd(w);
+      _depthWeights.push_back(w);
+    }
+  }
 
   // body forcing term for ice stream
   _forcingTerm = NULL;
@@ -142,6 +216,15 @@ StrikeSlip_LinearElastic_qd::~StrikeSlip_LinearElastic_qd()
   _faults.clear();     _fault = NULL;
   for (size_t i = 0; i < _lifts.size(); i++) { delete _lifts[i]; }
   _lifts.clear();
+  VecDestroy(&_vel);
+  VecDestroy(&_rhsVel);
+  VecDestroy(&_surfVel);
+  VecDestroy(&_bcLRate);
+  VecDestroy(&_bcRRate);
+  VecDestroy(&_bcTRate);
+  VecDestroy(&_bcBRate);
+  for (size_t i = 0; i < _depthWeights.size(); i++) { VecDestroy(&_depthWeights[i]); }
+  if (_seriesFile != NULL) { PetscFClose(PETSC_COMM_WORLD,_seriesFile); }
   delete _he;          _he = NULL;
   delete _p;           _p = NULL;
 
@@ -229,6 +312,8 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::loadSettings(const char *file)
     else if (var.compare("momBal_bcB_qd")==0) { _bcBType = rhs.c_str(); }
     else if (var.compare("interiorFaults")==0) { _interiorFaultNames.clear(); loadVectorFromInputFile(rhsFull,_interiorFaultNames); }
     else if (var.compare("interiorFaultKinkLift")==0) { _interiorFaultKinkLift = atoi( rhs.c_str() ); }
+    else if (var.compare("computeSurfVel")==0) { _computeSurfVel = atoi( rhs.c_str() ); }
+    else if (var.compare("strideSeries")==0) { _strideSeries = (int)atof( rhs.c_str() ); }
     // interior fault positions <name>_y (km), matched with interiorFaults in checkInput
     else if (var.size() > 2 && var.compare(var.size()-2,2,"_y")==0) { _faultPositions[var.substr(0,var.size()-2)] = atof( rhs.c_str() ); }
   }
@@ -323,6 +408,22 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::checkInput()
     }
   }
   assert(_interiorFaultKinkLift == 0 || _interiorFaultKinkLift == 1);
+
+  // multi-fault diagnostics: on by default with interior faults
+  if (_computeSurfVel == -1) { _computeSurfVel = _interiorFaultNames.empty() ? 0 : 1; }
+  if (_strideSeries == -1) { _strideSeries = _interiorFaultNames.empty() ? 0 : 1; }
+  if (_computeSurfVel != 0 && _computeSurfVel != 1) {
+    PetscPrintf(PETSC_COMM_WORLD,"Error: computeSurfVel must be 0 or 1.\n");
+    assert(0);
+  }
+  if (_computeSurfVel == 1 && _isMMS) {
+    PetscPrintf(PETSC_COMM_WORLD,"Note: computeSurfVel is ignored in MMS tests (time-dependent boundary data).\n");
+    _computeSurfVel = 0;
+  }
+  if (_strideSeries < 0) {
+    PetscPrintf(PETSC_COMM_WORLD,"Error: strideSeries must be 0 (off) or a positive step count.\n");
+    assert(0);
+  }
   if (_bcLType == "remoteLoading" && _interiorFaultNames.empty()) {
     PetscPrintf(PETSC_COMM_WORLD,"Error: momBal_bcL_qd = remoteLoading leaves the model without a fault; declare interiorFaults.\n");
     assert(0);
@@ -579,9 +680,22 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::timeMonitor(PetscScalar time, PetscS
   if ( (_stride1D > 0 && _currTime == _maxTime) || (_stride1D > 0 && stepCount % _stride1D == 0)) {
     ierr = writeStep1D(_stepCount, _currTime, _deltaT); CHKERRQ(ierr); // this initializes _viewer1D and must go first
     ierr = _material->writeStep1D(_viewer1D); CHKERRQ(ierr);
+    if (_computeSurfVel == 1) {
+      ierr = computeSurfVel(); CHKERRQ(ierr);
+      ierr = PetscViewerHDF5PushGroup(_viewer1D, "/momBal"); CHKERRQ(ierr);
+      ierr = PetscViewerHDF5PushTimestepping(_viewer1D); CHKERRQ(ierr);
+      ierr = VecView(_surfVel,_viewer1D); CHKERRQ(ierr);
+      ierr = PetscViewerHDF5PopTimestepping(_viewer1D); CHKERRQ(ierr);
+      ierr = PetscViewerHDF5PopGroup(_viewer1D); CHKERRQ(ierr);
+    }
     for (size_t i = 0; i < _faults.size(); i++) { ierr = _faults[i]->writeStep(_viewer1D); CHKERRQ(ierr); }
+    if (_seriesFile != NULL) { fflush(_seriesFile); }
     if (_hydraulicCoupling.compare("no")!=0) { _p->writeStep(_viewer1D); }
     if (_thermalCoupling.compare("no")!=0) { _he->writeStep1D(_viewer1D); }
+  }
+
+  if ( (_strideSeries > 0 && _currTime == _maxTime) || (_strideSeries > 0 && stepCount % _strideSeries == 0)) {
+    ierr = writeSeries(_stepCount, _currTime, _deltaT); CHKERRQ(ierr);
   }
 
   if ( (_stride2D > 0 && _currTime == _maxTime) || (_stride2D > 0 && stepCount % _stride2D == 0)) {
@@ -603,6 +717,7 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::timeMonitor(PetscScalar time, PetscS
     ierr = flushHDF5Viewer(_viewer1D); CHKERRQ(ierr);
     ierr = flushHDF5Viewer(_viewer2D); CHKERRQ(ierr);
     ierr = commitCheckpoint(_viewer_chkpt, _outputDir); CHKERRQ(ierr);
+    if (_seriesFile != NULL) { fflush(_seriesFile); }
   }
 
   _writeTime += MPI_Wtime() - startTime;
@@ -719,6 +834,79 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::writeStep2D(PetscInt stepCount, Pets
   #endif
   return ierr;
 }
+
+// Surface velocity (m/s) at the current state. The momentum balance is linear in the boundary data
+// and in the slip of each interior fault, and remote loading moves the boundaries at constant
+// rates, so the velocity field solves the factored system with the rates in their place.
+PetscErrorCode StrikeSlip_LinearElastic_qd::computeSurfVel()
+{
+  PetscErrorCode ierr = 0;
+
+  if (_bcLType == "symmFault" || _bcLType == "rigidFault") {
+    ierr = VecCopy(_fault->_slipVel,_bcLRate); CHKERRQ(ierr);
+    ierr = VecScale(_bcLRate,1.0/_faultTypeScale); CHKERRQ(ierr);
+  }
+  else if (_bcLType == "remoteLoading") { ierr = VecSet(_bcLRate,-_vL/_faultTypeScale); CHKERRQ(ierr); }
+  else { ierr = VecSet(_bcLRate,0.0); CHKERRQ(ierr); }
+  if (_bcRType == "remoteLoading") { ierr = VecSet(_bcRRate,_vL/_faultTypeScale); CHKERRQ(ierr); }
+  else { ierr = VecSet(_bcRRate,0.0); CHKERRQ(ierr); }
+
+  ierr = VecSet(_rhsVel,0.0); CHKERRQ(ierr);
+  ierr = _material->_sbp->setRhs(_rhsVel,_bcLRate,_bcRRate,_bcTRate,_bcBRate); CHKERRQ(ierr);
+  Mat A;
+  ierr = _material->_sbp->getA(A); CHKERRQ(ierr);
+  for (size_t i = 0; i < _faults.size(); i++) {
+    if (_lifts[i] == NULL) { continue; }
+    ierr = _lifts[i]->setSlip(_faults[i]->_slipVel,A); CHKERRQ(ierr);
+    ierr = _lifts[i]->addToRhs(A,_rhsVel); CHKERRQ(ierr);
+  }
+  ierr = KSPSolve(_material->_ksp,_rhsVel,_vel); CHKERRQ(ierr);
+  for (size_t i = 0; i < _faults.size(); i++) { // the lifts again hold the current slip
+    if (_lifts[i] == NULL) { continue; }
+    ierr = _lifts[i]->setSlip(_faults[i]->_slip,A); CHKERRQ(ierr);
+  }
+
+  ierr = VecScatterBegin(_D->_scatters["body2T"], _vel, _surfVel, INSERT_VALUES, SCATTER_FORWARD); CHKERRQ(ierr);
+  ierr = VecScatterEnd(_D->_scatters["body2T"], _vel, _surfVel, INSERT_VALUES, SCATTER_FORWARD); CHKERRQ(ierr);
+  return ierr;
+}
+
+
+// One line of faultSeries.txt: step, time (s), time step (s), then per fault the maximum slip rate
+// (m/s), its depth (km), the potency rate (integral of the slip rate over depth, m^2/s) and the
+// potency (integral of the slip, m^2). A restart appends, so steps after the last checkpoint can
+// appear twice (identical lines); keep the last line of each step.
+PetscErrorCode StrikeSlip_LinearElastic_qd::writeSeries(PetscInt stepCount, PetscScalar time, PetscScalar deltaT)
+{
+  PetscErrorCode ierr = 0;
+
+  if (_seriesFile == NULL) { // (PetscFOpen stops with an error if the file cannot be opened)
+    string name = _outputDir + "faultSeries.txt";
+    const bool append = _D->_restartFromChkpt;
+    ierr = PetscFOpen(PETSC_COMM_WORLD,name.c_str(),append ? "a" : "w",&_seriesFile); CHKERRQ(ierr);
+    if (!append) {
+      ierr = PetscFPrintf(PETSC_COMM_WORLD,_seriesFile,"# step time(s) dt(s)"); CHKERRQ(ierr);
+      for (size_t i = 0; i < _faults.size(); i++) {
+        const char *n = _faults[i]->_name.c_str();
+        ierr = PetscFPrintf(PETSC_COMM_WORLD,_seriesFile," %s_maxV(m/s) %s_zMaxV(km) %s_potencyRate(m^2/s) %s_potency(m^2)",n,n,n,n); CHKERRQ(ierr);
+      }
+      ierr = PetscFPrintf(PETSC_COMM_WORLD,_seriesFile,"\n"); CHKERRQ(ierr);
+    }
+  }
+
+  ierr = PetscFPrintf(PETSC_COMM_WORLD,_seriesFile,"%i %.15e %.6e",stepCount,time,deltaT); CHKERRQ(ierr);
+  for (size_t i = 0; i < _faults.size(); i++) {
+    PetscInt loc = 0;
+    PetscScalar maxV = 0, potRate = 0, pot = 0;
+    ierr = VecMax(_faults[i]->_slipVel,&loc,&maxV); CHKERRQ(ierr);
+    ierr = VecDot(_faults[i]->_slipVel,_depthWeights[i],&potRate); CHKERRQ(ierr);
+    ierr = VecDot(_faults[i]->_slip,_depthWeights[i],&pot); CHKERRQ(ierr);
+    ierr = PetscFPrintf(PETSC_COMM_WORLD,_seriesFile," %.9e %.6g %.9e %.9e",maxV,_faultDepths[i][loc],potRate,pot); CHKERRQ(ierr);
+  }
+  ierr = PetscFPrintf(PETSC_COMM_WORLD,_seriesFile,"\n"); CHKERRQ(ierr);
+  return ierr;
+}
+
 
 PetscErrorCode StrikeSlip_LinearElastic_qd::writeSS(const int Ii)
 {
@@ -1012,6 +1200,8 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::writeContext()
   if (_scale.size() > 0) {
     ierr = PetscViewerASCIIPrintf(viewer,"scale = %s\n",vector2str(_scale).c_str());CHKERRQ(ierr);
   }
+  ierr = PetscViewerASCIIPrintf(viewer,"computeSurfVel = %i\n",_computeSurfVel);CHKERRQ(ierr);
+  ierr = PetscViewerASCIIPrintf(viewer,"strideSeries = %i\n",_strideSeries);CHKERRQ(ierr);
   ierr = PetscViewerASCIIPrintf(viewer,"normType = %s\n",_normType.c_str());CHKERRQ(ierr);
   ierr = PetscViewerASCIIPrintf(viewer,"\n");CHKERRQ(ierr);
 
@@ -1030,7 +1220,17 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::writeContext()
   ierr = PetscViewerHDF5Open(PETSC_COMM_WORLD, outFileName.c_str(), FILE_MODE_WRITE, &_viewer_context);CHKERRQ(ierr);
 
   _D->write(_viewer_context);
-  for (size_t i = 0; i < _faults.size(); i++) { _faults[i]->writeContext(_outputDir, _viewer_context); }
+  for (size_t i = 0; i < _faults.size(); i++) {
+    _faults[i]->writeContext(_outputDir, _viewer_context);
+    if (_lifts[i] != NULL) { // position (km), the grid row before it, and the row spacing across it (km)
+      const string g = _faults[i]->group();
+      const PetscScalar y = _lifts[i]->_yFault, dy = 2.0*_lifts[i]->_dyPlus;
+      const PetscInt iRow = _lifts[i]->_iRow;
+      ierr = PetscViewerHDF5WriteAttribute(_viewer_context, g.c_str(), "y", PETSC_SCALAR, &y); CHKERRQ(ierr);
+      ierr = PetscViewerHDF5WriteAttribute(_viewer_context, g.c_str(), "iRow", PETSC_INT, &iRow); CHKERRQ(ierr);
+      ierr = PetscViewerHDF5WriteAttribute(_viewer_context, g.c_str(), "dy", PETSC_SCALAR, &dy); CHKERRQ(ierr);
+    }
+  }
   _material->writeContext(_outputDir, _viewer_context);
 
 
