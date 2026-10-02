@@ -1010,6 +1010,16 @@ PetscErrorCode PressureEq::relaxPermeability(const Vec& slipVel, const Vec& kOld
 PetscErrorCode PressureEq::addErrorControl(std::vector<string>& errInds, std::vector<double>& scale) const
 {
   PetscErrorCode ierr = 0;
+  if (errInds.empty()) {
+    // An empty timeIntInds makes the integrators control the step with every explicit variable
+    // (scale 1). Appending here would replace that default with the hydraulic fields alone.
+    if (_hydraulicTimeIntType.compare("explicit") == 0 && (_permSlipDependent.compare("yes") == 0 || _permPressureDependent.compare("yes") == 0)) {
+      ierr = PetscPrintf(PETSC_COMM_WORLD,"Note: timeIntInds is empty, so every explicit variable controls the step with scale 1; permeability\n"
+        "      (~1e-17 m^2) then has no effect on it. List the variables with a scale, e.g. timeIntInds = [psi slip permeability]\n"
+        "      and scale = [1 1 <max kmax_p, e.g. 1e-17>], to control permeability errors.\n"); CHKERRQ(ierr);
+    }
+    return ierr;
+  }
   while (scale.size() < errInds.size()) { scale.push_back(1.0); } // integrators default missing scales to 1
   if ((_permSlipDependent.compare("yes") == 0 || _permPressureDependent.compare("yes") == 0)
       && _hydraulicTimeIntType.compare("explicit") == 0
