@@ -51,6 +51,7 @@ RK32_WBE::RK32_WBE(PetscInt maxNumSteps,PetscReal finalT,PetscReal deltaT,string
 : OdeSolverImex(maxNumSteps,finalT,deltaT,controlType),
   _kappa(0.9),_ord(3.0)
 {
+  _totErr = 0; // error estimate of the last step (written to checkpoints)
 #if VERBOSE > 1
   PetscPrintf(PETSC_COMM_WORLD,"Starting RK32_WBE constructor in odeSolverImex.cpp.\n");
 #endif
@@ -300,7 +301,7 @@ PetscReal RK32_WBE::computeError()
   PetscPrintf(PETSC_COMM_WORLD,"Starting RK32_WBE::computeError in odeSolverImex.cpp.\n");
 #endif
   PetscErrorCode ierr = 0;
-  PetscScalar err = 0, _totErr = 0;
+  PetscScalar err = 0, totErr = 0;
 
   // if using absolute error for control
   // error: the absolute L2 error, weighted by N and a user-inputted scale factor
@@ -317,7 +318,7 @@ PetscReal RK32_WBE::computeError()
 
       PetscInt N = 0;
       VecGetSize(_y3[key],&N);
-      _totErr += err / (sqrt(N) * _scale[i]);
+      totErr += err / (sqrt(N) * _scale[i]);
     }
   }
 
@@ -337,7 +338,7 @@ PetscReal RK32_WBE::computeError()
 
       PetscReal s = 0;
       VecNorm(_y3[key],NORM_2,&s);
-      _totErr += err / (s * _scale[i]);
+      totErr += err / (s * _scale[i]);
     }
   }
 
@@ -345,7 +346,7 @@ PetscReal RK32_WBE::computeError()
   PetscPrintf(PETSC_COMM_WORLD,"Ending RK32_WBE::computeError in odeSolverImex.cpp.\n");
 #endif
 
-  return _totErr;
+  return totErr;
 }
 
 
@@ -357,7 +358,6 @@ PetscErrorCode RK32_WBE::integrate(IntegratorContextImex *obj)
   double startTime = MPI_Wtime();
 
   PetscErrorCode ierr=0;
-  PetscReal      _totErr=0.0;
   PetscInt       attemptCount = 0;
   int            stopIntegration = 0;
 
@@ -436,8 +436,11 @@ PetscErrorCode RK32_WBE::integrate(IntegratorContextImex *obj)
       // calculate error
       _totErr = computeError();
       if (_totErr<_totTol) { break; } // !!!orig
+      // Accept the step as computed when the step size cannot be reduced further or there
+      // have been too many attempts: state and time must advance with the same _deltaT
+      // (the old code shrank _deltaT, then accepted the state computed with the larger one).
+      if (_deltaT <= _minDeltaT || attemptCount >= 100) { break; }
       _deltaT = computeStepSize(_totErr);
-      if (_minDeltaT == _deltaT) { break; }
 
       _numRejectedSteps++;
     }
@@ -566,6 +569,7 @@ RK43_WBE::RK43_WBE(PetscInt maxNumSteps,PetscReal finalT,PetscReal deltaT,string
 : OdeSolverImex(maxNumSteps,finalT,deltaT,controlType),
   _kappa(0.9),_ord(4.0)
 {
+  _totErr = 0; // error estimate of the last step (written to checkpoints)
 #if VERBOSE > 1
   PetscPrintf(PETSC_COMM_WORLD,"Starting RK43_WBE constructor in odeSolverImex.cpp.\n");
 #endif
@@ -863,7 +867,7 @@ PetscReal RK43_WBE::computeError()
   PetscPrintf(PETSC_COMM_WORLD,"Starting RK43_WBE::computeError in odeSolverImex.cpp.\n");
 #endif
   PetscErrorCode ierr = 0;
-  PetscScalar err = 0, _totErr = 0;
+  PetscScalar err = 0, totErr = 0;
 
   // if using absolute error for control
   // error: the absolute L2 error, weighted by N and a user-inputted scale factor
@@ -880,7 +884,7 @@ PetscReal RK43_WBE::computeError()
 
       PetscInt N = 0;
       VecGetSize(_y4[key],&N);
-      _totErr += err / (sqrt(N) * _scale[i]);
+      totErr += err / (sqrt(N) * _scale[i]);
     }
   }
 
@@ -900,14 +904,14 @@ PetscReal RK43_WBE::computeError()
 
       PetscReal s = 0;
       VecNorm(_y4[key],NORM_2,&s);
-      _totErr += err / (s * _scale[i]);
+      totErr += err / (s * _scale[i]);
     }
   }
 
 #if VERBOSE > 1
   PetscPrintf(PETSC_COMM_WORLD,"Ending RK43_WBE::computeError in odeSolverImex.cpp.\n");
 #endif
-  return _totErr;
+  return totErr;
 }
 
 
@@ -919,7 +923,6 @@ PetscErrorCode RK43_WBE::integrate(IntegratorContextImex *obj)
   double startTime = MPI_Wtime();
 
   PetscErrorCode ierr=0;
-  PetscReal      _totErr=0.0;
   PetscInt       attemptCount = 0;
   int            stopIntegration = 0;
 
@@ -1083,8 +1086,11 @@ PetscErrorCode RK43_WBE::integrate(IntegratorContextImex *obj)
       // calculate error
       _totErr = computeError();
       if (_totErr<_totTol) { break; } // accept step
+      // Accept the step as computed when the step size cannot be reduced further or there
+      // have been too many attempts: state and time must advance with the same _deltaT
+      // (the old code shrank _deltaT, then accepted the state computed with the larger one).
+      if (_deltaT <= _minDeltaT || attemptCount >= 100) { break; }
       _deltaT = computeStepSize(_totErr);
-      if (_minDeltaT == _deltaT) { break; }
 
       _numRejectedSteps++;
     }

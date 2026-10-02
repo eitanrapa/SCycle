@@ -279,6 +279,7 @@ RK32::RK32(PetscInt maxNumSteps,PetscReal finalT,PetscReal deltaT,string control
     _totTol(1e-9),_kappa(0.9),_ord(3.0),
     _numRejectedSteps(0),_numMinSteps(0),_numMaxSteps(0)
 {
+  _totErr = 0; // error estimate of the last step (written to checkpoints)
 
   #if VERBOSE > 1
     PetscPrintf(PETSC_COMM_WORLD,"Starting RK32::constructor in odeSolver.cpp.\n");
@@ -510,7 +511,7 @@ PetscReal RK32::computeError()
   #endif
 
   PetscErrorCode ierr = 0;
-  PetscScalar err = 0, _totErr = 0;
+  PetscScalar err = 0, totErr = 0;
 
   // if using absolute error for control
   // error: the absolute L2 error, weighted by N and a user-inputted scale factor
@@ -527,7 +528,7 @@ PetscReal RK32::computeError()
 
       PetscInt N = 0;
       VecGetSize(_y3[key],&N);
-      _totErr += err / (sqrt(N) * _scale[i]);
+      totErr += err / (sqrt(N) * _scale[i]);
     }
   }
 
@@ -546,7 +547,7 @@ PetscReal RK32::computeError()
 
       PetscReal s = 0;
       VecNorm(_y3[key],NORM_2,&s);
-      _totErr += err / (s * _scale[i]);
+      totErr += err / (s * _scale[i]);
     }
   }
 
@@ -563,7 +564,7 @@ PetscReal RK32::computeError()
       VecMax(errVec,NULL,&err);
       VecDestroy(&errVec);
       assert(!PetscIsInfReal(err));
-      _totErr += err / (_scale[i]);
+      totErr += err / (_scale[i]);
     }
   }
 
@@ -571,7 +572,7 @@ PetscReal RK32::computeError()
     PetscPrintf(PETSC_COMM_WORLD,"Ending RK32::computeError in odeSolver.cpp.\n");
   #endif
 
-  return _totErr;
+  return totErr;
 }
 
 
@@ -584,7 +585,6 @@ PetscErrorCode RK32::integrate(IntegratorContextEx *obj)
 
   double         startTime = MPI_Wtime();
   PetscErrorCode ierr = 0;
-  PetscScalar    _totErr = 0;
   PetscInt       attemptCount = 0;
   int            stopIntegration = 0;
 
@@ -664,8 +664,11 @@ PetscErrorCode RK32::integrate(IntegratorContextEx *obj)
       // calculate error
       _totErr = computeError();
       if (_totErr <= _totTol) { break; }
+      // Accept the step as computed when the step size cannot be reduced further or there
+      // have been too many attempts: state and time must advance with the same _deltaT
+      // (the old code shrank _deltaT, then accepted the state computed with the larger one).
+      if (_deltaT <= _minDeltaT || attemptCount >= 100) { break; }
       _deltaT = computeStepSize(_totErr);
-      if (_minDeltaT == _deltaT) { break; }
 
       _numRejectedSteps++;
     }
@@ -781,6 +784,7 @@ RK43::RK43(PetscInt maxNumSteps,PetscReal finalT,PetscReal deltaT,string control
   _totTol(1e-9),_kappa(0.9),_ord(4.0),
   _numRejectedSteps(0),_numMinSteps(0),_numMaxSteps(0)
 {
+  _totErr = 0; // error estimate of the last step (written to checkpoints)
   #if VERBOSE > 1
     PetscPrintf(PETSC_COMM_WORLD,"Starting RK43::constructor in odeSolver.cpp.\n");
   #endif
@@ -1048,7 +1052,7 @@ PetscReal RK43::computeError()
   #endif
 
   PetscErrorCode ierr = 0;
-  PetscScalar err = 0, _totErr = 0;
+  PetscScalar err = 0, totErr = 0;
 
   // if using absolute error for control
   // error: the absolute L2 error, weighted by N and a user-inputted scale factor
@@ -1065,7 +1069,7 @@ PetscReal RK43::computeError()
 
       PetscInt N = 0;
       VecGetSize(_y4[key],&N);
-      _totErr += err / (sqrt(N) * _scale[i]);
+      totErr += err / (sqrt(N) * _scale[i]);
     }
   }
 
@@ -1083,7 +1087,7 @@ PetscReal RK43::computeError()
       VecDestroy(&errVec);
       PetscReal s = 0;
       VecNorm(_y4[key],NORM_2,&s);
-      _totErr += err / (s * _scale[i]);
+      totErr += err / (s * _scale[i]);
     }
   }
 
@@ -1100,7 +1104,7 @@ PetscReal RK43::computeError()
       VecMax(errVec,NULL,&err);
       VecDestroy(&errVec);
       assert(!PetscIsInfReal(err));
-      _totErr += err / (_scale[i]);
+      totErr += err / (_scale[i]);
     }
   }
 
@@ -1108,7 +1112,7 @@ PetscReal RK43::computeError()
     PetscPrintf(PETSC_COMM_WORLD,"Ending RK43::computeError in odeSolver.cpp.\n");
   #endif
 
-  return _totErr;
+  return totErr;
 }
 
 
@@ -1121,7 +1125,6 @@ PetscErrorCode RK43::integrate(IntegratorContextEx *obj)
 
   double startTime = MPI_Wtime();
   PetscErrorCode  ierr = 0;
-  PetscScalar    _totErr = 0;
   PetscInt       attemptCount = 0;
   int            stopIntegration = 0;
 
@@ -1285,8 +1288,11 @@ PetscErrorCode RK43::integrate(IntegratorContextEx *obj)
       // calculate error
       _totErr = computeError();
       if (_totErr<_totTol) { break; } // accept step
+      // Accept the step as computed when the step size cannot be reduced further or there
+      // have been too many attempts: state and time must advance with the same _deltaT
+      // (the old code shrank _deltaT, then accepted the state computed with the larger one).
+      if (_deltaT <= _minDeltaT || attemptCount >= 100) { break; }
       _deltaT = computeStepSize(_totErr);
-      if (_minDeltaT == _deltaT) { break; }
 
       _numRejectedSteps++;
     }
