@@ -13,7 +13,7 @@ PressureEq::PressureEq(Domain &D)
 : _D(&D), _p(NULL), _permSlipDependent("no"), _permPressureDependent("no"),
   _file(D._file), _delim(D._delim),
   _outputDir(D._outputDir), _isMMS(D._isMMS),
-  _hydraulicTimeIntType("explicit"),_guessSteadyStateICs(1),
+  _hydraulicTimeIntType("explicit"),_slipKey("slip"),_guessSteadyStateICs(1),
   _initTime(0.0), _initDeltaT(1e-3),
   _order(D._order), _N(D._Nz), _L(D._Lz), _h(D._dr), _z(NULL),
   _n_p(NULL), _beta_p(NULL), _k_p(NULL), _eta_p(NULL), _rho_f(NULL), _g(9.8),
@@ -1132,8 +1132,8 @@ PetscErrorCode PressureEq::dk_dt(const PetscScalar time, const map<string, Vec> 
   double startTime = MPI_Wtime(); // time this section
 
   Vec vel_abs;
-  VecDuplicate(dvarEx.find("slip")->second, &vel_abs);
-  VecCopy(dvarEx.find("slip")->second, vel_abs);
+  VecDuplicate(dvarEx.find(_slipKey)->second, &vel_abs);
+  VecCopy(dvarEx.find(_slipKey)->second, vel_abs);
   ierr = VecAbs(vel_abs);
   Vec dk = dvarEx["permeability"];
 
@@ -1523,7 +1523,7 @@ PetscErrorCode PressureEq::be(const PetscScalar time, const map<string, Vec> &va
   if (varIm.find("permeability") != varIm.end()) {
     const Vec kOld = varImo.find("permeability")->second;
     if (_permSlipDependent.compare("yes") == 0) {
-      ierr = relaxPermeability(dvarEx.find("slip")->second, kOld, dt, varIm["permeability"]); CHKERRQ(ierr);
+      ierr = relaxPermeability(dvarEx.find(_slipKey)->second, kOld, dt, varIm["permeability"]); CHKERRQ(ierr);
     }
     else {
       ierr = VecCopy(kOld, varIm["permeability"]); CHKERRQ(ierr);

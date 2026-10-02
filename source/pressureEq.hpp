@@ -43,6 +43,7 @@ private:
   string      _inputDir;  // directory for input
   const bool  _isMMS;     // true if running mms test
   string      _hydraulicTimeIntType; // time integration type (explicit vs implicit)
+  string      _slipKey; // integrand key of the slip whose rate drives permeability (the fault's; default "slip")
 
   int         _guessSteadyStateICs;
   PetscScalar _initTime, _initDeltaT;

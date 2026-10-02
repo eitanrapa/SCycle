@@ -53,6 +53,18 @@ public:
   PetscScalar  _faultTypeScale; // = 2 if symmetric fault, 1 if one side of fault is rigid
   PetscInt     _limitSlipVel; // if 0 no ceiling, if yes then slipVel limited to <= vL
 
+  // Identity of this fault. The default fault is named "fault": it reads unprefixed input keys
+  // and initial-condition files, writes the HDF5 groups /fault, /fault_qd, /fault_fd and the file
+  // fault.txt, and integrates "slip" and "psi". A fault with another name <name> first reads every
+  // unprefixed key, then lets <name>_<key> override it, and uses the files <name>_psi, ..., the
+  // groups /<name>, /<name>_qd, the file <name>.txt and the integrand keys <name>_slip, <name>_psi.
+  string       _name;
+  string       _prefix;  // "" for the default fault, "<name>_" otherwise
+  string       _slipKey; // integrand key of slip (its rate is the slip velocity)
+  string       _psiKey;  // integrand key of the state variable
+  PetscScalar  _vCreep;  // slip velocity imposed where lockedVals < -0.5 (input vCreep; default vL)
+  PetscScalar  _etaScale; // radiation damping eta = etaScale*sqrt(mu*rho) (default 1/faultTypeScale)
+
   // domain properties
   const PetscInt     _N;  //number of nodes on fault
   const PetscScalar  _L; // length of fault, grid spacing on fault
@@ -107,11 +119,15 @@ public:
   typedef vector<Vec>::iterator it_vec;
   typedef vector<Vec>::const_iterator const_it_vec;
 
-  Fault(Domain& D,VecScatter& scatter2fault, const int& faultTypeScale);
+  Fault(Domain& D,VecScatter& scatter2fault, const int& faultTypeScale, const string& name = "fault");
   virtual ~Fault();
+
+  // HDF5 group of this fault: "/<name><suffix>"
+  string group(const string& suffix = "") const { return "/" + _name + suffix; }
 
   // load settings from input file
   PetscErrorCode loadSettings(const char *file);
+  bool parseSetting(const string& var, const string& rhs, const string& rhsFull); // false if var is not a fault key
   PetscErrorCode checkInput(); // check input from file
   PetscErrorCode loadFieldsFromFiles();
   PetscErrorCode setFields(Domain&D);
@@ -150,10 +166,10 @@ private:
 public:
   Vec _eta_rad; // radiation damping term
 
-  Fault_qd(Domain& D,VecScatter& scatter2fault, const int& faultTypeScale);
+  Fault_qd(Domain& D,VecScatter& scatter2fault, const int& faultTypeScale, const string& name = "fault");
   ~Fault_qd();
 
-  PetscErrorCode loadSettings(const char *file);
+  PetscErrorCode setEtaScale(const PetscScalar etaScale); // recompute the radiation damping
 
   // for interaction with mediator
   PetscErrorCode initiateIntegrand(const PetscScalar time,map<string,Vec>& varEx);
@@ -188,7 +204,7 @@ public:
   PetscScalar    _tCenterTau, _tStdTau, _zCenterTau, _zStdTau, _ampTau;
   string         _timeMode;
 
-  Fault_fd(Domain&, VecScatter& scatter2fault, const int& faultTypeScale);
+  Fault_fd(Domain&, VecScatter& scatter2fault, const int& faultTypeScale, const string& name = "fault");
   ~Fault_fd();
 
   PetscErrorCode loadSettings(const char *file);
