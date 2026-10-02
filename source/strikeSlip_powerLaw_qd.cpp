@@ -68,7 +68,10 @@ StrikeSlip_PowerLaw_qd::StrikeSlip_PowerLaw_qd(Domain&D)
   }
 
   //~ // pressure diffusion equation
-  if (_hydraulicCoupling != "no") { _p = new PressureEq(D); }
+  if (_hydraulicCoupling != "no") {
+    _p = new PressureEq(D);
+    _p->addErrorControl(_timeIntInds,_scale);
+  }
   if (_hydraulicCoupling == "coupled") { _fault->setSNEff(_p->_p); }
 
   //~ // grain size distribution
@@ -166,6 +169,7 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::loadSettings(const char *file)
     if (var.compare("thermalCoupling")==0) { _thermalCoupling = rhs.c_str(); }
     else if (var.compare("grainSizeEvCoupling")==0) { _grainSizeEvCoupling = rhs.c_str(); }
     else if (var.compare("hydraulicCoupling")==0) { _hydraulicCoupling = rhs.c_str(); }
+    else if (var.compare("hydraulicTimeIntType")==0) { _hydraulicTimeIntType = rhs.c_str(); }
     else if (var.compare("stateLaw")==0) { _stateLaw = rhs.c_str(); }
     else if (var.compare("guessSteadyStateICs")==0) { _guessSteadyStateICs = atoi( rhs.c_str() ); }
     else if (var.compare("forcingType")==0) { _forcingType = rhs.c_str(); }
@@ -249,6 +253,10 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::checkInput()
          _timeControlType == "PID" );
 
   if (_initDeltaT<_minDeltaT || _initDeltaT < 1e-14) {_initDeltaT = _minDeltaT; }
+  if (_hydraulicCoupling != "no" && _hydraulicTimeIntType == "implicit" && _timeIntegrator != "RK32_WBE" && _timeIntegrator != "RK43_WBE") {
+    PetscPrintf(PETSC_COMM_WORLD,"Error: hydraulicTimeIntType = implicit needs timeIntegrator = RK32_WBE or RK43_WBE (with %s the pressure would never be updated).\n",_timeIntegrator.c_str());
+    assert(0);
+  }
   assert(_maxStepCount >= 0);
   assert(_initTime >= 0);
   assert(_maxTime >= 0 && _maxTime>=_initTime);
@@ -1012,7 +1020,7 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::d_dt(const PetscScalar time,const map<str
 
   // compute grain size rate, or value from either piezometric relation or steady-state
   if ( _grainSizeEvCoupling!="no" && varEx.find("grainSize") != varEx.end() && _grainDist->_grainSizeEvType != "steadyState" && _grainDist->_grainSizeEvType != "piezometer") {
-    _grainDist->d_dt(dvarEx["grainSize"],varEx.find("grainSize")->second,_material->_sdev,_material->_dgVdev_disl,_material->_T);
+    ierr = _grainDist->d_dt(dvarEx["grainSize"],varEx.find("grainSize")->second,_material->_sdev,_material->_dgVdev_disl,_material->_T); CHKERRQ(ierr);
   }
   else if ( _grainSizeEvCoupling!="no" && _grainDist->_grainSizeEvType == "piezometer") {
     _grainDist->computeGrainSizeFromPiez(_material->_sdev, _material->_dgVdev_disl, _material->_T);
@@ -1117,7 +1125,7 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::d_dt(const PetscScalar time,const map<str
 
   // compute grain size rate, or value from either piezometric relation or steady-state
   if ( _grainSizeEvCoupling!="no" && varEx.find("grainSize") != varEx.end() && _grainDist->_grainSizeEvType != "steadyState" && _grainDist->_grainSizeEvType != "piezometer") {
-    _grainDist->d_dt(dvarEx["grainSize"],varEx.find("grainSize")->second,_material->_sdev,_material->_dgVdev_disl,_material->_T);
+    ierr = _grainDist->d_dt(dvarEx["grainSize"],varEx.find("grainSize")->second,_material->_sdev,_material->_dgVdev_disl,_material->_T); CHKERRQ(ierr);
   }
   else if ( _grainSizeEvCoupling!="no" && _grainDist->_grainSizeEvType == "piezometer") {
     _grainDist->computeGrainSizeFromPiez(_material->_sdev, _material->_dgVdev_disl, _material->_T);
@@ -1501,6 +1509,7 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::solveSStau(const PetscInt Jj)
   _fault->initiateIntegrand(_initTime,_varEx);
   if (_evolveTemperature == 1) { _he->initiateIntegrand(_initTime,_varEx,_varIm); }
   if (_evolveGrainSize == 1) { _grainDist->initiateIntegrand(_initTime,_varEx,_varIm); }
+  if (_hydraulicCoupling != "no") { _p->initiateIntegrand(_initTime,_varEx,_varIm); }
 
   if (_varEx.find("slip") != _varEx.end() ) { VecCopy(_material->_bcL,_varEx["slip"]); }
   else { Vec varSlip; VecDuplicate(_material->_bcL,&varSlip); VecCopy(_material->_bcL,varSlip); _varEx["slip"] = varSlip; }

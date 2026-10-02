@@ -153,7 +153,9 @@ public:
   PetscErrorCode integrate_singleQDTimeStep(); // take 1 quasidynamic time step with deltaT = deltaT_fd
   PetscErrorCode initiateIntegrand(); // allocate space for vars, guess steady-state initial conditions
   PetscErrorCode initiateIntegrand_qd(); // allocate space for varQDEx and varIm, guess steady-state initial conditions
-  PetscErrorCode initiateIntegrand_fd(); // allocate space for varFD
+  PetscErrorCode initiateIntegrand_fd();
+  Vec qdPressure(); // pore pressure Vec of the quasi-dynamic integrand (implicit or explicit)
+  Vec qdPermeability(); // permeability Vec of the quasi-dynamic integrand, NULL if not integrated // allocate space for varFD
   PetscErrorCode solveMomentumBalance(const PetscScalar time,const map<string,Vec>& varEx,map<string,Vec>& dvarEx);
   PetscErrorCode propagateWaves(const PetscScalar time, const PetscScalar deltaT,
         map<string,Vec>& varNext, const map<string,Vec>& var, const map<string,Vec>& varPrev);

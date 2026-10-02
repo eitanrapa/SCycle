@@ -1,4 +1,5 @@
 #include "pressureEq.hpp"
+#include <algorithm>
 
 #define FILENAME "pressureEq.cpp"
 
@@ -911,16 +912,18 @@ PetscErrorCode PressureEq::initiateIntegrand(const PetscScalar time, map<string,
     }
   }
 
-  // permeability is explicitly integrated
+  // permeability goes with pressure: explicit (varEx, Runge-Kutta stages) or implicit (varIm,
+  // updated once per step in be() by relaxPermeability, stable for any step size)
   if (_permSlipDependent.compare("yes") == 0 || _permPressureDependent.compare("yes") == 0) {
-    if (varEx.find("permeability") != varEx.end()) {
-      VecCopy(_k_p, varEx["permeability"]);
+    map<string, Vec> *varK = (_hydraulicTimeIntType.compare("implicit") == 0) ? &varIm : &varEx;
+    if (varK->find("permeability") != varK->end()) {
+      VecCopy(_k_p, (*varK)["permeability"]);
     }
     else {
       Vec k_p;
       VecDuplicate(_k_p, &k_p);
       VecCopy(_k_p, k_p);
-      varEx["permeability"] = k_p;
+      (*varK)["permeability"] = k_p;
     }
   }
 
@@ -958,6 +961,83 @@ PetscErrorCode PressureEq::updateFields(const PetscScalar time, const map<string
 }
 
 
+// Advance slip-dependent permeability over a step of length dt with the slip rate held fixed:
+//   dk/dt = -|V|/L (k - kmax) - 1/T (k - kmin)  =>  k(dt) = kinf + (kOld - kinf) exp(-a dt),
+//   a = |V|/L + 1/T,  kinf = (|V|/L kmax + kmin/T) / a.
+// Exact for constant V and stable for any dt. Explicit Runge-Kutta or forward Euler steps need
+// |V| dt / L < ~2, which fails during events when kL_p is small (1 mm at 1 m/s needs dt < 2 ms,
+// below the quasi-dynamic minimum step), and the permeability then diverges.
+PetscErrorCode PressureEq::relaxPermeability(const Vec& slipVel, const Vec& kOld, const PetscScalar dt, Vec& kNew)
+{
+  PetscErrorCode ierr = 0;
+  const PetscScalar *V, *ko, *L, *T, *kmax, *kmin;
+  PetscScalar *kn;
+  PetscInt Istart, Iend;
+  ierr = VecGetOwnershipRange(kNew, &Istart, &Iend); CHKERRQ(ierr);
+  ierr = VecGetArrayRead(slipVel, &V); CHKERRQ(ierr);
+  ierr = VecGetArrayRead(kOld, &ko); CHKERRQ(ierr);
+  ierr = VecGetArrayRead(_kL_p, &L); CHKERRQ(ierr);
+  ierr = VecGetArrayRead(_kT_p, &T); CHKERRQ(ierr);
+  ierr = VecGetArrayRead(_kmax_p, &kmax); CHKERRQ(ierr);
+  ierr = VecGetArrayRead(_kmin_p, &kmin); CHKERRQ(ierr);
+  ierr = VecGetArray(kNew, &kn); CHKERRQ(ierr);
+  for (PetscInt Jj = 0; Jj < Iend - Istart; Jj++) {
+    const PetscScalar rV = PetscAbsScalar(V[Jj]) / L[Jj];
+    const PetscScalar rT = 1.0 / T[Jj];
+    const PetscScalar a = rV + rT;
+    if (a > 0) {
+      const PetscScalar kinf = (rV * kmax[Jj] + rT * kmin[Jj]) / a;
+      kn[Jj] = kinf + (ko[Jj] - kinf) * exp(-a * dt);
+    }
+    else { kn[Jj] = ko[Jj]; }
+  }
+  ierr = VecRestoreArray(kNew, &kn); CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(_kmin_p, &kmin); CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(_kmax_p, &kmax); CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(_kT_p, &T); CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(_kL_p, &L); CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(kOld, &ko); CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(slipVel, &V); CHKERRQ(ierr);
+  return ierr;
+}
+
+
+// Add the explicitly integrated hydraulic fields to the variables that control the time step.
+// The input file's timeIntInds usually lists only psi and slip, so without this a stiff permeability
+// law (kL_p small compared with V*dt during events) or explicit pressure diffusion can go unstable
+// unnoticed: k grew to 1e297 and the next implicit pressure solve failed inside HYPRE.
+// Permeability is weighted by max(kmax_p) so its error is relative; pressure is in MPa like sN.
+PetscErrorCode PressureEq::addErrorControl(std::vector<string>& errInds, std::vector<double>& scale) const
+{
+  PetscErrorCode ierr = 0;
+  while (scale.size() < errInds.size()) { scale.push_back(1.0); } // integrators default missing scales to 1
+  if ((_permSlipDependent.compare("yes") == 0 || _permPressureDependent.compare("yes") == 0)
+      && _hydraulicTimeIntType.compare("explicit") == 0
+      && std::find(errInds.begin(), errInds.end(), "permeability") == errInds.end()) {
+    PetscScalar kmax = 0;
+    ierr = VecMax(_kmax_p, NULL, &kmax); CHKERRQ(ierr);
+    if (!(kmax > 0)) { kmax = 1.0; }
+    errInds.push_back("permeability");
+    scale.push_back(kmax);
+    ierr = PetscPrintf(PETSC_COMM_WORLD,"Note: permeability added to timeIntInds (error scale %g = max kmax_p).\n",kmax); CHKERRQ(ierr);
+    if (_permSlipDependent.compare("yes") == 0) {
+      PetscScalar Lmin = 0;
+      ierr = VecMin(_kL_p, NULL, &Lmin); CHKERRQ(ierr);
+      ierr = PetscPrintf(PETSC_COMM_WORLD,"Note: explicit slip-dependent permeability is stable only while |V|*dt < ~2.8*kL_p (min kL_p = %g m),\n"
+        "      and quasi-dynamic steps do not go below minDeltaT. If it diverges during events, use\n"
+        "      hydraulicTimeIntType = implicit, which relaxes permeability exactly over each step.\n",Lmin); CHKERRQ(ierr);
+    }
+  }
+  if (_hydraulicTimeIntType.compare("explicit") == 0
+      && std::find(errInds.begin(), errInds.end(), "pressure") == errInds.end()) {
+    errInds.push_back("pressure");
+    scale.push_back(1.0);
+    ierr = PetscPrintf(PETSC_COMM_WORLD,"Note: pressure added to timeIntInds (error scale 1 MPa).\n"); CHKERRQ(ierr);
+  }
+  return ierr;
+}
+
+
 // update pressure and permeability for implicit time stepping method
 // update _p and _k_p from values stored in varEx and varIm
 PetscErrorCode PressureEq::updateFields(const PetscScalar time, const map<string, Vec> &varEx, const map<string, Vec> &varIm)
@@ -978,6 +1058,9 @@ PetscErrorCode PressureEq::updateFields(const PetscScalar time, const map<string
 
   if (varEx.find("permeability") != varEx.end()) {
     VecCopy(varEx.find("permeability")->second, _k_p);
+  }
+  else if (varIm.find("permeability") != varIm.end()) {
+    VecCopy(varIm.find("permeability")->second, _k_p);
   }
 
   #if VERBOSE > 1
@@ -1118,7 +1201,7 @@ PetscErrorCode PressureEq::d_dt(const PetscScalar time, const map<string, Vec> &
     PetscPrintf(PETSC_COMM_WORLD, "Starting %s in %s\n", funcName.c_str(), FILENAME);
   #endif
 
-  if (_permSlipDependent.compare("yes") == 0) {
+  if (_permSlipDependent.compare("yes") == 0 && varEx.find("permeability") != varEx.end()) {
     ierr = dk_dt(time, varEx, dvarEx);
     CHKERRQ(ierr);
   }
@@ -1149,7 +1232,7 @@ PetscErrorCode PressureEq::d_dt(const PetscScalar time, const map<string, Vec> &
     PetscPrintf(PETSC_COMM_WORLD, "Starting %s in %s\n", funcName.c_str(), FILENAME);
   #endif
 
-  if (_permSlipDependent.compare("yes") == 0) {
+  if (_permSlipDependent.compare("yes") == 0 && varEx.find("permeability") != varEx.end()) {
     ierr = dk_dt(time, varEx, dvarEx); CHKERRQ(ierr);
   }
 
@@ -1423,6 +1506,20 @@ PetscErrorCode PressureEq::be(const PetscScalar time, const map<string, Vec> &va
   #endif
 
   double startTime = MPI_Wtime(); // time this section
+
+  // implicit permeability: advance it over this step with the slip rate at the new time, then
+  // use it in the pressure solve. varIm["permeability"] must always be set here, because the
+  // integrator copies varIm into the state after this call.
+  if (varIm.find("permeability") != varIm.end()) {
+    const Vec kOld = varImo.find("permeability")->second;
+    if (_permSlipDependent.compare("yes") == 0) {
+      ierr = relaxPermeability(dvarEx.find("slip")->second, kOld, dt, varIm["permeability"]); CHKERRQ(ierr);
+    }
+    else {
+      ierr = VecCopy(kOld, varIm["permeability"]); CHKERRQ(ierr);
+    }
+    ierr = VecCopy(varIm["permeability"], _k_p); CHKERRQ(ierr);
+  }
 
   if (_permSlipDependent.compare("yes") == 0) {
     Vec coeff;

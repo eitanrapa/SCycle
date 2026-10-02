@@ -126,6 +126,8 @@ public:
   PetscErrorCode checkInput();
 
   PetscErrorCode initiateIntegrand(const PetscScalar time, map<string, Vec> &varEx, map<string, Vec> &varIm);
+  PetscErrorCode addErrorControl(std::vector<string>& errInds, std::vector<double>& scale) const;
+  PetscErrorCode relaxPermeability(const Vec& slipVel, const Vec& kOld, const PetscScalar dt, Vec& kNew);
   PetscErrorCode updateFields(const PetscScalar time, const map<string, Vec> &varEx);
   PetscErrorCode updateFields(const PetscScalar time, const map<string, Vec> &varEx, const map<string, Vec> &varIm);
   PetscErrorCode loadFieldsFromFiles();

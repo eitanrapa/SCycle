@@ -53,7 +53,10 @@ StrikeSlip_LinearElastic_qd::StrikeSlip_LinearElastic_qd(Domain &D)
   }
 
   // pressure diffusion equation
-  if (_hydraulicCoupling != "no") { _p = new PressureEq(D); }
+  if (_hydraulicCoupling != "no") {
+    _p = new PressureEq(D);
+    _p->addErrorControl(_timeIntInds,_scale);
+  }
   if (_hydraulicCoupling == "coupled") { _fault->setSNEff(_p->_p); }
 
   // initiate momentum balance equation
@@ -161,6 +164,7 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::loadSettings(const char *file)
 
     if (var.compare("thermalCoupling")==0) { _thermalCoupling = rhs.c_str(); }
     else if (var.compare("hydraulicCoupling")==0) { _hydraulicCoupling = rhs.c_str(); }
+    else if (var.compare("hydraulicTimeIntType")==0) { _hydraulicTimeIntType = rhs.c_str(); }
     else if (var.compare("stateLaw")==0) { _stateLaw = rhs.c_str(); }
     else if (var.compare("guessSteadyStateICs")==0) { _guessSteadyStateICs = atoi( rhs.c_str() ); }
     else if (var.compare("computeSSMomBal")==0) { _computeSSMomBal = atoi( rhs.c_str() ); }
@@ -257,6 +261,10 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::checkInput()
     assert(_thermalCoupling != "no");
   }
 
+  if (_hydraulicCoupling != "no" && _hydraulicTimeIntType == "implicit" && _timeIntegrator != "RK32_WBE" && _timeIntegrator != "RK43_WBE") {
+    PetscPrintf(PETSC_COMM_WORLD,"Error: hydraulicTimeIntType = implicit needs timeIntegrator = RK32_WBE or RK43_WBE (with %s the pressure would never be updated).\n",_timeIntegrator.c_str());
+    assert(0);
+  }
   if (_thermalCoupling != "no" && (_timeIntegrator != "RK32_WBE" && _timeIntegrator != "RK43_WBE")) {
     assert(0);
   }
@@ -1068,7 +1076,7 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::d_dt(const PetscScalar time,const ma
   ierr = _fault->d_dt(time,varEx,dvarEx); // sets rates for slip and state
 
   if ((varEx.find("pressure") != varEx.end() || varEx.find("permeability") != varEx.end() ) && _hydraulicCoupling.compare("no")!=0 ){
-    _p->d_dt(time,varEx,dvarEx);
+    ierr = _p->d_dt(time,varEx,dvarEx); CHKERRQ(ierr);
   }
 
   return ierr;
@@ -1131,7 +1139,7 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::d_dt(const PetscScalar time,const ma
   ierr = _fault->d_dt(time,varEx,dvarEx); // sets rates for slip and state
 
   if ( _hydraulicCoupling != "no" ) {
-    _p->d_dt(time,varEx,dvarEx,varIm,varImo,dt);
+    ierr = _p->d_dt(time,varEx,dvarEx,varIm,varImo,dt); CHKERRQ(ierr);
   }
 
   // 3. Implicit time step
