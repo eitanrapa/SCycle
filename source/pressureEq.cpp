@@ -29,6 +29,7 @@ PressureEq::PressureEq(Domain &D)
   loadSettings(_file);
   checkInput();
   setFields(D);
+  PetscPrintf(PETSC_COMM_WORLD,"Note: with hydraulic coupling, sNVals is the total normal stress; the fault uses sNEff = sN - p, with p the total pore pressure.\n");
 
   // on a restart the pressure state is loaded from checkpoint.h5 (loadCheckpoint, below);
   // a steady-state restart has no pressure data, so pressure starts from its initial condition

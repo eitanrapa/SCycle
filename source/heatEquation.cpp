@@ -195,8 +195,10 @@ PetscErrorCode HeatEquation::loadSettings(const char *file)
     else if (var.compare("TDepths")==0) {
       loadVectorFromInputFile(rhsFull,_TDepths);
       assert(_TDepths.size() >= 2 && _TDepths.size() <= 4);
+      // [T0 T_lab ...]: the lithosphere ends at TDepths[1]; [T0 TN]: no asthenosphere, so the
+      // lithosphere spans the domain and _Lz_lab keeps its default (Lz). (Setting it to TDepths[0]
+      // put the base of the lithosphere at the surface and made the geotherm uniform T0.)
       if (_TDepths.size()>2) { _Lz_lab = _TDepths[1]; }
-      else { _Lz_lab = _TDepths[0]; }
     }
 
     else if (var.compare("initTime")==0) { _initTime = atof( rhs.c_str() ); }
