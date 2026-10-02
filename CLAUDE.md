@@ -21,8 +21,9 @@ profiles. Design and verification gates: `docs/TWO_FAULT_DESIGN.md`.
 
 Upstream: `origin` = github.com/kali-allison/SCycle (`master`). Audit fixes live on branch
 `audit/fixes-2026-10`, pushed to the user's fork (remote `fork`, github.com/eitanrapa/SCycle). The
-two-fault work continues on `stage1/fault-generalization`, `stage2/interior-fault` and
-`stage3/two-faults`, each built on the previous one (not pushed).
+two-fault work continues on `stage1/fault-generalization`, `stage2/interior-fault`,
+`stage3/two-faults` and `stage4/viscoelastic`, each built on the previous one (not pushed).
+`docs/REVERSIBLE_STRENGTH_PLAN.md` plans the next stage.
 
 ## Build
 
@@ -92,14 +93,18 @@ mpirun -n 4 ./source/main examples/ex2.in
   them too, then `<name>_<key>` overrides any of them (`fault2_aVals`, `fault2_vCreep`, ...); it uses
   the files `<name>_psi`, ..., the HDF5 groups `/<name>`, `/<name>_qd` and integrand keys
   `<name>_slip`, `<name>_psi`. `vCreep` sets the slip velocity of creeping nodes (default `vL`).
-- Interior faults (elastic quasi-dynamic only): `interiorFaults = [name ...]`, `<name>_y` (km) for
-  each, and `momBal_bcL_qd = remoteLoading` for the full domain. Each is placed midway between two
-  grid rows, at least 6 rows from the y-boundaries; `mediator.txt` records where. Not with a
-  boundary fault (`symmFault` would mirror it), steady-state initial conditions, heat or pore
-  pressure. `interiorFaultKinkLift = 1` (default) gives second-order fault traction.
+- Interior faults (both quasi-dynamic mediators, elastic and power law): `interiorFaults = [name ...]`,
+  `<name>_y` (km) for each, and `momBal_bcL_qd = remoteLoading` for the full domain. Each is placed
+  midway between two grid rows, at least 6 rows from the y-boundaries; `mediator.txt` records where.
+  Not with a boundary fault (`symmFault` would mirror it) or the steady-state initial guess (or
+  `steadyStateIts`, `computeSSHeatEq`). `interiorFaultKinkLift = 1` (default) gives second-order fault
+  traction. Heat needs `wVals > 0` (one Gaussian per fault, normalized on the grid; set
+  `bcLType_trans = Dirichlet`). With pore pressure each fault has its own `PressureEq`: a fault
+  `<name>` reads `<name>_` overrides of the pressure keys and writes `/<name>_pressureEq`.
   `examples/interior_fault/make_inputs.py` writes one interior fault and its half-space twin;
   `examples/two_faults/make_inputs.py` two faults (seismic, creeping or locked second fault) on a
-  grid refined around both, each fault exactly midway between two rows.
+  grid refined around both, each fault exactly midway between two rows; `--rheology powerlaw` gives
+  the stage 4 baseline (ex4's creep and geotherm to 60 km, coupled heat, optional grain size).
 - With interior faults, two outputs are on by default (off otherwise): `computeSurfVel = 1` writes
   the instantaneous surface velocity `/momBal/surfVel` (m/s) with each 1D output, and
   `strideSeries = N` appends per-fault max slip rate, its depth, potency rate and potency to
@@ -117,8 +122,9 @@ mpirun -n 4 ./source/main examples/ex2.in
   material (`LinearElastic` or `PowerLaw`), the fault(s) (`Fault_qd`, `Fault_fd`), optional
   `HeatEquation`, `PressureEq`, `GrainSizeEvolution`, the time integrator, and all output.
   They are largely copy-pasted: **a fix in one usually has to be mirrored in the others.**
-  `StrikeSlip_LinearElastic_qd` holds a list of faults (`_faults`, boundary fault `_fault` first) and
-  loops over it for per-fault work; the other mediators still hold a single fault.
+  `StrikeSlip_LinearElastic_qd` and `StrikeSlip_PowerLaw_qd` hold a list of faults (`_faults`,
+  boundary fault `_fault` first) and loop over it for per-fault work; the multi-fault pieces they
+  share are in `source/multiFault.hpp`. The other mediators still hold a single fault.
 - **Integrand**: `map<string,Vec>`. Explicit (`varEx`): `slip`, `psi`, `gVxy`/`gVxz` (power law),
   `grainSize`, and `pressure`/`permeability` when `hydraulicTimeIntType = explicit`. Implicit
   (`varIm`, backward Euler inside IMEX): `Temp`, and `pressure`/`permeability` when implicit.
@@ -161,8 +167,8 @@ mpirun -n 4 ./source/main examples/ex2.in
 - Explicit slip-dependent permeability needs |V| dt < ~2.8 kL_p, so an event with kL_p = 1 mm takes
   ~1e5 steps. Use `hydraulicTimeIntType = implicit` (exact relaxation).
 - Near an interior fault (rows iRow-2 .. iRow+3) the y-strain comes from u without the fault's jump
-  (`InteriorFaultLift::correctStress`, applied in `LinearElastic::computeStresses`); anything else
-  that differentiates u in y there (the power law, stage 4) must apply the same correction.
+  (`InteriorFaultLift::correctStress` in `LinearElastic::computeStresses`, `correctStrain` in
+  `PowerLaw::computeTotalStrains`); anything new that differentiates u in y must do the same.
 - `momBal_bcT_qd`/`momBal_bcB_qd = remoteLoading` stay at their initial displacement.
 
 ## Testing

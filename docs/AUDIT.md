@@ -4,11 +4,11 @@
 
 This document records an audit of SCycle, the C++/PETSc code for 2D antiplane earthquake-cycle simulations, and the fixes made on branch `audit/fixes-2026-10`. The audit started from an unmodified clone of upstream master (github.com/kali-allison/SCycle, last upstream commit `74a132f` of 19 December 2024).
 
-The branch adds 69 commits to master: 58 fixes, 3 tool commits, 2 commits for the repository contents, 2 for this documentation, and one each for the build, the example inputs, a code comment, and the SEAS BP1 benchmark with an input-key checker. Together they fix 94 distinct findings (32 Critical, 25 High, 25 Medium, 12 Low), listed in section 3. A 95th, A-95 (Critical), was found during stage 3 of the two-fault work and fixed on branch `stage3/two-faults` (`5bb2fee`); the tables below include it. Three are fixed only in part (A-35, A-45, A-57), and the MATLAB tools of A-93 were not run. Section 5 lists 15 open items and documented limitations. Each commit message records its finding: what was wrong, the failure it caused, the fix and the test evidence (`git show <hash>`). A few spot tests from early in the audit appear only in this document; their entries say so.
+The branch adds 69 commits to master: 58 fixes, 3 tool commits, 2 commits for the repository contents, 2 for this documentation, and one each for the build, the example inputs, a code comment, and the SEAS BP1 benchmark with an input-key checker. Together they fix 94 distinct findings (32 Critical, 25 High, 25 Medium, 12 Low), listed in section 3. A 95th, A-95 (Critical), was found during stage 3 of the two-fault work and fixed on branch `stage3/two-faults` (`5bb2fee`), and two more during stage 4, A-96 (Medium) and A-97 (High), on branch `stage4/viscoelastic` (`ae6c6a8`, `3f402f3`); the tables below include them. Three are fixed only in part (A-35, A-45, A-57), and the MATLAB tools of A-93 were not run. Section 5 lists 15 open items and documented limitations. Each commit message records its finding: what was wrong, the failure it caused, the fix and the test evidence (`git show <hash>`). A few spot tests from early in the audit appear only in this document; their entries say so.
 
 How the fixes were verified:
 
-- `tools/regress.sh` runs `examples/ex1.in` (1D) and `examples/ex2.in` (2D) and compares every HDF5 output file with a stored baseline using `h5diff`, bit for bit unless a tolerance is set. Unless its message says otherwise, each code commit was checked this way. The persistent baseline is in `data/regress-baseline/` (ignored by git). It was generated from commit `35ba52f`, is bit-identical to the output of the build at `06bada2`, and was still bit-identical at `aa53679`. It was regenerated at `5bb2fee` (A-95 changes ex2); the earlier one is kept in `data/regress-baseline-35ba52f/`.
+- `tools/regress.sh` runs `examples/ex1.in` (1D) and `examples/ex2.in` (2D) and compares every HDF5 output file with a stored baseline using `h5diff`, bit for bit unless a tolerance is set. Unless its message says otherwise, each code commit was checked this way. The persistent baseline is in `data/regress-baseline/` (ignored by git). It was generated from commit `35ba52f`, is bit-identical to the output of the build at `06bada2`, and was still bit-identical at `aa53679`. It was regenerated at `5bb2fee` (A-95 changes ex2); the earlier one is kept in `data/regress-baseline-35ba52f/`. Stage 4 added two power-law cases, `examples/ex4s.in` and `examples/ex4g.in`, to the default cases of `tools/regress.sh` and to the baseline.
 - `tools/mms.in` runs the manufactured-solution (MMS) convergence test of the linear-elastic quasi-dynamic momentum balance on Ny = Nz = 21, 41 and 81.
 - `tools/checkkeys.py` lists keys in an input file that no part of the code reads.
 - Targeted spot runs for configurations that ex1 and ex2 do not exercise. Each commit message describes them; the evidence lines below quote their numbers.
@@ -35,12 +35,12 @@ How the scale is applied:
 | Group | Entries | Critical | High | Medium | Low |
 |---|---|---|---|---|---|
 | 3.1 Crashes, undefined behaviour and memory | A-01 to A-22 | 17 | 0 | 5 | 0 |
-| 3.2 Physics and numerics (wrong results) | A-23 to A-47 | 1 | 17 | 4 | 3 |
-| 3.3 Time integration, checkpoints and I/O | A-48 to A-68, A-95 | 12 | 3 | 6 | 1 |
+| 3.2 Physics and numerics (wrong results) | A-23 to A-47, A-97 | 1 | 18 | 4 | 3 |
+| 3.3 Time integration, checkpoints and I/O | A-48 to A-68, A-95, A-96 | 12 | 3 | 7 | 1 |
 | 3.4 Input handling and error reporting | A-69 to A-79 | 3 | 3 | 4 | 1 |
 | 3.5 Build, repository and tooling | A-80 to A-87 | 0 | 0 | 1 | 7 |
 | 3.6 Examples, benchmarks and post-processing | A-88 to A-94 | 0 | 2 | 5 | 0 |
-| Total | 95 | 33 | 25 | 25 | 12 |
+| Total | 97 | 33 | 26 | 26 | 12 |
 
 "No run reported" means the commit message describes the fix without a dedicated test; the ex1/ex2 regression comparison still applied to it.
 
@@ -238,6 +238,11 @@ Section 4 summarizes how much each of these changes results.
 - Defect: the backward-Euler Picard loop computed its relative change but never stopped on `minBeDifference`, so it always ran `maxBeIteration` iterations (default 1), and it could divide by a zero norm.
 - Evidence: no separate run reported.
 
+**A-97. The boundary fault's frictional-heat kernel was not normalized on the grid.** High. `3f402f3`. `source/heatEquation.cpp`. Found after the audit, during stage 4 of the two-fault work.
+- Defect: with a finite shear-zone width (`wVals` > 0), frictional heat is spread over Gw = exp(-y^2/(2 w^2))/(sqrt(2 pi) w) on y >= 0, which integrates to 1/2 (half the fault's work for the half-space, as the boundary flux tau V/2 when w = 0) only when the grid resolves w. With w at or below the spacing at the fault only row 0 samples it, and the quadrature gives 17/48 h Gw(0) = 0.14 h/w (order 4): far more heat than the fault produced. ex4 is unaffected in practice (6 cm cells at the fault, w = 10 m); a model with 0.5 km cells and w = 10 m was heated 14 times too much.
+- Fix: `HeatEquation::normalizeGw` scales Gw at every depth so that the body quadrature (H J, which integrates dy/dq exactly) gives 1/2, as the stage 4 kernel of interior faults does.
+- Evidence: uniform 201 x 61 half-space, 0.5 km cells, frictional heat only: the integral of Qfric against half the fault's work was 14.129 (w = 10 m) and 0.999996 (w = 1 km) and is 1 to 7e-16 in both; every regression case (w = 0 or no heat) bit-identical.
+
 ### 3.3 Time integration, checkpoints and I/O
 
 **A-48. The grain-size limit could override the Maxwell time-step limit.** Medium. `00b3b33`. `source/strikeSlip_powerLaw_qd.cpp`, `source/strikeSlip_powerLaw_qd_fd.cpp`.
@@ -328,6 +333,11 @@ Section 4 summarizes how much each of these changes results.
 - Defect: without `minDeltaT` in the input, the quasi-dynamic classes set it to the shear-wave time of the smallest grid cell, min(dy, dz)/cs, and the adaptive integrators accept a step at minDeltaT whatever its error (A-50 made such steps consistent but still accepts them). Earthquakes on grids of 50 to 100 m need smaller steps: ex2 (smallest cell 45 m, floor 14 ms) took 329 steps at the floor during its event with errors above `timeStepTol`; with 100 m cells (floor 32 ms) the state variable overflowed (psi = 23, so exp(psi/a) = inf) and the root finder stopped on an assertion; explicit pore pressure with kL_p = 1 mm (O-01) failed the same way (psi = 3.7e11).
 - Fix: the default is now 1e-3 of that time, a safeguard far below what fast slip needs (ex2's error control chooses 1.9 ms at its peak). A `minDeltaT` given in the input is kept, with a clearer warning when it exceeds the shear-wave time. The four adaptive RK integrators warn the first time they accept a step with its error above the tolerance and count such steps in the run summary.
 - Evidence: ex1 and the spot cases that never reached the floor are bit-identical; ex2, BP1 and the implicit-pressure case are bit-identical to the previous build run with `minDeltaT = 1e-5`, so the only change is that the floor no longer binds. ex2: onset unchanged (54.55431 yr), peak slip rate 6.991 -> 7.229 m/s, slip at 207 yr unchanged to 1e-4 m. In the stage 2 interior-fault comparison the floor had moved the peak slip rate by 1.9% and the final slip by 6e-8 m.
+
+**A-96. The power-law explicit rate function overwrote the written fault stress.** Medium. `ae6c6a8`. `source/strikeSlip_powerLaw_qd.cpp`. Found after the audit, during stage 4 of the two-fault work.
+- Defect: after `Fault_qd::d_dt` had computed the rates, the explicit `d_dt` of `StrikeSlip_PowerLaw_qd` recomputed the boundary fault's strength without cohesion and wrote it as the shear stress (tau = strength(psi, V), tauQS = tau + eta V). Locked nodes (V = 0) reported tau = tauQS = 0, nodes held by cohesion the cohesion-free strength. Only the output was wrong; the implicit-explicit path and the elastic mediators never did this.
+- Fix: the block is removed; `Fault_qd::d_dt` sets tau = tauQS - eta V and the strength with cohesion.
+- Evidence: ex4g with lockedVals = 1 above 5 km: the locked nodes reported 0 MPa and now 33.49 to 34.05 MPa; slip, slip rate, state and strength bit-identical; in ex4s and ex4g only /fault/tau and /fault/tauQS change, by at most 1e-12 MPa.
 
 ### 3.4 Input handling and error reporting
 
@@ -478,6 +488,8 @@ Unless its message says otherwise, each code commit was followed by a bit-for-bi
 | `35ba52f` | Empty timeIntInds left alone (A-57) | explicit pore pressure without `timeIntInds` | restores the behaviour before `04298a8` |
 | `aa53679` | Cohesion, fully dynamic (A-37) | quasidynamic_and_dynamic with nonzero `cohesionVals` | 5 MPa: peak V 28.93 -> 25.13 m/s, max slip 20.96 -> 19.72 m |
 | `5bb2fee` | Default minimum time step (A-95) | quasi-dynamic runs without `minDeltaT` whose events needed steps below min(dy,dz)/cs | ex2 peak V 6.991 -> 7.229 m/s (+3.4%), onset and slip unchanged; runs that overflowed now finish |
+| `ae6c6a8` | Written fault stress, power law (A-96) | explicit power-law runs: output of locked or cohesion-held nodes | locked nodes 0 -> 33.5 to 34.0 MPa in ex4g with lockedVals; elsewhere 1e-12 MPa; rates unchanged |
+| `3f402f3` | Frictional-heat kernel normalized (A-97) | half-space runs with wVals > 0 that the grid does not resolve | heat input 14.1 times too large -> exact (w = 10 m on 0.5 km cells); 4e-6 for w = 1 km |
 
 ## 5. Open items and documented limitations
 

@@ -1,7 +1,8 @@
 # Two-fault extension: design note
 
-Status: Stages 0 to 3 are done (branches `audit/fixes-2026-10`, `stage1/fault-generalization`,
-`stage2/interior-fault`, `stage3/two-faults`, each built on the previous one); Stage 4 is next.
+Status: Stages 0 to 4 are done (branches `audit/fixes-2026-10`, `stage1/fault-generalization`,
+`stage2/interior-fault`, `stage3/two-faults`, `stage4/viscoelastic`, each built on the previous one).
+`docs/REVERSIBLE_STRENGTH_PLAN.md` plans the next stage, reversible strength mechanisms.
 Line numbers refer to upstream commit `74a132f` and will drift; function names are the stable
 reference.
 
@@ -192,19 +193,37 @@ Done on branch `stage3/two-faults` (`44312d7`, `cd2fac5`, `5bb2fee` and the exam
   `events.csv`, `partition.csv` and `surfvel.csv`.
 - **Results.** Gates 3a, 3b and 3c below all pass.
 
-### Stage 4: viscoelastic and reversible-strength physics
-- `PowerLaw` must apply the lifts' `correctStress` to its y-strain near each fault, as
-  `LinearElastic::computeStresses` does (sxy = mu (D_y u - gVxy), so the correction is the same
-  additive term); `StrikeSlip_PowerLaw_qd` needs the multi-fault structure, interior faults and
-  outputs that stages 1 to 3 gave `StrikeSlip_LinearElastic_qd`. The viscous source term is
-  unchanged.
-- Heat: frictional source becomes a sum of per-fault Gaussians centred at `y_f(k)`
-  (`HeatEquation` builds one centred at `y = 0`, normalised for a half-space); reject the
-  `w = 0` boundary-flux option for interior faults.
-- Grain size: no fault-specific code.
-- Pore pressure / valving: one `PressureEq` per fault. Use `hydraulicTimeIntType = implicit`:
-  permeability is then relaxed exactly over each step (`PressureEq::relaxPermeability`); the
-  explicit form needs |V| dt < 2.8 kL_p, about 1e5 steps per event with kL_p = 1 mm.
+### Stage 4: viscoelastic and reversible-strength physics (done)
+Done on branch `stage4/viscoelastic`. Interior faults now work in both quasi-dynamic mediators
+with every physics module; the gates are in section 5.
+- **4a, power law** (`e1a40ae`, `e6e260b`, `18bb957`). `StrikeSlip_PowerLaw_qd` has the fault
+  list, interior faults, remote loading on the left and the stage 3 outputs, through the helpers
+  of `source/multiFault.hpp` that the elastic mediator now uses too. `PowerLaw::computeTotalStrains`
+  applies each lift's `correctStrain` near its fault, so sxy, sdev, the viscosity and the viscous
+  strain rates see u without the jump. The surface velocity adds the viscous source of the viscous
+  strain rates. `interiorFaultKinkSource = 1` (off by default) adds the jump of the viscous source
+  to the B+ curvature; it did not improve the match with the half-space beyond that model's own
+  discretization error, and with it a fault that never slips still perturbs the solution.
+- **4b, heat** (`ae2591c`). `FaultWorkKernel` spreads each interior fault's work tau V over a
+  Gaussian of width `wVals` centred on it, normalized on the grid so that the body integral equals
+  the work exactly (gate 4b-1); `HeatEquation::setFaultHeatSource` takes it as Qfric. Interior
+  faults need `wVals > 0`; set `bcLType_trans = Dirichlet` so the far left side matches the right.
+  The same normalization fixed the half-space kernel (`3f402f3`, audit A-97).
+- **4c, grain size**: no fault-specific code; the gates pass without changes.
+- **4d, pore pressure** (`b25167d`). One `PressureEq` per fault, named after it: the default
+  fault's keeps the plain keys, `/pressureEq`, `pressure` and `permeability`; that of a fault
+  `<name>` reads `<name>_` overrides and uses `/<name>_pressureEq`, `<name>_pressure`,
+  `<name>_permeability`. Each fault's effective normal stress follows its own pore pressure. Use
+  `hydraulicTimeIntType = implicit`: the explicit form needs |V| dt < 2.8 kL_p, about 1e5 steps
+  per event with kL_p = 1 mm.
+- Still refused with interior faults: the steady-state initial guess, `steadyStateIts` and the
+  steady-state heat solve (they need a boundary fault), `isMMS`, a body force, the `atan_u` top
+  boundary of the power law.
+- **Regression**: `examples/ex4s.in` (power law, coupled heat, implicit-explicit) and
+  `examples/ex4g.in` (power law, grain size, explicit) join ex1 and ex2 in `tools/regress.sh`.
+- **Baseline** for the next stage: `examples/two_faults/make_inputs.py --rheology powerlaw`
+  (ex4's dislocation creep and geotherm, Lz = 60 km, coupled heat with a 10 m kernel, optional
+  grain size); its cost is in section 5.
 
 ## 5. Verification gates
 
@@ -219,6 +238,14 @@ Done on branch `stage3/two-faults` (`44312d7`, `cd2fac5`, `5bb2fee` and the exam
 | 3b | Fault 2 velocity-strengthening | long-term `V1 + V2 = vL` from cumulative slip. **Passed**: f2 with a - b = 0.004, 20 km from fault (ex2 friction), 2980 yr, 14 events; the cycle becomes periodic (recurrence 224.3 yr, peak V 7.22 m/s); over the last cycle, mid-interseismic to mid-interseismic, (slip_1 + slip_2)/(vL dt) = 0.9994 to 1.0045 over depth, and within 0.9% over the last 2, 3 and 5 cycles. f2 takes 0.6 to 0.8% (its friction barely weakens at slow rates, while fault's deep part, with a - b up to 0.2, does). Earlier cycles show the initial stress relaxing (sum up to 1.03) |
 | 3c | Coseismic stress change on fault 2 from a fault-1 event | matches the 2D screw-dislocation formula at distance `y_f`. **Passed**: against the antiplane solution for the strip (traction-free top and bottom, held sides; cosine series in depth, exact in y) from the computed slip of fault, the change on the locked f2 20 km away (max 1.29 MPa) agrees to 2.6e-5 MPa (0.002%) |
 | 4 | Power-law single-fault limit | matches the existing `StrikeSlip_PowerLaw_qd` run; heat budget `∫Q = Σ τ_k V_k` |
+| 4a-1 | Interior fault in the power-law full domain against the half-space power-law run (ex4s material, Nz = 161 to 50 km, cold start, to 1e9 s) | **Passed**: at Ny_half = 101 / 201 onset +1.37% / +0.37%, peak V +1.0% / +0.31%, slip 0.17% / 0.055%, slip at 30 km (viscous afterslip) 0.07% / 0.03%, surface velocity 0.039% / 0.008%; fault traction below 15 km within 2e-3 MPa at 201; near-fault viscous strain within 8% only at the fault's bottom end on the traction-free base, < 0.3% beyond 2 km |
+| 4a-2 | Second fault locked (power law) | **Passed** bit for bit: all 1D and 2D datasets (u, sxy, gVxy, effVisc) |
+| 4b-1 | Heat budget, two slipping interior faults, uniform 0.5 km cells | **Passed**: body integral of Qfric equals the faults' work to 1.1e-14 (w = 10 m) and 2.7e-15 (w = 1 km) |
+| 4b-2 | Single-fault limit with coupled heat (power law, w = 1 km) | **Passed**: temperature within 4.3e-5 K (0.16% of the rise) |
+| 4b-3 | Second fault locked, coupled heat | **Passed** bit for bit, T and Qfric included |
+| 4c | Single-fault limit with grain-size evolution (coupled to diffusion creep); second fault locked | **Passed**: grain size within 0.03% beyond 2 km (0.7% at the bottom corner), mechanics as 4a-1; locked case bit for bit |
+| 4d-1 | Single-fault limit with valving pore pressure (implicit, slip-dependent permeability, an initial pressure diffusing out) | **Passed**: onset +0.61%, peak V +0.49%, pore pressure within 0.13%, log10 k within 3.6e-3 during the event |
+| 4d-2 | Second fault locked with its own pressure equation | **Passed** bit for bit, /pressureEq included |
 
 Keep μ uniform across both faults (Route B does not handle a modulus jump at a fault). The
 partition-dependent `R` coefficient that once made results depend on the rank count is fixed.

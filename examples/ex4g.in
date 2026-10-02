@@ -1,7 +1,7 @@
 % Short transient power-law test (regression case) with grain-size evolution: ex4s with the
 % wattmeter grain-size law (Austin & Evans 2007) coupled to diffusion creep, temperature held at
 % the geotherm, and the explicit integrator. The grain-size and diffusion-creep constants are
-% illustrative, not calibrated to a mineral: the grain size grows from 100 um to a few mm at depth.
+% illustrative, not calibrated to a mineral: the grain size grows about thirtyfold at depth.
 Ny = 61 # points in y-direction
 Nz = 81 # points in z-direction
 Ly = 100 # (km) horizontal domain size
@@ -61,7 +61,7 @@ thermalCoupling = no
 evolveTemperature = 0
 timeIntegrator = RK43
 wDiffCreep = yes
-diff_AVals = [1.5e6 1.5e6] # (MPa^-n um^m s^-1) illustrative
+diff_AVals = [1.5e6 1.5e6] # illustrative (MPa^-n s^-1, times grain size^m)
 diff_ADepths = [0 100]
 diff_QRVals = [3e4 3e4] # Q/R (K)
 diff_QRDepths = [0 100]
@@ -72,7 +72,7 @@ diff_mDepths = [0 100]
 evolveGrainSize = 1
 grainSizeEvCoupling = coupled
 grainSizeEv_grainSizeEvType = transient
-grainSizeEv_grainSizeVals = [100 100] # (um) initial grain size
+grainSizeEv_grainSizeVals = [100 100] # initial grain size (in the length unit the constants imply)
 grainSizeEv_grainSizeDepths = [0 100]
 grainSizeEv_AVals = [6e7 6e7] # static growth prefactor, illustrative
 grainSizeEv_ADepths = [0 100]
