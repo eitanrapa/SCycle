@@ -30,12 +30,9 @@ PressureEq::PressureEq(Domain &D)
   checkInput();
   setFields(D);
 
+  // on a restart the pressure state is loaded from checkpoint.h5 (loadCheckpoint, below);
+  // a steady-state restart has no pressure data, so pressure starts from its initial condition
   if (_D->_restartFromChkpt) {
-    assert(0);
-    _guessSteadyStateICs = 0;
-  }
-  else if (_D->_restartFromChkptSS) {
-    assert(0);
     _guessSteadyStateICs = 0;
   }
 
@@ -71,6 +68,11 @@ PressureEq::PressureEq(Domain &D)
         VecCopy(_k_slip, _k_p);
       }
     }
+  }
+
+  // without the steady-state guess, the initial pressure is the pVals/pDepths profile
+  if (_isMMS == 0 && _guessSteadyStateICs == 0 && !_D->_restartFromChkpt) {
+    setVec(_p, _z, _pVals, _pDepths);
   }
 
   if (_D->_restartFromChkpt) { loadCheckpoint(); }
@@ -310,7 +312,7 @@ PetscErrorCode PressureEq::setFields(Domain &D)
   VecCreate(PETSC_COMM_WORLD, &_p);
   VecSetSizes(_p, PETSC_DECIDE, _N);
   VecSetFromOptions(_p);
-  PetscObjectSetName((PetscObject)_p, "_p");
+  PetscObjectSetName((PetscObject)_p, "p");
   VecSet(_p, 0.0);
 
   VecDuplicate(_p, &_p_t);
@@ -393,18 +395,6 @@ PetscErrorCode PressureEq::setFields(Domain &D)
     PetscObjectSetName((PetscObject)_kmax_p, "kmax_p");
     VecSet(_kmax_p, 0.0);
 
-    VecDuplicate(_p, &_kT_p);
-    PetscObjectSetName((PetscObject)_kT_p, "kT_p");
-    VecSet(_kT_p, 0.0);
-
-    VecDuplicate(_p, &_kmin_p);
-    PetscObjectSetName((PetscObject)_kmin_p, "kmin_p");
-    VecSet(_kmin_p, 0.0);
-
-    VecDuplicate(_p, &_kmax_p);
-    PetscObjectSetName((PetscObject)_kmax_p, "kmax_p");
-    VecSet(_kmax_p, 0.0);
-
     ierr = setVec(_kL_p, _z, _kL_pVals, _kL_pDepths); CHKERRQ(ierr);
     ierr = setVec(_kT_p, _z, _kT_pVals, _kT_pDepths); CHKERRQ(ierr);
     ierr = setVec(_kmin_p, _z, _kmin_pVals, _kmin_pDepths); CHKERRQ(ierr);
@@ -414,7 +404,7 @@ PetscErrorCode PressureEq::setFields(Domain &D)
   // for pressure-dependent permeability
   if ( _permPressureDependent.compare("yes") == 0 ) {
     VecDuplicate(_p, &_kmin2_p);
-    PetscObjectSetName((PetscObject)_kmin2_p, "meanP_p");
+    PetscObjectSetName((PetscObject)_kmin2_p, "kmin2_p");
     VecSet(_kmin2_p, 0.0);
 
     VecDuplicate(_p, &_sigma_p);
@@ -434,14 +424,6 @@ PetscErrorCode PressureEq::setFields(Domain &D)
   VecSetSizes(_bcT, PETSC_DECIDE, 1);
   VecSetFromOptions(_bcT);
   PetscObjectSetName((PetscObject)_bcT, "bcT");
-
-  VecDuplicate(_bcT, &_bcB);
-  PetscObjectSetName((PetscObject)_bcB, "bcB");
-  VecSet(_bcB, 0);
-
-  VecDuplicate(_bcT, &_bcB_gravity);
-  PetscObjectSetName((PetscObject)_bcB_gravity, "bcB_gravity");
-  VecSet(_bcB_gravity, 0);
 
   VecDuplicate(_bcT, &_bcB);
   PetscObjectSetName((PetscObject)_bcB, "bcB");
@@ -1574,11 +1556,12 @@ PetscErrorCode PressureEq::be(const PetscScalar time, const map<string, Vec> &va
     VecNorm(errVec, NORM_2, &err);
     VecDestroy(&errVec);
     VecNorm(_p, NORM_2, &s);
-    err = err / s;
+    if (s > 0) { err = err / s; }
 
     VecCopy(_p, p_prev);
 
     _invTime += MPI_Wtime() - tmpTime;
+    if (i > 0 && err < _minBeDifference) { break; } // fixed-point iteration converged
   }
 
   VecCopy(_p, varIm["pressure"]);
@@ -1922,6 +1905,9 @@ PetscErrorCode PressureEq::writeStep(PetscViewer& viewer)
   ierr = PetscViewerHDF5PushGroup(viewer, "/pressureEq");               CHKERRQ(ierr);
   ierr = PetscViewerHDF5PushTimestepping(viewer);                       CHKERRQ(ierr);
 
+  ierr = VecView(_p, viewer);                                           CHKERRQ(ierr);
+  ierr = VecView(_p_t, viewer);                                         CHKERRQ(ierr);
+  ierr = VecView(_k_p, viewer);                                         CHKERRQ(ierr);
   ierr = VecView(_n_p, viewer);                                         CHKERRQ(ierr);
   ierr = VecView(_beta_p, viewer);                                      CHKERRQ(ierr);
   ierr = VecView(_k_slip, viewer);                                      CHKERRQ(ierr);
@@ -1990,17 +1976,16 @@ PetscErrorCode PressureEq::writeCheckpoint(PetscViewer& viewer)
 
   ierr = PetscViewerHDF5PushGroup(viewer, "/pressureEq");               CHKERRQ(ierr);
 
-  ierr = VecView(_n_p, viewer);                                         CHKERRQ(ierr);
-  ierr = VecView(_beta_p, viewer);                                      CHKERRQ(ierr);
+  // evolving state
+  ierr = VecView(_p, viewer);                                           CHKERRQ(ierr);
+  ierr = VecView(_p_t, viewer);                                         CHKERRQ(ierr);
+  ierr = VecView(_k_p, viewer);                                         CHKERRQ(ierr);
   ierr = VecView(_k_slip, viewer);                                      CHKERRQ(ierr);
   ierr = VecView(_k_press, viewer);                                     CHKERRQ(ierr);
-  ierr = VecView(_eta_p, viewer);                                       CHKERRQ(ierr);
-  ierr = VecView(_rho_f, viewer);                                       CHKERRQ(ierr);
 
+  // material properties
   ierr = VecView(_n_p, viewer);                                         CHKERRQ(ierr);
   ierr = VecView(_beta_p, viewer);                                      CHKERRQ(ierr);
-  ierr = VecView(_k_slip, viewer);                                      CHKERRQ(ierr);
-  ierr = VecView(_k_press, viewer);                                     CHKERRQ(ierr);
   ierr = VecView(_eta_p, viewer);                                       CHKERRQ(ierr);
   ierr = VecView(_rho_f, viewer);                                       CHKERRQ(ierr);
 
@@ -2028,19 +2013,16 @@ PetscErrorCode PressureEq::loadCheckpoint()
   PetscViewer viewer;
   ierr = PetscViewerHDF5Open(PETSC_COMM_WORLD, fileName.c_str(), FILE_MODE_READ, &viewer);CHKERRQ(ierr);
 
-  ierr = PetscViewerHDF5PushGroup(viewer, "pressureEq");               CHKERRQ(ierr);
+  ierr = PetscViewerHDF5PushGroup(viewer, "/pressureEq");              CHKERRQ(ierr);
+
+  ierr = VecLoad(_p, viewer);                                           CHKERRQ(ierr);
+  ierr = VecLoad(_p_t, viewer);                                         CHKERRQ(ierr);
+  ierr = VecLoad(_k_p, viewer);                                         CHKERRQ(ierr);
+  ierr = VecLoad(_k_slip, viewer);                                      CHKERRQ(ierr);
+  ierr = VecLoad(_k_press, viewer);                                     CHKERRQ(ierr);
 
   ierr = VecLoad(_n_p, viewer);                                         CHKERRQ(ierr);
   ierr = VecLoad(_beta_p, viewer);                                      CHKERRQ(ierr);
-  ierr = VecLoad(_k_slip, viewer);                                      CHKERRQ(ierr);
-  ierr = VecLoad(_k_press, viewer);                                     CHKERRQ(ierr);
-  ierr = VecLoad(_eta_p, viewer);                                       CHKERRQ(ierr);
-  ierr = VecLoad(_rho_f, viewer);                                       CHKERRQ(ierr);
-
-  ierr = VecLoad(_n_p, viewer);                                         CHKERRQ(ierr);
-  ierr = VecLoad(_beta_p, viewer);                                      CHKERRQ(ierr);
-  ierr = VecLoad(_k_slip, viewer);                                      CHKERRQ(ierr);
-  ierr = VecLoad(_k_press, viewer);                                     CHKERRQ(ierr);
   ierr = VecLoad(_eta_p, viewer);                                       CHKERRQ(ierr);
   ierr = VecLoad(_rho_f, viewer);                                       CHKERRQ(ierr);
 
