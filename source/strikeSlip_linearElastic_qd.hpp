@@ -144,6 +144,7 @@ public:
   LinearElastic    *_material; // linear elastic off-fault material properties
   HeatEquation     *_he;
   PressureEq       *_p;
+  std::vector<PressureEq*> _pressures; // with hydraulic coupling: one per fault, parallel to _faults (_p is the first)
 
   // constructor and destructor
   StrikeSlip_LinearElastic_qd(Domain&D);

@@ -99,10 +99,18 @@ StrikeSlip_PowerLaw_qd::StrikeSlip_PowerLaw_qd(Domain&D)
 
   //~ // pressure diffusion equation
   if (_hydraulicCoupling != "no") {
-    _p = new PressureEq(D);
-    _p->addErrorControl(_timeIntInds,_scale);
+    // one per fault, named after it (its keys, group and integrand keys; its permeability follows
+    // that fault's slip rate)
+    for (size_t i = 0; i < _faults.size(); i++) {
+      PressureEq *p = new PressureEq(D,_faults[i]->_name);
+      p->addErrorControl(_timeIntInds,_scale);
+      _pressures.push_back(p);
+    }
+    _p = _pressures[0];
   }
-  if (_hydraulicCoupling == "coupled") { _fault->setSNEff(_p->_p); }
+  if (_hydraulicCoupling == "coupled") {
+    for (size_t i = 0; i < _pressures.size(); i++) { _faults[i]->setSNEff(_pressures[i]->_p); }
+  }
 
   //~ // grain size distribution
   if (_evolveGrainSize == 1 || _computeSSGrainSize == 1) { _grainDist = new GrainSizeEvolution(D); }
@@ -174,7 +182,8 @@ StrikeSlip_PowerLaw_qd::~StrikeSlip_PowerLaw_qd()
   VecDestroy(&_bcBRate);
   VecDestroy(&_Qfault);
   delete _he;          _he = NULL;
-  delete _p;           _p = NULL;
+  for (size_t i = 0; i < _pressures.size(); i++) { delete _pressures[i]; }
+  _pressures.clear();  _p = NULL;
   delete _grainDist;   _grainDist = NULL;
 
   if (_varSS.find("v") != _varSS.end()) { VecDestroy(&_varSS["v"]); }
@@ -359,9 +368,8 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::checkInput()
         "       <name>_psi and <name>_prestress; the viscous strains start at zero.\n");
       assert(0);
     }
-    if (_computeSSTemperature == 1 || _hydraulicCoupling != "no") {
-      PetscPrintf(PETSC_COMM_WORLD,"Error: the steady-state heat solve (computeSSHeatEq) and pore pressure are not yet coupled to\n"
-        "       interior faults (stage 4 of docs/TWO_FAULT_DESIGN.md).\n");
+    if (_computeSSTemperature == 1) {
+      PetscPrintf(PETSC_COMM_WORLD,"Error: the steady-state heat solve (computeSSHeatEq) needs a boundary fault.\n");
       assert(0);
     }
     if (_isMMS || _forcingType != "no" || _bcTType == "atan_u") {
@@ -634,7 +642,7 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::initiateIntegrand()
   }
 
   if (_hydraulicCoupling!="no") {
-     _p->initiateIntegrand(_initTime,_varEx,_varIm);
+     for (size_t i = 0; i < _pressures.size(); i++) { ierr = _pressures[i]->initiateIntegrand(_initTime,_varEx,_varIm); CHKERRQ(ierr); }
   }
 
   if (_evolveGrainSize == 1) {
@@ -683,7 +691,7 @@ double startTime = MPI_Wtime();
     for (size_t i = 0; i < _faults.size(); i++) { ierr = _faults[i]->writeStep(_viewer1D); CHKERRQ(ierr); }
     _series.flush();
     if (_evolveTemperature == 1) { ierr =  _he->writeStep1D(_viewer1D); CHKERRQ(ierr); }
-    if (_hydraulicCoupling.compare("no")!=0) { _p->writeStep(_viewer1D); }
+    for (size_t i = 0; i < _pressures.size(); i++) { ierr = _pressures[i]->writeStep(_viewer1D); CHKERRQ(ierr); }
   }
 
   if ( (_strideSeries > 0 && _currTime == _maxTime) || (_strideSeries > 0 && stepCount % _strideSeries == 0)) {
@@ -706,7 +714,7 @@ double startTime = MPI_Wtime();
     if (_quadEx != NULL) { ierr = _quadEx->writeCheckpoint(_viewer_chkpt); CHKERRQ(ierr); }
     if (_quadImex != NULL) { ierr = _quadImex->writeCheckpoint(_viewer_chkpt); CHKERRQ(ierr); }
     if (_grainDist != NULL) { ierr =  _grainDist->writeCheckpoint(_viewer_chkpt);CHKERRQ(ierr); }
-    if (_hydraulicCoupling.compare("no")!=0) { ierr = _p->writeCheckpoint(_viewer_chkpt);  CHKERRQ(ierr); }
+    for (size_t i = 0; i < _pressures.size(); i++) { ierr = _pressures[i]->writeCheckpoint(_viewer_chkpt); CHKERRQ(ierr); }
     // output so far is made consistent on disk first, then the checkpoint replaces the old one
     ierr = flushHDF5Viewer(_viewer1D); CHKERRQ(ierr);
     ierr = flushHDF5Viewer(_viewer2D); CHKERRQ(ierr);
@@ -973,7 +981,7 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::view()
 
   _material->view(_integrateTime);
   for (size_t i = 0; i < _faults.size(); i++) { _faults[i]->view(_integrateTime); }
-  if (_hydraulicCoupling.compare("no")!=0) { _p->view(_integrateTime); }
+  for (size_t i = 0; i < _pressures.size(); i++) { _pressures[i]->view(_integrateTime); }
   if (_thermalCoupling.compare("no")!=0) { _he->view(); }
 
   ierr = PetscPrintf(PETSC_COMM_WORLD,"-------------------------------\n\n");CHKERRQ(ierr);
@@ -1057,7 +1065,7 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::writeContext()
   if (_Qfault != NULL) { ierr = _faultWork.writeContext(_viewer_context,_faults); CHKERRQ(ierr); } // heat kernels
   _material->writeContext(_outputDir, _viewer_context);
   if (_he != NULL) { _he->writeContext(_outputDir, _viewer_context); }
-  if (_hydraulicCoupling!="no") { _p->writeContext(_outputDir, _viewer_context); }
+  for (size_t i = 0; i < _pressures.size(); i++) { _pressures[i]->writeContext(_outputDir, _viewer_context); }
   if (_grainSizeEvCoupling != "no") { _grainDist->writeContext(_outputDir, _viewer_context); }
 
   if (_forcingType == "iceStream") {
@@ -1171,8 +1179,8 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::d_dt(const PetscScalar time,const map<str
 
   _material->updateFields(time,varEx);
   for (size_t i = 0; i < _faults.size(); i++) { ierr = _faults[i]->updateFields(time,varEx); CHKERRQ(ierr); }
-  if (varEx.find("pressure") != varEx.end() && _hydraulicCoupling.compare("no")!=0) {
-    _p->updateFields(time,varEx);
+  for (size_t i = 0; i < _pressures.size(); i++) {
+    if (varEx.find(_pressures[i]->_pKey) != varEx.end()) { ierr = _pressures[i]->updateFields(time,varEx); CHKERRQ(ierr); }
   }
   if ( varEx.find("grainSize") != varEx.end() ) { _grainDist->updateFields(time,varEx); }
   if ( _grainSizeEvCoupling == "coupled" ) { _material->updateGrainSize(_grainDist->_d); }
@@ -1203,7 +1211,9 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::d_dt(const PetscScalar time,const map<str
     else { ierr = _lifts[i]->traction(_material->_sxy, _material->_mu, f->_tauQSP); CHKERRQ(ierr); }
   }
 
-  if (_hydraulicCoupling=="coupled") { _fault->setSNEff(_p->_p); }
+  if (_hydraulicCoupling=="coupled") {
+    for (size_t i = 0; i < _pressures.size(); i++) { ierr = _faults[i]->setSNEff(_pressures[i]->_p); CHKERRQ(ierr); }
+  }
 
   // rates for each fault (Fault_qd::d_dt also sets the shear stress tau = tauQS - eta V and the
   // strength, cohesion included, that are written out)
@@ -1212,8 +1222,9 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::d_dt(const PetscScalar time,const map<str
   }
 
   // pressure and permeability rates (after the fault, since dk_dt uses the slip rate in dvarEx["slip"])
-  if ((varEx.find("pressure") != varEx.end() || varEx.find("permeability") != varEx.end()) && _hydraulicCoupling.compare("no")!=0) {
-    ierr = _p->d_dt(time,varEx,dvarEx); CHKERRQ(ierr);
+  for (size_t i = 0; i < _pressures.size(); i++) {
+    PressureEq *p = _pressures[i];
+    if (varEx.find(p->_pKey) != varEx.end() || varEx.find(p->_kKey) != varEx.end()) { ierr = p->d_dt(time,varEx,dvarEx); CHKERRQ(ierr); }
   }
 
   return ierr;
@@ -1249,8 +1260,9 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::d_dt(const PetscScalar time,const map<str
   _material->updateFields(time,varEx);
   for (size_t i = 0; i < _faults.size(); i++) { ierr = _faults[i]->updateFields(time,varEx); CHKERRQ(ierr); }
 
-  if ( varImo.find("pressure") != varImo.end() || varEx.find("pressure") != varEx.end()) {
-    _p->updateFields(time,varEx,varImo);
+  for (size_t i = 0; i < _pressures.size(); i++) {
+    PressureEq *p = _pressures[i];
+    if (varImo.find(p->_pKey) != varImo.end() || varEx.find(p->_pKey) != varEx.end()) { ierr = p->updateFields(time,varEx,varImo); CHKERRQ(ierr); }
   }
 
   // update temperature in momBal and fault
@@ -1265,8 +1277,10 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::d_dt(const PetscScalar time,const map<str
   }
   if ( _grainSizeEvCoupling == "coupled" ) { _material->updateGrainSize(_grainDist->_d); }
 
-  // update effective normal stress in fault using pore pressure
-  if (_hydraulicCoupling=="coupled") { _fault->setSNEff(_p->_p); }
+  // update effective normal stress in each fault using its pore pressure
+  if (_hydraulicCoupling=="coupled") {
+    for (size_t i = 0; i < _pressures.size(); i++) { ierr = _faults[i]->setSNEff(_pressures[i]->_p); CHKERRQ(ierr); }
+  }
 
 
   // 2. compute rates
@@ -1296,8 +1310,9 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::d_dt(const PetscScalar time,const map<str
   }
 
   // pressure and permeability (after the fault, since dk_dt uses the slip rate in dvarEx["slip"])
-  if ( varImo.find("pressure") != varImo.end() || varEx.find("pressure") != varEx.end()) {
-    ierr = _p->d_dt(time,varEx,dvarEx,varIm,varImo,dt); CHKERRQ(ierr);
+  for (size_t i = 0; i < _pressures.size(); i++) {
+    PressureEq *p = _pressures[i];
+    if (varImo.find(p->_pKey) != varImo.end() || varEx.find(p->_pKey) != varEx.end()) { ierr = p->d_dt(time,varEx,dvarEx,varIm,varImo,dt); CHKERRQ(ierr); }
   }
 
   // 3. implicitly integrated variables
@@ -1340,8 +1355,10 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::d_dt(const PetscScalar time,const map<str
     for (size_t i = 0; i < _faults.size(); i++) { ierr = _faults[i]->updateTemperature(varIm.find("Temp")->second); CHKERRQ(ierr); }
     ierr = _material->updateTemperature(varIm.find("Temp")->second); CHKERRQ(ierr);
   }
-  if (_hydraulicCoupling == "coupled" && varIm.find("pressure") != varIm.end()) {
-    ierr = _fault->setSNEff(varIm.find("pressure")->second); CHKERRQ(ierr);
+  for (size_t i = 0; i < _pressures.size(); i++) {
+    if (_hydraulicCoupling == "coupled" && varIm.find(_pressures[i]->_pKey) != varIm.end()) {
+      ierr = _faults[i]->setSNEff(varIm.find(_pressures[i]->_pKey)->second); CHKERRQ(ierr);
+    }
   }
 
   return ierr;

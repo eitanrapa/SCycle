@@ -146,6 +146,7 @@ public:
   PowerLaw               *_material; // power-law viscoelastic off-fault material properties
   HeatEquation           *_he;
   PressureEq             *_p;
+  std::vector<PressureEq*> _pressures; // with hydraulic coupling: one per fault, parallel to _faults (_p is the first)
   GrainSizeEvolution     *_grainDist;
 
 

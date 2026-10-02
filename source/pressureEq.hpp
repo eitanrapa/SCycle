@@ -36,6 +36,14 @@ public:
   Vec _p = NULL;     // pressure
   string _permSlipDependent, _permPressureDependent;
 
+  // Each fault has its own pressure equation, named after it. The one of the default fault, fault,
+  // reads the plain keys, writes the group /pressureEq and integrates the keys pressure and
+  // permeability; that of a fault <name> reads the plain keys too, then <name>_<key> overrides any
+  // (except the mediator-level guessSteadyStateICs, linSolver, hydraulicTimeIntType and vL), and uses
+  // /<name>_pressureEq, <name>_pressure, <name>_permeability, <name>_p_context.txt and <name>_slip.
+  string _name, _prefix, _pKey, _kKey;
+  string group() const { return "/" + _prefix + "pressureEq"; }
+
 private:
   const char *_file;      // input file
   string      _delim;     // format is: var delim value (without the white space)
@@ -113,7 +121,7 @@ private:
 
   // constructor and destructor
 public:
-  PressureEq(Domain &D);
+  PressureEq(Domain &D, const string& name = "fault");
   ~PressureEq();
 
   // public member functions
@@ -124,6 +132,7 @@ public:
 
   PetscErrorCode setFields(Domain &D);
   PetscErrorCode loadSettings(const char *file);
+  bool parseSetting(const string& var, const string& rhs, const string& rhsFull); // false if var is not a pressure key
   PetscErrorCode checkInput();
 
   PetscErrorCode initiateIntegrand(const PetscScalar time, map<string, Vec> &varEx, map<string, Vec> &varIm);

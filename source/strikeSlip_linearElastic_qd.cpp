@@ -70,11 +70,18 @@ StrikeSlip_LinearElastic_qd::StrikeSlip_LinearElastic_qd(Domain &D)
 
   // pressure diffusion equation
   if (_hydraulicCoupling != "no") {
-    _p = new PressureEq(D);
-    _p->addErrorControl(_timeIntInds,_scale);
-    if (_fault != NULL) { _p->setSlipKey(_fault->_slipKey); } // permeability follows the boundary fault's slip rate
+    // one per fault, named after it (its keys, group and integrand keys; its permeability follows
+    // that fault's slip rate)
+    for (size_t i = 0; i < _faults.size(); i++) {
+      PressureEq *p = new PressureEq(D,_faults[i]->_name);
+      p->addErrorControl(_timeIntInds,_scale);
+      _pressures.push_back(p);
+    }
+    _p = _pressures[0];
   }
-  if (_hydraulicCoupling == "coupled" && _fault != NULL) { _fault->setSNEff(_p->_p); }
+  if (_hydraulicCoupling == "coupled") {
+    for (size_t i = 0; i < _pressures.size(); i++) { _faults[i]->setSNEff(_pressures[i]->_p); }
+  }
 
   // initiate momentum balance equation
   if (_guessSteadyStateICs == 1 && _computeSSMomBal==1 && _forcingType != "iceStream") {
@@ -174,7 +181,8 @@ StrikeSlip_LinearElastic_qd::~StrikeSlip_LinearElastic_qd()
   VecDestroy(&_bcBRate);
   VecDestroy(&_Qfault);
   delete _he;          _he = NULL;
-  delete _p;           _p = NULL;
+  for (size_t i = 0; i < _pressures.size(); i++) { delete _pressures[i]; }
+  _pressures.clear();  _p = NULL;
 
   VecDestroy(&_forcingTerm);
   VecDestroy(&_forcingTermPlain);
@@ -346,9 +354,8 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::checkInput()
         "       with <name>_stateVals and <name>_prestressScalar, or with the files <name>_psi and <name>_prestress.\n");
       assert(0);
     }
-    if (_computeSSHeatEq == 1 || _hydraulicCoupling != "no") {
-      PetscPrintf(PETSC_COMM_WORLD,"Error: the steady-state heat solve (computeSSHeatEq) and pore pressure are not yet coupled to\n"
-        "       interior faults (stage 4 of docs/TWO_FAULT_DESIGN.md).\n");
+    if (_computeSSHeatEq == 1) {
+      PetscPrintf(PETSC_COMM_WORLD,"Error: the steady-state heat solve (computeSSHeatEq) needs a boundary fault.\n");
       assert(0);
     }
     if (_isMMS || _forcingType != "no") {
@@ -605,7 +612,7 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::initiateIntegrand()
      for (size_t i = 0; i < _faults.size(); i++) { ierr = _faults[i]->updateTemperature(_he->_T); CHKERRQ(ierr); }
   }
 
-  if (_hydraulicCoupling != "no") { _p->initiateIntegrand(_initTime,_varEx,_varIm); }
+  for (size_t i = 0; i < _pressures.size(); i++) { ierr = _pressures[i]->initiateIntegrand(_initTime,_varEx,_varIm); CHKERRQ(ierr); }
 
   #if VERBOSE > 1
     PetscPrintf(PETSC_COMM_WORLD,"Ending %s in %s\n",funcName.c_str(),FILENAME);
@@ -642,7 +649,7 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::timeMonitor(PetscScalar time, PetscS
     }
     for (size_t i = 0; i < _faults.size(); i++) { ierr = _faults[i]->writeStep(_viewer1D); CHKERRQ(ierr); }
     _series.flush();
-    if (_hydraulicCoupling.compare("no")!=0) { _p->writeStep(_viewer1D); }
+    for (size_t i = 0; i < _pressures.size(); i++) { ierr = _pressures[i]->writeStep(_viewer1D); CHKERRQ(ierr); }
     if (_thermalCoupling.compare("no")!=0) { _he->writeStep1D(_viewer1D); }
   }
 
@@ -663,7 +670,7 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::timeMonitor(PetscScalar time, PetscS
     for (size_t i = 0; i < _faults.size(); i++) { ierr = _faults[i]->writeCheckpoint(_viewer_chkpt); CHKERRQ(ierr); }
     if (_quadEx != NULL) { ierr = _quadEx->writeCheckpoint(_viewer_chkpt); CHKERRQ(ierr); }
     if (_quadImex != NULL) { ierr = _quadImex->writeCheckpoint(_viewer_chkpt); CHKERRQ(ierr); }
-    if (_hydraulicCoupling.compare("no")!=0) { ierr = _p->writeCheckpoint(_viewer_chkpt);  CHKERRQ(ierr); }
+    for (size_t i = 0; i < _pressures.size(); i++) { ierr = _pressures[i]->writeCheckpoint(_viewer_chkpt); CHKERRQ(ierr); }
     if (_thermalCoupling.compare("no")!=0) { ierr = _he->writeCheckpoint(_viewer_chkpt); CHKERRQ(ierr); }
     // output so far is made consistent on disk first, then the checkpoint replaces the old one
     ierr = flushHDF5Viewer(_viewer1D); CHKERRQ(ierr);
@@ -1045,7 +1052,7 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::view()
   if ((_timeIntegrator.compare("RK32_WBE")==0 || _timeIntegrator.compare("RK43_WBE")==0) && _quadImex!=NULL) {
     ierr = _quadImex->view();
   }
-  if (_hydraulicCoupling.compare("no")!=0) { _p->view(_integrateTime); }
+  for (size_t i = 0; i < _pressures.size(); i++) { _pressures[i]->view(_integrateTime); }
   if (_thermalCoupling.compare("no")!=0) { _he->view(); }
 
   // get number of processors
@@ -1135,7 +1142,7 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::writeContext()
 
 
   if (_thermalCoupling!="no") { _he->writeContext(_outputDir, _viewer_context); }
-  if (_hydraulicCoupling!="no") { _p->writeContext(_outputDir, _viewer_context); }
+  for (size_t i = 0; i < _pressures.size(); i++) { _pressures[i]->writeContext(_outputDir, _viewer_context); }
   if (_forcingType=="iceStream") {
     ierr = PetscViewerHDF5PushGroup(_viewer_context, "/momBal");                 CHKERRQ(ierr);
     ierr = VecView(_forcingTermPlain, _viewer_context);                          CHKERRQ(ierr);
@@ -1259,11 +1266,12 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::d_dt(const PetscScalar time,const ma
 
   for (size_t i = 0; i < _faults.size(); i++) { ierr = _faults[i]->updateFields(time,varEx); CHKERRQ(ierr); }
 
-  if ((varEx.find("pressure") != varEx.end() || varEx.find("permeability") != varEx.end()) && _hydraulicCoupling.compare("no")!=0){
-    _p->updateFields(time,varEx);
-  }
-  if (_hydraulicCoupling=="coupled" && varEx.find("pressure") != varEx.end()) {
-    _fault->setSNEff(varEx.find("pressure")->second);
+  for (size_t i = 0; i < _pressures.size(); i++) { // each fault's pore pressure, and its effective normal stress
+    PressureEq *p = _pressures[i];
+    if (varEx.find(p->_pKey) != varEx.end() || varEx.find(p->_kKey) != varEx.end()) { p->updateFields(time,varEx); }
+    if (_hydraulicCoupling=="coupled" && varEx.find(p->_pKey) != varEx.end()) {
+      _faults[i]->setSNEff(varEx.find(p->_pKey)->second);
+    }
   }
 
   // 2. compute rates
@@ -1282,8 +1290,9 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::d_dt(const PetscScalar time,const ma
     ierr = f->d_dt(time,varEx,dvarEx); CHKERRQ(ierr);
   }
 
-  if ((varEx.find("pressure") != varEx.end() || varEx.find("permeability") != varEx.end() ) && _hydraulicCoupling.compare("no")!=0 ){
-    ierr = _p->d_dt(time,varEx,dvarEx); CHKERRQ(ierr);
+  for (size_t i = 0; i < _pressures.size(); i++) {
+    PressureEq *p = _pressures[i];
+    if (varEx.find(p->_pKey) != varEx.end() || varEx.find(p->_kKey) != varEx.end()) { ierr = p->d_dt(time,varEx,dvarEx); CHKERRQ(ierr); }
   }
 
   return ierr;
@@ -1324,16 +1333,14 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::d_dt(const PetscScalar time,const ma
 
   for (size_t i = 0; i < _faults.size(); i++) { ierr = _faults[i]->updateFields(time,varEx); CHKERRQ(ierr); }
 
-  if ( _hydraulicCoupling!="no" ) {
-    _p->updateFields(time,varEx,varImo);
-  }
+  for (size_t i = 0; i < _pressures.size(); i++) { ierr = _pressures[i]->updateFields(time,varEx,varImo); CHKERRQ(ierr); }
   if (varImo.find("Temp") != varImo.end() && _thermalCoupling == "coupled") {
     for (size_t i = 0; i < _faults.size(); i++) { ierr = _faults[i]->updateTemperature(varImo.find("Temp")->second); CHKERRQ(ierr); }
   }
 
   // update effective normal stress in fault using pore pressure
   if (_hydraulicCoupling.compare("coupled")==0) {
-    _fault->setSNEff(_p->_p);
+    for (size_t i = 0; i < _pressures.size(); i++) { ierr = _faults[i]->setSNEff(_pressures[i]->_p); CHKERRQ(ierr); }
   }
 
   // 2. compute explicit rates
@@ -1352,9 +1359,7 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::d_dt(const PetscScalar time,const ma
     ierr = f->d_dt(time,varEx,dvarEx); CHKERRQ(ierr);
   }
 
-  if ( _hydraulicCoupling != "no" ) {
-    ierr = _p->d_dt(time,varEx,dvarEx,varIm,varImo,dt); CHKERRQ(ierr);
-  }
+  for (size_t i = 0; i < _pressures.size(); i++) { ierr = _pressures[i]->d_dt(time,varEx,dvarEx,varIm,varImo,dt); CHKERRQ(ierr); }
 
   // 3. Implicit time step
   // heat equation
@@ -1380,8 +1385,10 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::d_dt(const PetscScalar time,const ma
   if (_thermalCoupling == "coupled" && varIm.find("Temp") != varIm.end()) {
     for (size_t i = 0; i < _faults.size(); i++) { ierr = _faults[i]->updateTemperature(varIm.find("Temp")->second); CHKERRQ(ierr); }
   }
-  if (_hydraulicCoupling == "coupled" && varIm.find("pressure") != varIm.end()) {
-    ierr = _fault->setSNEff(varIm.find("pressure")->second); CHKERRQ(ierr);
+  for (size_t i = 0; i < _pressures.size(); i++) {
+    if (_hydraulicCoupling == "coupled" && varIm.find(_pressures[i]->_pKey) != varIm.end()) {
+      ierr = _faults[i]->setSNEff(varIm.find(_pressures[i]->_pKey)->second); CHKERRQ(ierr);
+    }
   }
 
   return ierr;

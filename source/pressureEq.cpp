@@ -9,11 +9,12 @@ using namespace std;
 // by default, uses AMG for preconditioning
 // default explicit time integration, permeability not slip- or pressure dependent
 // bottom boundary condition Q
-PressureEq::PressureEq(Domain &D)
+PressureEq::PressureEq(Domain &D, const string& name)
 : _D(&D), _p(NULL), _permSlipDependent("no"), _permPressureDependent("no"),
+  _name(name), _prefix(name == "fault" ? "" : name + "_"), _pKey(_prefix + "pressure"), _kKey(_prefix + "permeability"),
   _file(D._file), _delim(D._delim),
   _outputDir(D._outputDir), _isMMS(D._isMMS),
-  _hydraulicTimeIntType("explicit"),_slipKey("slip"),_guessSteadyStateICs(1),
+  _hydraulicTimeIntType("explicit"),_slipKey(name == "fault" ? "slip" : name + "_slip"),_guessSteadyStateICs(1),
   _initTime(0.0), _initDeltaT(1e-3),
   _order(D._order), _N(D._Nz), _L(D._Lz), _h(D._dr), _z(NULL),
   _n_p(NULL), _beta_p(NULL), _k_p(NULL), _eta_p(NULL), _rho_f(NULL), _g(9.8),
@@ -221,20 +222,12 @@ PetscErrorCode PressureEq::loadSettings(const char *file)
 {
   PetscErrorCode ierr = 0;
 
-  #if VERBOSE > 1
-    string funcName = "PressureEq::loadSettings";
-    PetscPrintf(PETSC_COMM_WORLD, "Starting %s in %s\n", funcName.c_str(), FILENAME);
-  #endif
-
-  PetscMPIInt rank, size;
-  MPI_Comm_size(PETSC_COMM_WORLD, &size);
-  MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
-
+  // read every "var = value" line once
+  vector<string> vars, rhss, rhsFulls;
   ifstream infile(file);
   string line, var, rhs, rhsFull;
   size_t pos = 0;
   while (getline(infile, line)) {
-    istringstream iss(line);
     pos = line.find(_delim); // find position of the delimiter
     var = line.substr(0, pos);
     rhs = "";
@@ -246,57 +239,73 @@ PetscErrorCode PressureEq::loadSettings(const char *file)
     // interpret everything after the appearance of a space on the line as a comment
     pos = rhs.find(" ");
     rhs = rhs.substr(0, pos);
-
-    if (var.compare("guessSteadyStateICs") == 0) { _guessSteadyStateICs = atoi(rhs.c_str()); }
-    else if (var.compare("linSolver") == 0) { _linSolver = rhs.c_str(); }
-    else if (var.compare("hydraulicTimeIntType") == 0) { _hydraulicTimeIntType = rhs.c_str(); }
-    else if (var.compare("bcB_ratio") == 0) { _bcB_ratio = atof(rhs.c_str()); }
-    else if (var.compare("bcB_type") == 0) { _bcB_type = rhs.c_str(); }
-
-    // loading vector inputs in the input file
-    else if (var.compare("sNVals") == 0) { loadVectorFromInputFile(rhsFull, _sigmaNVals); }
-    else if (var.compare("sNDepths") == 0) { loadVectorFromInputFile(rhsFull, _sigmaNDepths); }
-    else if (var.compare("n_pVals") == 0) { loadVectorFromInputFile(rhsFull, _n_pVals); }
-    else if (var.compare("n_pDepths") == 0) { loadVectorFromInputFile(rhsFull, _n_pDepths); }
-    else if (var.compare("beta_pVals") == 0) { loadVectorFromInputFile(rhsFull, _beta_pVals); }
-    else if (var.compare("beta_pDepths") == 0) { loadVectorFromInputFile(rhsFull, _beta_pDepths); }
-    else if (var.compare("k_pVals") == 0) { loadVectorFromInputFile(rhsFull, _k_pVals); }
-    else if (var.compare("k_pDepths") == 0) { loadVectorFromInputFile(rhsFull, _k_pDepths); }
-    else if (var.compare("eta_pVals") == 0) { loadVectorFromInputFile(rhsFull, _eta_pVals); }
-    else if (var.compare("eta_pDepths") == 0) { loadVectorFromInputFile(rhsFull, _eta_pDepths); }
-    else if (var.compare("rho_fVals") == 0) { loadVectorFromInputFile(rhsFull, _rho_fVals); }
-    else if (var.compare("rho_fDepths") == 0) { loadVectorFromInputFile(rhsFull, _rho_fDepths); }
-    else if (var.compare("g") == 0) { _g = atof(rhs.c_str()); }
-    else if (var.compare("pVals") == 0) { loadVectorFromInputFile(rhsFull, _pVals); }
-    else if (var.compare("pDepths") == 0) { loadVectorFromInputFile(rhsFull, _pDepths); }
-    else if (var.compare("vL") == 0) { _vL = atof(rhs.c_str()); }
-
-    // permability evolution parameters - slip-dependent
-    else if (var.compare("permSlipDependent") == 0) { _permSlipDependent = rhs.c_str(); }
-    else if (var.compare("kL_pVals") == 0) { loadVectorFromInputFile(rhsFull, _kL_pVals); }
-    else if (var.compare("kL_pDepths") == 0) { loadVectorFromInputFile(rhsFull, _kL_pDepths); }
-    else if (var.compare("kT_pVals") == 0) { loadVectorFromInputFile(rhsFull, _kT_pVals); }
-    else if (var.compare("kT_pDepths") == 0) { loadVectorFromInputFile(rhsFull, _kT_pDepths); }
-    else if (var.compare("kmin_pVals") == 0) { loadVectorFromInputFile(rhsFull, _kmin_pVals); }
-    else if (var.compare("kmin_pDepths") == 0) { loadVectorFromInputFile(rhsFull, _kmin_pDepths); }
-    else if (var.compare("kmax_pVals") == 0) { loadVectorFromInputFile(rhsFull, _kmax_pVals); }
-    else if (var.compare("kmax_pDepths") == 0) { loadVectorFromInputFile(rhsFull, _kmax_pDepths); }
-
-    // permeability evolution parameters - pressure-dependent
-    else if (var.compare("permPressureDependent") == 0) { _permPressureDependent = rhs.c_str(); }
-    else if (var.compare("kmin2_pVals") == 0) { loadVectorFromInputFile(rhsFull, _kmin2_pVals); }
-    else if (var.compare("kmin2_pDepths") == 0) { loadVectorFromInputFile(rhsFull, _kmin2_pDepths); }
-    else if (var.compare("sigma_pVals") == 0) { loadVectorFromInputFile(rhsFull, _sigma_pVals); }
-    else if (var.compare("sigma_pDepths") == 0) { loadVectorFromInputFile(rhsFull, _sigma_pDepths); }
-    else if (var.compare("maxBeIteration") == 0) { _maxBeIteration = (int)atof(rhs.c_str()); }
-    else if (var.compare("minBeDifference") == 0) { _minBeDifference = atof(rhs.c_str()); }
+    vars.push_back(var); rhss.push_back(rhs); rhsFulls.push_back(rhsFull);
   }
 
-  #if VERBOSE > 1
-    PetscPrintf(PETSC_COMM_WORLD, "Ending %s in %s\n", funcName.c_str(), FILENAME);
-  #endif
+  // unprefixed keys apply to every fault's pressure
+  for (size_t i = 0; i < vars.size(); i++) { parseSetting(vars[i], rhss[i], rhsFulls[i]); }
+
+  // a named fault's pressure then reads its own keys, <name>_<key>, which override the shared ones
+  if (!_prefix.empty()) {
+    for (size_t i = 0; i < vars.size(); i++) {
+      if (vars[i].compare(0, _prefix.size(), _prefix) != 0) { continue; }
+      const string key = vars[i].substr(_prefix.size());
+      if (key == "guessSteadyStateICs" || key == "linSolver" || key == "hydraulicTimeIntType" || key == "vL") { continue; }
+      parseSetting(key, rhss[i], rhsFulls[i]);
+    }
+  }
 
   return ierr;
+}
+
+
+bool PressureEq::parseSetting(const string& var, const string& rhs, const string& rhsFull)
+{
+  if (var.compare("guessSteadyStateICs") == 0) { _guessSteadyStateICs = atoi(rhs.c_str()); }
+  else if (var.compare("linSolver") == 0) { _linSolver = rhs.c_str(); }
+  else if (var.compare("hydraulicTimeIntType") == 0) { _hydraulicTimeIntType = rhs.c_str(); }
+  else if (var.compare("bcB_ratio") == 0) { _bcB_ratio = atof(rhs.c_str()); }
+  else if (var.compare("bcB_type") == 0) { _bcB_type = rhs.c_str(); }
+
+  // loading vector inputs in the input file
+  else if (var.compare("sNVals") == 0) { _sigmaNVals.clear(); loadVectorFromInputFile(rhsFull, _sigmaNVals); }
+  else if (var.compare("sNDepths") == 0) { _sigmaNDepths.clear(); loadVectorFromInputFile(rhsFull, _sigmaNDepths); }
+  else if (var.compare("n_pVals") == 0) { _n_pVals.clear(); loadVectorFromInputFile(rhsFull, _n_pVals); }
+  else if (var.compare("n_pDepths") == 0) { _n_pDepths.clear(); loadVectorFromInputFile(rhsFull, _n_pDepths); }
+  else if (var.compare("beta_pVals") == 0) { _beta_pVals.clear(); loadVectorFromInputFile(rhsFull, _beta_pVals); }
+  else if (var.compare("beta_pDepths") == 0) { _beta_pDepths.clear(); loadVectorFromInputFile(rhsFull, _beta_pDepths); }
+  else if (var.compare("k_pVals") == 0) { _k_pVals.clear(); loadVectorFromInputFile(rhsFull, _k_pVals); }
+  else if (var.compare("k_pDepths") == 0) { _k_pDepths.clear(); loadVectorFromInputFile(rhsFull, _k_pDepths); }
+  else if (var.compare("eta_pVals") == 0) { _eta_pVals.clear(); loadVectorFromInputFile(rhsFull, _eta_pVals); }
+  else if (var.compare("eta_pDepths") == 0) { _eta_pDepths.clear(); loadVectorFromInputFile(rhsFull, _eta_pDepths); }
+  else if (var.compare("rho_fVals") == 0) { _rho_fVals.clear(); loadVectorFromInputFile(rhsFull, _rho_fVals); }
+  else if (var.compare("rho_fDepths") == 0) { _rho_fDepths.clear(); loadVectorFromInputFile(rhsFull, _rho_fDepths); }
+  else if (var.compare("g") == 0) { _g = atof(rhs.c_str()); }
+  else if (var.compare("pVals") == 0) { _pVals.clear(); loadVectorFromInputFile(rhsFull, _pVals); }
+  else if (var.compare("pDepths") == 0) { _pDepths.clear(); loadVectorFromInputFile(rhsFull, _pDepths); }
+  else if (var.compare("vL") == 0) { _vL = atof(rhs.c_str()); }
+
+  // permability evolution parameters - slip-dependent
+  else if (var.compare("permSlipDependent") == 0) { _permSlipDependent = rhs.c_str(); }
+  else if (var.compare("kL_pVals") == 0) { _kL_pVals.clear(); loadVectorFromInputFile(rhsFull, _kL_pVals); }
+  else if (var.compare("kL_pDepths") == 0) { _kL_pDepths.clear(); loadVectorFromInputFile(rhsFull, _kL_pDepths); }
+  else if (var.compare("kT_pVals") == 0) { _kT_pVals.clear(); loadVectorFromInputFile(rhsFull, _kT_pVals); }
+  else if (var.compare("kT_pDepths") == 0) { _kT_pDepths.clear(); loadVectorFromInputFile(rhsFull, _kT_pDepths); }
+  else if (var.compare("kmin_pVals") == 0) { _kmin_pVals.clear(); loadVectorFromInputFile(rhsFull, _kmin_pVals); }
+  else if (var.compare("kmin_pDepths") == 0) { _kmin_pDepths.clear(); loadVectorFromInputFile(rhsFull, _kmin_pDepths); }
+  else if (var.compare("kmax_pVals") == 0) { _kmax_pVals.clear(); loadVectorFromInputFile(rhsFull, _kmax_pVals); }
+  else if (var.compare("kmax_pDepths") == 0) { _kmax_pDepths.clear(); loadVectorFromInputFile(rhsFull, _kmax_pDepths); }
+
+  // permeability evolution parameters - pressure-dependent
+  else if (var.compare("permPressureDependent") == 0) { _permPressureDependent = rhs.c_str(); }
+  else if (var.compare("kmin2_pVals") == 0) { _kmin2_pVals.clear(); loadVectorFromInputFile(rhsFull, _kmin2_pVals); }
+  else if (var.compare("kmin2_pDepths") == 0) { _kmin2_pDepths.clear(); loadVectorFromInputFile(rhsFull, _kmin2_pDepths); }
+  else if (var.compare("sigma_pVals") == 0) { _sigma_pVals.clear(); loadVectorFromInputFile(rhsFull, _sigma_pVals); }
+  else if (var.compare("sigma_pDepths") == 0) { _sigma_pDepths.clear(); loadVectorFromInputFile(rhsFull, _sigma_pDepths); }
+  else if (var.compare("maxBeIteration") == 0) { _maxBeIteration = (int)atof(rhs.c_str()); }
+  else if (var.compare("minBeDifference") == 0) { _minBeDifference = atof(rhs.c_str()); }
+  else { return false; }
+  return true;
 }
 
 
@@ -901,14 +910,14 @@ PetscErrorCode PressureEq::initiateIntegrand(const PetscScalar time, map<string,
   if (_hydraulicTimeIntType.compare("explicit") == 0) { varP = &varEx; }
   else if (_hydraulicTimeIntType.compare("implicit") == 0) { varP = &varIm; }
   if (varP != NULL) {
-    if (varP->find("pressure") != varP->end()) {
-      VecCopy(_p, (*varP)["pressure"]);
+    if (varP->find(_pKey) != varP->end()) {
+      VecCopy(_p, (*varP)[_pKey]);
     }
     else {
       Vec p;
       VecDuplicate(_p, &p);
       VecCopy(_p, p);
-      (*varP)["pressure"] = p;
+      (*varP)[_pKey] = p;
     }
   }
 
@@ -916,14 +925,14 @@ PetscErrorCode PressureEq::initiateIntegrand(const PetscScalar time, map<string,
   // updated once per step in be() by relaxPermeability, stable for any step size)
   if (_permSlipDependent.compare("yes") == 0 || _permPressureDependent.compare("yes") == 0) {
     map<string, Vec> *varK = (_hydraulicTimeIntType.compare("implicit") == 0) ? &varIm : &varEx;
-    if (varK->find("permeability") != varK->end()) {
-      VecCopy(_k_p, (*varK)["permeability"]);
+    if (varK->find(_kKey) != varK->end()) {
+      VecCopy(_k_p, (*varK)[_kKey]);
     }
     else {
       Vec k_p;
       VecDuplicate(_k_p, &k_p);
       VecCopy(_k_p, k_p);
-      (*varK)["permeability"] = k_p;
+      (*varK)[_kKey] = k_p;
     }
   }
 
@@ -945,12 +954,12 @@ PetscErrorCode PressureEq::updateFields(const PetscScalar time, const map<string
     PetscPrintf(PETSC_COMM_WORLD, "Starting %s in %s\n", funcName.c_str(), FILENAME);
   #endif
 
-  if (_hydraulicTimeIntType.compare("explicit") == 0 && varEx.find("pressure") != varEx.end()) {
-    VecCopy(varEx.find("pressure")->second, _p);
+  if (_hydraulicTimeIntType.compare("explicit") == 0 && varEx.find(_pKey) != varEx.end()) {
+    VecCopy(varEx.find(_pKey)->second, _p);
   }
 
-  if (varEx.find("permeability") != varEx.end()) {
-    VecCopy(varEx.find("permeability")->second, _k_p);
+  if (varEx.find(_kKey) != varEx.end()) {
+    VecCopy(varEx.find(_kKey)->second, _k_p);
   }
 
   #if VERBOSE > 1
@@ -1023,13 +1032,13 @@ PetscErrorCode PressureEq::addErrorControl(std::vector<string>& errInds, std::ve
   while (scale.size() < errInds.size()) { scale.push_back(1.0); } // integrators default missing scales to 1
   if ((_permSlipDependent.compare("yes") == 0 || _permPressureDependent.compare("yes") == 0)
       && _hydraulicTimeIntType.compare("explicit") == 0
-      && std::find(errInds.begin(), errInds.end(), "permeability") == errInds.end()) {
+      && std::find(errInds.begin(), errInds.end(), _kKey) == errInds.end()) {
     PetscScalar kmax = 0;
     ierr = VecMax(_kmax_p, NULL, &kmax); CHKERRQ(ierr);
     if (!(kmax > 0)) { kmax = 1.0; }
-    errInds.push_back("permeability");
+    errInds.push_back(_kKey);
     scale.push_back(kmax);
-    ierr = PetscPrintf(PETSC_COMM_WORLD,"Note: permeability added to timeIntInds (error scale %g = max kmax_p).\n",kmax); CHKERRQ(ierr);
+    ierr = PetscPrintf(PETSC_COMM_WORLD,"Note: %s added to timeIntInds (error scale %g = max kmax_p).\n",_kKey.c_str(),kmax); CHKERRQ(ierr);
     if (_permSlipDependent.compare("yes") == 0) {
       PetscScalar Lmin = 0;
       ierr = VecMin(_kL_p, NULL, &Lmin); CHKERRQ(ierr);
@@ -1039,10 +1048,10 @@ PetscErrorCode PressureEq::addErrorControl(std::vector<string>& errInds, std::ve
     }
   }
   if (_hydraulicTimeIntType.compare("explicit") == 0
-      && std::find(errInds.begin(), errInds.end(), "pressure") == errInds.end()) {
-    errInds.push_back("pressure");
+      && std::find(errInds.begin(), errInds.end(), _pKey) == errInds.end()) {
+    errInds.push_back(_pKey);
     scale.push_back(1.0);
-    ierr = PetscPrintf(PETSC_COMM_WORLD,"Note: pressure added to timeIntInds (error scale 1 MPa).\n"); CHKERRQ(ierr);
+    ierr = PetscPrintf(PETSC_COMM_WORLD,"Note: %s added to timeIntInds (error scale 1 MPa).\n",_pKey.c_str()); CHKERRQ(ierr);
   }
   return ierr;
 }
@@ -1059,18 +1068,18 @@ PetscErrorCode PressureEq::updateFields(const PetscScalar time, const map<string
     PetscPrintf(PETSC_COMM_WORLD, "Starting %s in %s\n", funcName.c_str(), FILENAME);
   #endif
 
-  if (_hydraulicTimeIntType.compare("explicit") == 0 && varEx.find("pressure") != varEx.end()) {
-    VecCopy(varEx.find("pressure")->second, _p);
+  if (_hydraulicTimeIntType.compare("explicit") == 0 && varEx.find(_pKey) != varEx.end()) {
+    VecCopy(varEx.find(_pKey)->second, _p);
   }
-  else if (_hydraulicTimeIntType.compare("implicit") == 0 && varIm.find("pressure") != varIm.end()) {
-    VecCopy(varIm.find("pressure")->second, _p);
+  else if (_hydraulicTimeIntType.compare("implicit") == 0 && varIm.find(_pKey) != varIm.end()) {
+    VecCopy(varIm.find(_pKey)->second, _p);
   }
 
-  if (varEx.find("permeability") != varEx.end()) {
-    VecCopy(varEx.find("permeability")->second, _k_p);
+  if (varEx.find(_kKey) != varEx.end()) {
+    VecCopy(varEx.find(_kKey)->second, _k_p);
   }
-  else if (varIm.find("permeability") != varIm.end()) {
-    VecCopy(varIm.find("permeability")->second, _k_p);
+  else if (varIm.find(_kKey) != varIm.end()) {
+    VecCopy(varIm.find(_kKey)->second, _k_p);
   }
 
   #if VERBOSE > 1
@@ -1135,7 +1144,7 @@ PetscErrorCode PressureEq::dk_dt(const PetscScalar time, const map<string, Vec> 
   VecDuplicate(dvarEx.find(_slipKey)->second, &vel_abs);
   VecCopy(dvarEx.find(_slipKey)->second, vel_abs);
   ierr = VecAbs(vel_abs);
-  Vec dk = dvarEx["permeability"];
+  Vec dk = dvarEx[_kKey];
 
   // dk_dt = - |V|/L * (k - kmax) - 1/T * (k - kmin)
   Vec tmp;
@@ -1211,7 +1220,7 @@ PetscErrorCode PressureEq::d_dt(const PetscScalar time, const map<string, Vec> &
     PetscPrintf(PETSC_COMM_WORLD, "Starting %s in %s\n", funcName.c_str(), FILENAME);
   #endif
 
-  if (_permSlipDependent.compare("yes") == 0 && varEx.find("permeability") != varEx.end()) {
+  if (_permSlipDependent.compare("yes") == 0 && varEx.find(_kKey) != varEx.end()) {
     ierr = dk_dt(time, varEx, dvarEx);
     CHKERRQ(ierr);
   }
@@ -1242,7 +1251,7 @@ PetscErrorCode PressureEq::d_dt(const PetscScalar time, const map<string, Vec> &
     PetscPrintf(PETSC_COMM_WORLD, "Starting %s in %s\n", funcName.c_str(), FILENAME);
   #endif
 
-  if (_permSlipDependent.compare("yes") == 0 && varEx.find("permeability") != varEx.end()) {
+  if (_permSlipDependent.compare("yes") == 0 && varEx.find(_kKey) != varEx.end()) {
     ierr = dk_dt(time, varEx, dvarEx); CHKERRQ(ierr);
   }
 
@@ -1289,7 +1298,7 @@ PetscErrorCode PressureEq::dp_dt(const PetscScalar time, const map<string, Vec> 
     VecDestroy(&coeff);
   }
 
-  Vec p_t = dvarEx["pressure"]; // to make this code slightly easier to read
+  Vec p_t = dvarEx[_pKey]; // to make this code slightly easier to read
 
   // source term from gravity: d/dz ( rho*k/eta * g )
   Vec rhog, rhog_y;
@@ -1438,7 +1447,7 @@ PetscErrorCode PressureEq::d_dt_mms(const PetscScalar time, const map<string, Ve
 
   double startTime = MPI_Wtime(); // time this section
 
-  Vec p_t = dvarEx["pressure"]; // to make this code slightly easier to read
+  Vec p_t = dvarEx[_pKey]; // to make this code slightly easier to read
 
   // source term from gravity: d/dz ( rho*k/eta * g )
   Vec rhog, rhog_y;
@@ -1520,15 +1529,15 @@ PetscErrorCode PressureEq::be(const PetscScalar time, const map<string, Vec> &va
   // implicit permeability: advance it over this step with the slip rate at the new time, then
   // use it in the pressure solve. varIm["permeability"] must always be set here, because the
   // integrator copies varIm into the state after this call.
-  if (varIm.find("permeability") != varIm.end()) {
-    const Vec kOld = varImo.find("permeability")->second;
+  if (varIm.find(_kKey) != varIm.end()) {
+    const Vec kOld = varImo.find(_kKey)->second;
     if (_permSlipDependent.compare("yes") == 0) {
-      ierr = relaxPermeability(dvarEx.find(_slipKey)->second, kOld, dt, varIm["permeability"]); CHKERRQ(ierr);
+      ierr = relaxPermeability(dvarEx.find(_slipKey)->second, kOld, dt, varIm[_kKey]); CHKERRQ(ierr);
     }
     else {
-      ierr = VecCopy(kOld, varIm["permeability"]); CHKERRQ(ierr);
+      ierr = VecCopy(kOld, varIm[_kKey]); CHKERRQ(ierr);
     }
-    ierr = VecCopy(varIm["permeability"], _k_p); CHKERRQ(ierr);
+    ierr = VecCopy(varIm[_kKey], _k_p); CHKERRQ(ierr);
   }
 
   if (_permSlipDependent.compare("yes") == 0) {
@@ -1542,7 +1551,7 @@ PetscErrorCode PressureEq::be(const PetscScalar time, const map<string, Vec> &va
     }
   }
 
-  VecCopy(varImo.find("pressure")->second, _p);
+  VecCopy(varImo.find(_pKey)->second, _p);
 
   Vec rhog, rhog_y;
   VecDuplicate(_p, &rhog);
@@ -1650,7 +1659,7 @@ PetscErrorCode PressureEq::be(const PetscScalar time, const map<string, Vec> &va
 
     VecScale(rhs, dt); // dt/(rho * n * beta) * ( - D1(rho^2*g * k/eta) + SAT ) + dt * src
 
-    ierr = _sbp->H(varImo.find("pressure")->second, Hxp); // H * p(t) + dt/(rho * n * beta) * ( - D1(rho^2*g * k/eta) + SAT ) +  dt * H * src
+    ierr = _sbp->H(varImo.find(_pKey)->second, Hxp); // H * p(t) + dt/(rho * n * beta) * ( - D1(rho^2*g * k/eta) + SAT ) +  dt * H * src
 
     VecAXPY(rhs, 1, Hxp);
 
@@ -1675,7 +1684,7 @@ PetscErrorCode PressureEq::be(const PetscScalar time, const map<string, Vec> &va
     if (i > 0 && err < _minBeDifference) { break; } // fixed-point iteration converged
   }
 
-  VecCopy(_p, varIm["pressure"]);
+  VecCopy(_p, varIm[_pKey]);
   if (_permPressureDependent.compare("yes") == 0 && _permSlipDependent.compare("yes") == 0) {
     VecCopy(_k_slip, _k_p); // combine slip dependent and pressure dependent
   }
@@ -1976,7 +1985,7 @@ PetscErrorCode PressureEq::writeContext(const string outputDir, PetscViewer& vie
   PetscViewer viewer_ascii;
 
   // write out scalar info
-  string str = outputDir + "p_context.txt";
+  string str = outputDir + _prefix + "p_context.txt";
   PetscViewerCreate(PETSC_COMM_WORLD, &viewer_ascii);
   PetscViewerSetType(viewer_ascii, PETSCVIEWERASCII);
   PetscViewerFileSetMode(viewer_ascii, FILE_MODE_WRITE);
@@ -2013,7 +2022,7 @@ PetscErrorCode PressureEq::writeStep(PetscViewer& viewer)
     CHKERRQ(ierr);
   #endif
 
-  ierr = PetscViewerHDF5PushGroup(viewer, "/pressureEq");               CHKERRQ(ierr);
+  ierr = PetscViewerHDF5PushGroup(viewer, group().c_str());               CHKERRQ(ierr);
   ierr = PetscViewerHDF5PushTimestepping(viewer);                       CHKERRQ(ierr);
 
   ierr = VecView(_p, viewer);                                           CHKERRQ(ierr);
@@ -2085,7 +2094,7 @@ PetscErrorCode PressureEq::writeCheckpoint(PetscViewer& viewer)
     CHKERRQ(ierr);
   #endif
 
-  ierr = PetscViewerHDF5PushGroup(viewer, "/pressureEq");               CHKERRQ(ierr);
+  ierr = PetscViewerHDF5PushGroup(viewer, group().c_str());               CHKERRQ(ierr);
 
   // evolving state
   ierr = VecView(_p, viewer);                                           CHKERRQ(ierr);
@@ -2124,7 +2133,7 @@ PetscErrorCode PressureEq::loadCheckpoint()
   PetscViewer viewer;
   ierr = PetscViewerHDF5Open(PETSC_COMM_WORLD, fileName.c_str(), FILE_MODE_READ, &viewer);CHKERRQ(ierr);
 
-  ierr = PetscViewerHDF5PushGroup(viewer, "/pressureEq");              CHKERRQ(ierr);
+  ierr = PetscViewerHDF5PushGroup(viewer, group().c_str());              CHKERRQ(ierr);
 
   ierr = VecLoad(_p, viewer);                                           CHKERRQ(ierr);
   ierr = VecLoad(_p_t, viewer);                                         CHKERRQ(ierr);
