@@ -18,6 +18,12 @@ keys; the second, named f2, inherits them and overrides some with f2_ keys (see 
                of docs/REVERSIBLE_STRENGTH_PLAN.md (section 4.3), uncoupled (no grain-size-sensitive
                creep law yet).
 
+Stage 5 (docs/REVERSIBLE_STRENGTH_PLAN.md): --lock-depth Z locks both faults below Z km, so that
+the plate motion beneath them flows viscously (without it the deep fault creeps and the viscous roots
+barely strain); --series-depth Z writes the root-strength probes at Z km to faultSeries.txt; and
+--set KEY=VALUE (repeatable) appends any input line, for the bulk state fields and the other stage 5
+keys.
+
 Both faults start at steady sliding at vL. A smooth patch of fault (or f2, --trigger) near 8 km
 depth starts at 1e-6 m/s, so the first event nucleates within hours, the same way in every run;
 without it the first event grows out of round-off and its timing is arbitrary.
@@ -119,6 +125,10 @@ def main():
     p.add_argument('--trigger', choices=['fault', 'f2', 'none'], default='fault', help='fault with the nucleation patch')
     p.add_argument('--maxTime', type=float, default=3.0e10, help='final time (s); 3e10 s is about 950 years')
     p.add_argument('--stride1D', type=int, default=10, help='steps between 1D outputs (strideSeries is 1)')
+    p.add_argument('--lock-depth', type=float, default=None, help='lock both faults below this depth (km)')
+    p.add_argument('--series-depth', type=float, default=None, help='depth of the root-strength probes in faultSeries.txt (km)')
+    p.add_argument('--series-width', type=float, default=2.0, help='half-width of the probe average around each fault (km)')
+    p.add_argument('--set', action='append', default=[], metavar='KEY=VALUE', help='append the input line "KEY = VALUE" (repeatable)')
     p.add_argument('--name', default=None, help='run name (default from the options)')
     p.add_argument('--out', default='data/two_faults', help='directory for inputs, initial conditions and output')
     args = p.parse_args()
@@ -209,6 +219,14 @@ def main():
                       'f2_stateLaw = constantState # and its state does not evolve']
         if args.sN2 != 50.0:
             lines += ['f2_sNVals = [%g %g] # (MPa)' % (args.sN2, args.sN2), 'f2_sNDepths = [0 60]']
+    if args.lock_depth is not None:
+        lines += ['lockedVals = [0 0 1 1] # the faults end at %g km: the plate motion beneath flows viscously' % args.lock_depth,
+                  'lockedDepths = [0 %g %g 500]' % (args.lock_depth, args.lock_depth)]
+    if args.series_depth is not None:
+        lines += ['seriesDepth = %g # (km) root-strength probes in faultSeries.txt' % args.series_depth, 'seriesWidth = %g # (km)' % args.series_width]
+    for kv in args.set:
+        k, v = kv.split('=', 1)
+        lines.append('%s = %s' % (k.strip(), v.strip()))
     open(os.path.join(args.out, name + '.in'), 'w').write('\n'.join(lines) + '\n')
     dy = np.diff(y)
     print('wrote %s.in: Ny = %d (spacing %.3g km at the faults, %.3g km at most), Nz = %d (Lz = %g km), faults at y = %g and %g km'

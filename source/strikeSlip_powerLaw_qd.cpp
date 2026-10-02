@@ -182,6 +182,7 @@ StrikeSlip_PowerLaw_qd::StrikeSlip_PowerLaw_qd(Domain&D)
     if (_seriesDepth >= 0) { // the strength of each root at one depth: viscosity, temperature, state fields
       _series.setProbes(D,_faults,_lifts,_seriesDepth,_seriesWidth);
       _series.addProbe("effVisc","(GPa*s)",&_material->_effVisc);
+      _series.addProbe("dgVdev","(1e-3/s)",&_material->_dgVdev);
       _series.addProbe("T","(K)",&_material->_T);
       if (_grainDist != NULL && _grainSizeEvCoupling != "no") { _series.addProbe("grainSize","",&_grainDist->_d); }
       for (size_t i = 0; i < _bulkStates.size(); i++) { _series.addProbe(_bulkStates[i]->_symbol,"",&_bulkStates[i]->_state); }
