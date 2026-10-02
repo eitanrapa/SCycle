@@ -87,7 +87,8 @@ public:
 
   // tolerances for linear and nonlinear (for vel) solve
   PetscScalar      _rootTol;
-  PetscInt         _rootIts,_maxNumIts; // total number of iterations
+  PetscInt64       _rootIts; // total number of root-finder iterations
+  PetscInt         _maxNumIts; // per solve
 
   // viewers:
   // 1st string = key naming relevant field, e.g. "slip"
@@ -222,7 +223,7 @@ struct ComputeVel_qd : public RootFinderContext
   ComputeVel_qd(const PetscInt N, const PetscScalar* eta,const PetscScalar* tauQS,const PetscScalar* sN,const PetscScalar* psi,const PetscScalar* a,const PetscScalar* b,const PetscScalar& v0,const PetscScalar& vL,const PetscScalar *locked,const PetscScalar *Co);
 
   // command to perform root-finding process, once contextual variables have been set
-  PetscErrorCode computeVel(PetscScalar* slipVelA, const PetscScalar rootTol, PetscInt& rootIts, const PetscInt maxNumIts);
+  PetscErrorCode computeVel(PetscScalar* slipVelA, const PetscScalar rootTol, PetscInt64& rootIts, const PetscInt maxNumIts);
 
   // function that matches root finder template
   PetscErrorCode getResid(const PetscInt Jj,const PetscScalar vel,PetscScalar* out);
@@ -242,7 +243,7 @@ struct ComputeVel_fd : public RootFinderContext
   ComputeVel_fd(const PetscScalar* locked, const PetscInt N,const PetscScalar* Phi, const PetscScalar* an, const PetscScalar* psi, const PetscScalar* fricPen,const PetscScalar* a,const PetscScalar* sneff, const PetscScalar v0, const PetscScalar vL);
 
   // command to perform root-finding process, once contextual variables have been set
-  PetscErrorCode computeVel(PetscScalar* slipVelA, const PetscScalar rootTol, PetscInt& rootIts, const PetscInt maxNumIts);
+  PetscErrorCode computeVel(PetscScalar* slipVelA, const PetscScalar rootTol, PetscInt64& rootIts, const PetscInt maxNumIts);
 
   // function that matches root finder template
   PetscErrorCode getResid(const PetscInt Jj,const PetscScalar vel,PetscScalar* out);
@@ -263,7 +264,7 @@ struct ComputeAging_fd : public RootFinderContext
   ComputeAging_fd(const PetscInt N,const PetscScalar* Dc, const PetscScalar* b, PetscScalar* psiNext, const PetscScalar* psi, const PetscScalar* psiPrev, const PetscScalar* slipVel, const PetscScalar v0, const PetscScalar deltaT, const PetscScalar f0);
 
   // command to perform root-finding process, once contextual variables have been set
-  PetscErrorCode computeLaw(const PetscScalar rootTol, PetscInt& rootIts, const PetscInt maxNumIts);
+  PetscErrorCode computeLaw(const PetscScalar rootTol, PetscInt64& rootIts, const PetscInt maxNumIts);
 
   // function that matches root finder template
   PetscErrorCode getResid(const PetscInt Jj,const PetscScalar vel,PetscScalar* out);
@@ -284,7 +285,7 @@ struct ComputeSlipLaw_fd : public RootFinderContext
   ComputeSlipLaw_fd(const PetscInt N,const PetscScalar* Dc, const PetscScalar* a,const PetscScalar* b, PetscScalar* psiNext, const PetscScalar* psi, const PetscScalar* psiPrev,const PetscScalar* slipVel, const PetscScalar v0, const PetscScalar deltaT, const PetscScalar f0);
 
   // command to perform root-finding process, once contextual variables have been set
-  PetscErrorCode computeLaw(const PetscScalar rootTol, PetscInt& rootIts, const PetscInt maxNumIts);
+  PetscErrorCode computeLaw(const PetscScalar rootTol, PetscInt64& rootIts, const PetscInt maxNumIts);
 
   // function that matches root finder template
   PetscErrorCode getResid(const PetscInt Jj,const PetscScalar vel,PetscScalar* out);
@@ -305,7 +306,7 @@ struct ComputeFlashHeating_fd : public RootFinderContext
   ComputeFlashHeating_fd(const PetscInt N,const PetscScalar* Dc, const PetscScalar* a, const PetscScalar* b, PetscScalar* psiNext, const PetscScalar* psi, const PetscScalar* psiPrev, const PetscScalar* slipVel, const PetscScalar* Vw,const PetscScalar v0, const PetscScalar deltaT,const PetscScalar f0, const PetscScalar fw);
 
   // command to perform root-finding process, once contextual variables have been set
-  PetscErrorCode computeLaw(const PetscScalar rootTol, PetscInt& rootIts, const PetscInt maxNumIts);
+  PetscErrorCode computeLaw(const PetscScalar rootTol, PetscInt64& rootIts, const PetscInt maxNumIts);
 
   // function that matches root finder template
   PetscErrorCode getResid(const PetscInt Jj,const PetscScalar vel,PetscScalar* out);

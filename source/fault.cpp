@@ -515,6 +515,7 @@ PetscErrorCode Fault::view(const double totRunTime)
   ierr = PetscPrintf(PETSC_COMM_WORLD,"   compute slip vel time (s): %g\n",_computeVelTime);CHKERRQ(ierr);
   ierr = PetscPrintf(PETSC_COMM_WORLD,"   state law time (s): %g\n",_stateLawTime);CHKERRQ(ierr);
   ierr = PetscPrintf(PETSC_COMM_WORLD,"   scatter time (s): %g\n",_scatterTime);CHKERRQ(ierr);
+  ierr = PetscPrintf(PETSC_COMM_WORLD,"   root-finder iterations (slip velocity and state solves): %" PetscInt64_FMT "\n",_rootIts);CHKERRQ(ierr);
   ierr = PetscPrintf(PETSC_COMM_WORLD,"   %% integration time spent finding slip vel law: %g\n",(_computeVelTime/totRunTime)*100.);CHKERRQ(ierr);
   ierr = PetscPrintf(PETSC_COMM_WORLD,"   %% integration time spent in state law: %g\n",(_stateLawTime/totRunTime)*100.);CHKERRQ(ierr);
   ierr = PetscPrintf(PETSC_COMM_WORLD,"   %% integration time spent in scatters: %g\n",(_scatterTime/totRunTime)*100.);CHKERRQ(ierr);
@@ -1263,7 +1264,7 @@ ComputeVel_qd::ComputeVel_qd(const PetscInt N, const PetscScalar* eta,const Pets
 
 
 // compute slip velocity for quasidynamic setting
-PetscErrorCode ComputeVel_qd::computeVel(PetscScalar *slipVelA, const PetscScalar rootTol, PetscInt &rootIts, const PetscInt maxNumIts)
+PetscErrorCode ComputeVel_qd::computeVel(PetscScalar *slipVelA, const PetscScalar rootTol, PetscInt64 &rootIts, const PetscInt maxNumIts)
 {
   PetscErrorCode ierr = 0;
 
@@ -2068,7 +2069,7 @@ ComputeVel_fd::ComputeVel_fd(const PetscScalar* locked, const PetscInt N,const P
 { }
 
 // compute absolute value of slip velocity for fully dynamic case
-PetscErrorCode ComputeVel_fd::computeVel(PetscScalar* slipVelA, const PetscScalar rootTol, PetscInt& rootIts, const PetscInt maxNumIts)
+PetscErrorCode ComputeVel_fd::computeVel(PetscScalar* slipVelA, const PetscScalar rootTol, PetscInt64& rootIts, const PetscInt maxNumIts)
 {
   PetscErrorCode ierr = 0;
   #if VERBOSE > 1
@@ -2177,7 +2178,7 @@ ComputeAging_fd::ComputeAging_fd(const PetscInt N,const PetscScalar* Dc, const P
 
 
 // perform root finding once contextal variables have been set
-PetscErrorCode ComputeAging_fd::computeLaw(const PetscScalar rootTol, PetscInt& rootIts, const PetscInt maxNumIts)
+PetscErrorCode ComputeAging_fd::computeLaw(const PetscScalar rootTol, PetscInt64& rootIts, const PetscInt maxNumIts)
 {
   PetscErrorCode ierr = 0;
   #if VERBOSE > 1
@@ -2273,7 +2274,7 @@ ComputeSlipLaw_fd::ComputeSlipLaw_fd(const PetscInt N,const PetscScalar* Dc, con
 
 
 // perform root-finding
-PetscErrorCode ComputeSlipLaw_fd::computeLaw(const PetscScalar rootTol, PetscInt& rootIts, const PetscInt maxNumIts)
+PetscErrorCode ComputeSlipLaw_fd::computeLaw(const PetscScalar rootTol, PetscInt64& rootIts, const PetscInt maxNumIts)
 {
   PetscErrorCode ierr = 0;
 
@@ -2373,7 +2374,7 @@ ComputeFlashHeating_fd::ComputeFlashHeating_fd(const PetscInt N,const PetscScala
 
 
 // find roots
-PetscErrorCode ComputeFlashHeating_fd::computeLaw(const PetscScalar rootTol, PetscInt& rootIts, const PetscInt maxNumIts)
+PetscErrorCode ComputeFlashHeating_fd::computeLaw(const PetscScalar rootTol, PetscInt64& rootIts, const PetscInt maxNumIts)
 {
   PetscErrorCode ierr = 0;
   #if VERBOSE > 1

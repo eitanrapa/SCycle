@@ -88,6 +88,7 @@ PetscErrorCode Bisect::findRoot(RootFinderContext *obj,const PetscInt ind,PetscS
   assert(!PetscIsNanReal(_fLeft)); assert(!PetscIsNanReal(_fRight));
   assert(!PetscIsInfReal(_fLeft)); assert(!PetscIsInfReal(_fRight));
 
+  _numIts = 0;
   if (sqrt(_fLeft*_fLeft) <= _atol) { *out = _left; return 0; }
   else if (sqrt(_fRight*_fRight) <= _atol) { *out = _right; return 0; }
 
@@ -106,6 +107,7 @@ PetscErrorCode Bisect::findRoot(RootFinderContext *obj,const PetscInt ind,PetscS
     }
    numIts++;
   }
+  _numIts = numIts;
 
   *out = _mid;
   if (sqrt(_fMid*_fMid) > _atol) {
@@ -123,7 +125,7 @@ PetscErrorCode Bisect::setBounds(PetscScalar left,PetscScalar right)
   // assign left and right bounds, ensuring left < right
   if (left > right) {
     _left = right;
-    _right = _left;
+    _right = left;
   }
   else {
     _left=left;
@@ -180,6 +182,7 @@ PetscErrorCode BracketedNewton::findRoot(RootFinderContext *obj,const PetscInt i
 
   // check if initial input is the root
   assert(!PetscIsInfReal(x0)); assert(!PetscIsNanReal(x0));
+  _numIts = 0;
   ierr = obj->getResid(ind,x0,&_f,&_fPrime);CHKERRQ(ierr);
   assert(!PetscIsInfReal(_f)); assert(!PetscIsNanReal(_f));
   if (abs(_f) <= _atol) { *out = x0; return 0; }
@@ -245,6 +248,7 @@ PetscErrorCode BracketedNewton::findRoot(RootFinderContext *obj,const PetscInt i
 
    numIts++;
   }
+  _numIts = numIts;
 
   *out = _x;
   const bool bracketCollapsed = fabs(_right - _left) <= 4.0*PETSC_MACHINE_EPSILON*PetscMax(fabs(_left),fabs(_right));
@@ -324,6 +328,7 @@ PetscErrorCode RegulaFalsi::findRoot(RootFinderContext *obj,const PetscInt ind,c
   ierr = PetscPrintf(PETSC_COMM_WORLD,"fLeft = %g, fRight = %g\n",_fLeft,_fRight);CHKERRQ(ierr);
 #endif
 
+  _numIts = 0;
   if (sqrt(_fLeft*_fLeft) <= _atol) { *out = _left; return 0; }
   else if (sqrt(_fRight*_fRight) <= _atol) { *out = _right; return 0; }
 
@@ -334,7 +339,7 @@ PetscErrorCode RegulaFalsi::findRoot(RootFinderContext *obj,const PetscInt ind,c
   while ( (numIts <= _maxNumIts) & (sqrt(_f*_f) >= _atol) & (sqrt(diff*diff) >= _atol)) {
 #if VERBOSE > 4
     ierr = PetscPrintf(PETSC_COMM_WORLD,"!!%i: %i %.15f %.15f %.15f %.15f\n",
-                       ind,numIts,_left,_right,_mid,_f);CHKERRQ(ierr);
+                       ind,numIts,_left,_right,_x,_f);CHKERRQ(ierr);
 #endif
     prev = _x;
     if (_fLeft*_f > _atol) {
@@ -352,10 +357,11 @@ PetscErrorCode RegulaFalsi::findRoot(RootFinderContext *obj,const PetscInt ind,c
   ierr = obj->getResid(ind,_x,&_f);CHKERRQ(ierr);
   numIts++;
   }
+  _numIts = numIts;
 
 #if VERBOSE > 3
-  ierr = PetscPrintf(PETSC_COMM_WORLD,"numIts/maxIts = %u/%u, final mid = %g, fMid = %g\n",
-                     numIts,_maxNumIts,_mid,_f);CHKERRQ(ierr);
+  ierr = PetscPrintf(PETSC_COMM_WORLD,"numIts/maxIts = %i/%i, final x = %g, f = %g\n",
+                     numIts,_maxNumIts,_x,_f);CHKERRQ(ierr);
 #endif
 
   *out = _x;
