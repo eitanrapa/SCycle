@@ -2,15 +2,15 @@
 """Flag keys in SCycle input files that no part of the code reads.
 
 SCycle silently ignores unknown keys, so a typo (retartFromChkptSS) or a key
-renamed since an input was written (linSolver, momBal_bcR_qd) changes nothing
-and gives no warning. This script collects every key the C++ sources compare
+retired since an input was written (problemType) changes nothing and gives no
+warning. This script collects every key the C++ sources compare
 against (var.compare("key") / var == "key") and lists the keys of each input
 file that are not among them.
 
 Limits: a key is "known" if any component reads it, so a key meant for one
-component but read only by another (linSolver is read by the heat and pressure
-equations, not the momentum balance, whose keys are linSolverSS/linSolverTrans)
-is not flagged. Check the component's loadSettings when in doubt.
+component but read only by another is not flagged. Example: linSolver is read
+only by the pressure equation; the momentum balance reads linSolverSS and
+linSolverTrans, and the heat equation linSolver_heateq. Check the component's loadSettings when in doubt.
 
 Usage: tools/checkkeys.py file.in [file.in ...]   (exit status 1 if any are unknown)
 """

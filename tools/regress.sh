@@ -16,7 +16,7 @@
 #
 # Each case always starts fresh: outputDir is redirected to the scratch
 # directory and checkpoint restarts are disabled, whatever the example says.
-# checkpoint.h5 is not compared (it is overwritten in place during a run).
+# checkpoint.h5 is not compared: it only holds the state of the last checkpoint.
 set -uo pipefail
 
 mode=${1:-}; ref=${2:-}
