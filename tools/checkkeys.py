@@ -12,6 +12,9 @@ component but read only by another is not flagged. Example: linSolver is read
 only by the pressure equation; the momentum balance reads linSolverSS and
 linSolverTrans, and the heat equation linSolver_heateq. Check the component's loadSettings when in doubt.
 
+Interior faults: for each name in interiorFaults = [...], the keys <name>_y and
+<name>_<key> (for any key above) are accepted.
+
 Usage: tools/checkkeys.py file.in [file.in ...]   (exit status 1 if any are unknown)
 """
 import os, re, sys
@@ -33,15 +36,32 @@ for m in re.finditer(r'"disl"\s*\+\s*_prefix\s*\+\s*"(_\w+)"', open(os.path.join
     for prefix in ('', '2'):
         known.add('disl' + prefix + m.group(1))
 
+def interior_faults(path):
+    """Names listed by interiorFaults = [name ...] in an input file."""
+    names = []
+    with open(path) as f:
+        for line in f:
+            line = line.split('#')[0]
+            if line.startswith('interiorFaults = '):
+                names = line.split(' = ', 1)[1].strip().lstrip('[').rstrip(']').split()
+    return names
+
 status = 0
 for path in sys.argv[1:]:
     unknown = []
+    faults = interior_faults(path)
     with open(path) as f:
         for n, line in enumerate(f, 1):
             line = line.split('#')[0]
             if ' = ' not in line or line[0].isspace():
                 continue
             key = line.split(' = ')[0].strip()
+            # an interior fault <name> reads <name>_y and <name>_<key> for any key a fault reads
+            # (the check accepts any known key there)
+            for name in faults:
+                if key == name + '_y' or (key.startswith(name + '_') and key[len(name) + 1:] in known):
+                    key = None
+                    break
             if key and key not in known:
                 unknown.append((n, key))
     if unknown:
