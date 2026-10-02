@@ -83,6 +83,8 @@ mpirun -n 4 ./source/main examples/ex2.in
   `momBal_bcB_qd` (and `_fd` variants in the combined mode); creep laws use prefixes `disl_`,
   `disl2_`, `diff_`, `dp_`.
 - Units: lengths km (grid, depths), slip and Dc m, vL m/s, time s, mu GPa, rho g/cm^3, stresses MPa.
+  Pore pressure: k m^2, eta_p Pa s, beta_p 1/MPa, rho_f g/cm^3, g m/s^2, p MPa (consistent with z
+  in km, since m^2/Pa = km^2/MPa); the recharge flux `bcB_q0` m/s.
 - With hydraulic coupling, `sNVals` is the **total** normal stress (sNEff = sN - p, p including the
   hydrostatic part when g > 0). The examples' comments describe the no-pressure case.
 - Rejected at startup: `sbpCompatibilityType = compatible` (fails MMS), `timeControlType = PI`
@@ -113,6 +115,16 @@ mpirun -n 4 ./source/main examples/ex2.in
   `tools/two_fault.py <outputDir>` writes `events.csv`, `partition.csv` and `surfvel.csv`.
 - A `timeIntInds` that lists `slip` or `psi` means those of every fault: `<name>_slip`, `<name>_psi`
   are added with the same scale (a note prints the final list).
+- Stage 5 mechanisms (`docs/REVERSIBLE_STRENGTH_PLAN.md`, section 6 lists what is done). Bulk state
+  fields, `StrikeSlip_PowerLaw_qd` only (the other mediators refuse them): `<prefix>type = off |
+  transient | constant` with strain hardening `hard_` (needs `wDislCreep = yes`) and water content
+  `water_` (through `wDislWetDry = yes`, which mixes `disl_` as the dry and `disl2_` as the wet
+  law, or pressure solution); each writes `/<name>` to data_2D.h5, joins a non-empty
+  `timeIntInds`, and `<prefix>eTest` drives it with a prescribed strain rate for tests. Grain size:
+  the cataclastic sink `grainSizeEv_fCatVals` (a fraction of the faults' work spread over the
+  frictional-heat kernel, so it needs `wVals > 0`; the heat equation gets the rest) and the Zener
+  cap `grainSizeEv_dZVals`. Pore pressure (every fault's `PressureEq`): `bcB_q0` prescribes the
+  basal flux, `bcB_pulse*` pulse it, `bcB_sourceDepth`/`bcB_sourceWidth` deliver it at depth.
 
 ## Architecture
 
@@ -125,6 +137,9 @@ mpirun -n 4 ./source/main examples/ex2.in
   `StrikeSlip_LinearElastic_qd` and `StrikeSlip_PowerLaw_qd` hold a list of faults (`_faults`,
   boundary fault `_fault` first) and loop over it for per-fault work; the multi-fault pieces they
   share are in `source/multiFault.hpp`. The other mediators still hold a single fault.
+- **Bulk state fields** (`bulkStateField.hpp`; `hardeningState`, `waterState`): the power-law
+  mediator holds them in `_bulkStates`, pushes each into `PowerLaw` before the momentum balance
+  and evaluates its rate after the faults' (so is the grain size, whose sink takes their work).
 - **Integrand**: `map<string,Vec>`. Explicit (`varEx`): `slip`, `psi`, `gVxy`/`gVxz` (power law),
   `grainSize`, and `pressure`/`permeability` when `hydraulicTimeIntType = explicit`. Implicit
   (`varIm`, backward Euler inside IMEX): `Temp`, and `pressure`/`permeability` when implicit.

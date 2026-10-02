@@ -956,12 +956,26 @@ message says why not.
 3. Infrastructure (3.1-3.5): `BulkStateField`, `GrainSizeEvolution` derived from it, the three
    `PowerLaw` hooks, `FaultWorkKernel` shared with the heat equation, the mediator loop, the
    refusals in the fully dynamic classes, state-field block moved below the fault block. Medium;
-   bit-identical.
-4. Strain hardening (4.1). Medium.
-5. Water content (4.2). Medium.
-6. Cataclastic sink and pinning cap (4.3), with the energy-budget test. Small.
+   bit-identical. **Done** with item 4 (`e884fae`): `BulkStateField`, the hardening and wet-dry
+   hooks of `PowerLaw`, the mediator loop and the refusals; `FaultWorkKernel` came in Stage 4; the
+   grain-size block moved below the fault block with item 6. `GrainSizeEvolution` is not derived
+   from the base class: its steady-state, piezometer and checkpoint paths would all change for no
+   gain yet.
+4. Strain hardening (4.1). Medium. **Done** (`e884fae`): gates 5.1a (2.5e-12 to 2.9e-12) and 5.1b
+   (bit-identical with S frozen at S_ref); restart bit-identical.
+5. Water content (4.2). Medium. **Done** (`a2b91d2`): gate 5.2a (6.9e-13 to 1.4e-12), 5.2b (chi = 1
+   and 0 bit-identical to the wet and the dry run); pressure-linked and pulsed supply not yet.
+6. Cataclastic sink and pinning cap (4.3), with the energy-budget test. Small. **Done**
+   (`672b999`), cell-mean form: gates 5.3a (closed forms to 1e-11, capped steady state to 2.7e-15,
+   fCat = 0 bit-identical) and 5.3b (budget to 4e-16 and 1.1e-14, 30% stored). The two-component
+   form (a fault-zone grain size over w_cat) is left to the sub-grid core width of 3.7. Found and
+   fixed on the way: A-98 (`8df49c8`) and A-99 (`fc8938f`).
 7. Pulsed recharge (4.4), with the diffusion unit test; depends on Stage 4's per-fault
-   `PressureEq`. Small.
+   `PressureEq`. Small. **Done** (`d6a9556`): `bcB_q0`, pulses (cosine, Gaussian, box; periodic),
+   the source in depth; gate 5.4a (flux step against the series to 5e-7, backward Euler first order
+   and exact pulse volumes, source to 3.5e-6) and 5.4b (bit-identical without the keys). The
+   dataset is `qb` (m/s), not `bcB`. Found and fixed on the way: A-100 (`e0ae91a`, the bottom flux
+   from the list ends, the pitfall named above) and A-101 (`6e39b4d`, `linSolver` ignored).
 8. Evolving cohesion (4.6) on the elastic mediator first (no Stage 4 dependency; can be done in
    parallel with 3-7). Small to medium.
 9. Fabric and cement states (4.5). Small once 3 exists.

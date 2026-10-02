@@ -134,7 +134,7 @@ How the scale is applied:
 - Defect: thirteen places created a binary viewer and then overwrote its handle with `PetscViewerHDF5Open`; several Vecs were never destroyed (`_sdev`, PowerLaw's `_wetDist`, the heat equation's `maxdT`, qd_fd's `SS_index`, temperature Vecs in three constructors, `viscSource` in the off-fault Green's-function driver); PressureEq allocated five Vecs twice.
 - Evidence: after `8916df7`, PETSc's `-objects_dump` lists no SCycle objects at exit for ex2, ex5, the 2D quasidynamic_and_dynamic case, implicit pore pressure and the fully dynamic mode; the original code left 44 unfreed blocks after 20 steps of ex2.
 
-**A-98. The implicit-explicit integrators never freed their implicit-variable Vecs.** Low. `source/odeSolverImex.cpp`. Found after the audit, during stage 5 of the two-fault work.
+**A-98. The implicit-explicit integrators never freed their implicit-variable Vecs.** Low. `8df49c8`. `source/odeSolverImex.cpp`. Found after the audit, during stage 5 of the two-fault work.
 - Defect: `RK32_WBE` and `RK43_WBE` duplicate each implicit variable (`Temp`; `pressure` and `permeability` when implicit) into `_vardTIm` and never destroyed it, so one body field per implicit variable was still allocated at exit. A-22's checks used the default `-objects_dump`, which lists only objects made directly by a Create call, and missed these duplicates.
 - Fix: both destructors free `_vardTIm`; `_varIm` belongs to the caller.
 - Evidence: 30 steps with `-objects_dump all`: ex4s (RK43_WBE), ex4s with RK32_WBE and ex4g with coupled heat each left one Vec and now none; ex1, ex2, ex4g none before and after; ex1, ex2, ex4s, ex4g bit-identical.
@@ -248,7 +248,7 @@ Section 4 summarizes how much each of these changes results.
 - Fix: `HeatEquation::normalizeGw` scales Gw at every depth so that the body quadrature (H J, which integrates dy/dq exactly) gives 1/2, as the stage 4 kernel of interior faults does.
 - Evidence: uniform 201 x 61 half-space, 0.5 km cells, frictional heat only: the integral of Qfric against half the fault's work was 14.129 (w = 10 m) and 0.999996 (w = 1 km) and is 1 to 7e-16 in both; every regression case (w = 0 or no heat) bit-identical.
 
-**A-100. The pressure equation's bottom flux used the ends of the depth lists, not the bottom node.** High. `source/pressureEq.cpp`. Found after the audit, during stage 5 of the two-fault work.
+**A-100. The pressure equation's bottom flux used the ends of the depth lists, not the bottom node.** High. `e0ae91a`. `source/pressureEq.cpp`. Found after the audit, during stage 5 of the two-fault work.
 - Defect: `setUpSBP` set the bottom boundary's flux, rho_f^2 g k/eta (1 + `bcB_ratio`), from the last entries of `rho_fVals`, `k_pVals` and `eta_pVals`, which are the values at the domain bottom only when the lists end there. Inputs commonly list profiles to 60 km on shallower domains. With a profile that varies, the boundary flux then disagreed with the interior coefficient at the bottom node, so the column carried a spurious flux and the initial steady state was not hydrostatic; once permeability evolved, `updateBoundaryCoefficient` switched to the node values and the boundary flux jumped.
 - Fix: the setup takes rho_f, k and eta of the bottom node, as `updateBoundaryCoefficient` does, which now also keeps the hydrostatic part current (needed by the pulsed flux of stage 5).
 - Evidence: a 30 km column with g = 9.8, no imposed flux (`bcB_ratio = 0`) and k from 1e-16 to 1e-18 m^2 listed to 60 km: the initial pressure was 201 MPa (68% of the bottom value) off the hydrostatic 9.8 z MPa and is now within 1e-13 of it. Uniform profiles change at most in the last bit; ex1, ex2, ex4s, ex4g and the four spot cases (pore pressure with g = 0 among them) bit-identical.
@@ -349,7 +349,7 @@ Section 4 summarizes how much each of these changes results.
 - Fix: the block is removed; `Fault_qd::d_dt` sets tau = tauQS - eta V and the strength with cohesion.
 - Evidence: ex4g with lockedVals = 1 above 5 km: the locked nodes reported 0 MPa and now 33.49 to 34.05 MPa; slip, slip rate, state and strength bit-identical; in ex4s and ex4g only /fault/tau and /fault/tauQS change, by at most 1e-12 MPa.
 
-**A-99. Restarts changed the boundary fault's frictional-heat kernel by roundoff.** Low. `source/heatEquation.cpp`. Found after the audit, during stage 5 of the two-fault work; introduced by A-97 (`3f402f3`).
+**A-99. Restarts changed the boundary fault's frictional-heat kernel by roundoff.** Low. `fc8938f`. `source/heatEquation.cpp`. Found after the audit, during stage 5 of the two-fault work; introduced by A-97 (`3f402f3`).
 - Defect: on a restart the heat equation loaded Gw from the checkpoint (or, for `restartFromChkptSS`, from data_context.h5) after building it, and the constructor then normalized it again (A-97). Normalizing an already normalized kernel rescales it by 1 within roundoff, so with a boundary fault and `wVals` > 0 the restarted run's heat source differed from the uninterrupted run's in the last bits and restarts were not bit-identical. The width `w` was also loaded, through a conversion to m and back.
 - Fix: neither Gw nor w is loaded; both follow from `wVals` and the grid, and the constructor rebuilds them exactly.
 - Evidence: ex4s with `wVals = [10 10]`, 300 steps against 200 plus a restart for 100: Qfric differed (4.5e-19 of its maximum) and is now identical, with T, u, the viscosity and the fault series; ex1, ex2, ex4s, ex4g bit-identical. The `restartFromChkptSS` path has the same change and was not run.
@@ -400,10 +400,10 @@ Section 4 summarizes how much each of these changes results.
 - Defect: the return codes of the pressure and grain-size `d_dt` calls were not checked, so the failed pressure solve of A-57 let the run continue on bad state until it segfaulted at exit.
 - Evidence: the codes are now checked; see A-57 for the runs.
 
-**A-101. The pore-pressure solver ignored `linSolver`.** Medium. `source/pressureEq.cpp`. Found after the audit, during stage 5 of the two-fault work.
+**A-101. The pore-pressure solver ignored `linSolver`.** Medium. `6e39b4d`. `source/pressureEq.cpp`. Found after the audit, during stage 5 of the two-fault work.
 - Defect: `PressureEq` read `linSolver` but both of its solves (the initial steady state and each backward-Euler step) always used Richardson iterations with BoomerAMG to a relative tolerance of 1e-10. Inputs that asked for `MUMPSLU` got the iterative solver; in long implicit runs its tolerance leaves errors near 1e-9 of the pressure.
 - Fix: `MUMPSLU` selects a direct LU factorization (MUMPS), redone whenever the matrix changes; `AMG` (the default) keeps the iterative solver, with its calls unchanged. Other values stop the run with a message: the matrix is not symmetric in general, so `MUMPSCHOLESKY` is not offered.
-- Evidence: the implicit pore-pressure spot case with `linSolver = AMG` is bit-identical to before; with its `MUMPSLU` only the steady-state pressure changes, from 0 to -0 (that case has no pressure source). A 30 km column with g = 9.8 and an imposed flux, integrated implicitly from its steady state: the two solvers differ by 3e-11 MPa of 499 MPa, and the direct solve holds the column to 3e-15; under AMG a flux step held for 60 diffusion times ends 2.7e-9 off the exact linear profile, under MUMPSLU 1e-13 or less (stage 5 recharge tests). ex1, ex2, ex4s, ex4g bit-identical.
+- Evidence: the implicit pore-pressure spot case with `linSolver = AMG` is bit-identical to before; with its `MUMPSLU` only the steady-state pressure changes, from 0 to -0 (that case has no pressure source). A 30 km column with g = 9.8 and an imposed flux, integrated implicitly from its steady state: the two solvers differ by 3e-11 MPa of 499 MPa, and the direct solve holds the column to 3e-15; under AMG a flux step held for 60 diffusion times ends 2.7e-9 off the exact linear profile, under MUMPSLU 3.0e-13 (stage 5 recharge tests, `d6a9556`). ex1, ex2, ex4s, ex4g bit-identical.
 
 ### 3.5 Build, repository and tooling
 
@@ -510,7 +510,7 @@ Unless its message says otherwise, each code commit was followed by a bit-for-bi
 | `5bb2fee` | Default minimum time step (A-95) | quasi-dynamic runs without `minDeltaT` whose events needed steps below min(dy,dz)/cs | ex2 peak V 6.991 -> 7.229 m/s (+3.4%), onset and slip unchanged; runs that overflowed now finish |
 | `ae6c6a8` | Written fault stress, power law (A-96) | explicit power-law runs: output of locked or cohesion-held nodes | locked nodes 0 -> 33.5 to 34.0 MPa in ex4g with lockedVals; elsewhere 1e-12 MPa; rates unchanged |
 | `3f402f3` | Frictional-heat kernel normalized (A-97) | half-space runs with wVals > 0 that the grid does not resolve | heat input 14.1 times too large -> exact (w = 10 m on 0.5 km cells); 4e-6 for w = 1 km |
-| (stage 5) | Bottom flux from the bottom node (A-100) | pore pressure with g > 0 or `bcB_ratio` > 0 whose rho_f, k or eta lists end below the domain at values other than the bottom node's | hydrostatic 30 km column, k listed to 60 km: initial pressure 201 MPa (68%) off -> exact; uniform profiles: last bit at most |
+| `e0ae91a` | Bottom flux from the bottom node (A-100) | pore pressure with g > 0 or `bcB_ratio` > 0 whose rho_f, k or eta lists end below the domain at values other than the bottom node's | hydrostatic 30 km column, k listed to 60 km: initial pressure 201 MPa (68%) off -> exact; uniform profiles: last bit at most |
 
 ## 5. Open items and documented limitations
 
