@@ -735,16 +735,18 @@ PetscErrorCode Fault::guessSS(const PetscScalar vL)
   // shear stress
   PetscInt       Istart,Iend;
   PetscScalar   *tauRSV;
-  PetscScalar const *sN,*a,*psi;
+  PetscScalar const *sN,*a,*psi,*Co;
   VecGetOwnershipRange(_tauP,&Istart,&Iend);
   VecGetArray(_tauP,&tauRSV);
   VecGetArrayRead(_sNEff,&sN);
   VecGetArrayRead(_psi,&psi);
   VecGetArrayRead(_a,&a);
+  VecGetArrayRead(_cohesion,&Co);
 
   PetscInt Jj = 0;
   for (PetscInt Ii = Istart; Ii < Iend; Ii++) {
-    tauRSV[Jj] = sN[Jj]*a[Jj]*asinh( (double) 0.5*vL*exp(psi[Jj]/a[Jj])/_v0 );
+    // stress for steady sliding at vL: cohesion plus frictional strength
+    tauRSV[Jj] = sN[Jj]*a[Jj]*asinh( (double) 0.5*vL*exp(psi[Jj]/a[Jj])/_v0 ) + Co[Jj];
     Jj++;
   }
 
@@ -752,6 +754,7 @@ PetscErrorCode Fault::guessSS(const PetscScalar vL)
   VecRestoreArrayRead(_sNEff,&sN);
   VecRestoreArrayRead(_psi,&psi);
   VecRestoreArrayRead(_a,&a);
+  VecRestoreArrayRead(_cohesion,&Co);
 
   #if VERBOSE > 3
     PetscPrintf(PETSC_COMM_WORLD,"Ending %s in %s\n",funcName.c_str(),FILENAME);
@@ -997,8 +1000,21 @@ PetscErrorCode Fault_qd::d_dt(const PetscScalar time, const map<string,Vec>& var
   VecPointwiseMult(_tauP,_eta_rad,_tauP); // tau = V * eta_rad
   VecAYPX(_tauP,-1.0,_tauQSP); // tau = tauQS - V*eta_rad
 
-  // compute frictional strength of fault based on slip velocity
+  // compute frictional strength of fault based on slip velocity, plus the cohesion
   strength_psi_Vec(_strength, _psi, _slipVel, _a, _sNEff, _v0);
+  {
+    PetscScalar *strengthA;
+    const PetscScalar *CoA,*tauQSA;
+    PetscInt Istart,Iend;
+    VecGetOwnershipRange(_strength,&Istart,&Iend);
+    VecGetArray(_strength,&strengthA);
+    VecGetArrayRead(_cohesion,&CoA);
+    VecGetArrayRead(_tauQSP,&tauQSA);
+    for (PetscInt Jj = 0; Jj < Iend-Istart; Jj++) { strengthA[Jj] += copysign(CoA[Jj],tauQSA[Jj]); }
+    VecRestoreArray(_strength,&strengthA);
+    VecRestoreArrayRead(_cohesion,&CoA);
+    VecRestoreArrayRead(_tauQSP,&tauQSA);
+  }
 
   #if VERBOSE > 1
      PetscPrintf(PETSC_COMM_WORLD,"Ending %s in %s\n",funcName.c_str(),FILENAME);
@@ -1263,6 +1279,10 @@ PetscErrorCode ComputeVel_qd::computeVel(PetscScalar *slipVelA, const PetscScala
     else if (_locked[Jj] < -0.5) {
       slipVelA[Jj] = _vL;
     }
+    // shear stress does not exceed the cohesion: the fault does not slip
+    else if (fabs(_tauQS[Jj]) <= _Co[Jj]) {
+      slipVelA[Jj] = 0.;
+    }
     else {
       left = 0.;
       right = _tauQS[Jj] / _eta[Jj];
@@ -1312,8 +1332,8 @@ PetscErrorCode ComputeVel_qd::computeVel(PetscScalar *slipVelA, const PetscScala
 PetscErrorCode ComputeVel_qd::getResid(const PetscInt Jj,const PetscScalar vel,PetscScalar* out)
 {
   PetscErrorCode ierr = 0;
-  // frictional strength
-  PetscScalar strength = strength_psi(_sN[Jj], _psi[Jj], vel, _a[Jj], _v0);
+  // frictional strength, plus the cohesion resisting slip in the direction of the shear stress
+  PetscScalar strength = strength_psi(_sN[Jj], _psi[Jj], vel, _a[Jj], _v0) + copysign(_Co[Jj], _tauQS[Jj]);
   // stress on fault
   PetscScalar stress =_tauQS[Jj] - _eta[Jj]*vel;
 
@@ -1330,7 +1350,8 @@ PetscErrorCode ComputeVel_qd::getResid(const PetscInt Jj,const PetscScalar vel,P
 PetscErrorCode ComputeVel_qd::getResid(const PetscInt Jj,const PetscScalar vel,PetscScalar *out,PetscScalar *J)
 {
   PetscErrorCode ierr = 0;
-  PetscScalar strength = strength_psi(_sN[Jj], _psi[Jj], vel, _a[Jj], _v0); // frictional strength
+  // frictional strength, plus the cohesion resisting slip in the direction of the shear stress
+  PetscScalar strength = strength_psi(_sN[Jj], _psi[Jj], vel, _a[Jj], _v0) + copysign(_Co[Jj], _tauQS[Jj]);
   PetscScalar stress = _tauQS[Jj] - _eta[Jj]*vel; // stress on fault
 
   *out = strength - stress;
@@ -1387,6 +1408,13 @@ Fault_fd::Fault_fd(Domain &D, VecScatter& scatter2fault, const int& faultTypeSca
     loadVecFromInputFile(_tau0,_D->_inputDir,"prestress");
   }
 
+  {
+    PetscScalar maxCohesion = 0;
+    VecMax(_cohesion,NULL,&maxCohesion);
+    if (maxCohesion > 0) {
+      PetscPrintf(PETSC_COMM_WORLD,"Warning: cohesion is not included in the fully dynamic friction law (Fault_fd).\n");
+    }
+  }
 
   #if VERBOSE > 1
     PetscPrintf(PETSC_COMM_WORLD,"Ending %s in %s\n",funcName.c_str(),FILENAME);
@@ -1579,7 +1607,7 @@ PetscErrorCode Fault_fd::computeVel()
   VecRestoreArray(_slipVel,&slipVel);
   VecRestoreArray(_locked, &locked);
 
-  _computeVelTime = MPI_Wtime() - startTime;
+  _computeVelTime += MPI_Wtime() - startTime;
 
   #if VERBOSE > 1
      PetscPrintf(PETSC_COMM_WORLD,"Ending %s in %s\n",funcName.c_str(),FILENAME);
