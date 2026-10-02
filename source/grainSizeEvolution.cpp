@@ -360,7 +360,7 @@ PetscErrorCode GrainSizeEvolution::computeMaxTimeStep(PetscScalar& maxTimeStep, 
   for (Ii=Istart;Ii<Iend;Ii++) {
     PetscScalar lambda = f[Jj] / (_c * g[Jj] *1e3); // convert g to J/m^2 from kJ/m^2
     PetscScalar a = A[Jj] * exp(-QR[Jj]/T[Jj]) * (1.0/p[Jj]);
-    PetscScalar b = 0.5 * lambda * (s[Jj]*1e6)*(dgdev[Jj]*1e-3); // convert s to Pa from MPa, convert dgdev to 1/s from milistrain rate
+    PetscScalar b = lambda * (s[Jj]*1e6)*(dgdev[Jj]*1e-3); // work rate sdev*dgdev; convert s to Pa from MPa, dgdev to 1/s from milistrain rate
 
     tg[Jj] = pow(b,-p[Jj]/(p[Jj]+1.0)) * pow(a,-1.0/(p[Jj]+1.0));
 
@@ -425,7 +425,9 @@ PetscErrorCode GrainSizeEvolution::d_dt(Vec& grainSizeEv_t,const Vec& grainSize,
     PetscScalar growth = A[Jj] * exp(-B[Jj]/T[Jj]) * (1.0/p[Jj]) * pow(d[Jj], 1.0-p[Jj]);
 
     // grain size reduction from work done by dislocation creep
-    PetscScalar w = s[Jj]*0.5*dgdev[Jj]; // work, 0.5 to convert dgdev from engineering to geophysics convention
+    // work rate of dislocation creep: sigma_ij*epsdot_ij = sdev*dgdev with engineering shear strain rates
+    // (the same dissipation that heats the rock; a factor 0.5 used here since 2019 halved it)
+    PetscScalar w = s[Jj]*dgdev[Jj];
     PetscScalar red = - cc * d[Jj]*d[Jj] * w;
     d_t[Jj] = growth + red;
     if (PetscIsInfReal(red)) {
@@ -551,7 +553,7 @@ PetscErrorCode GrainSizeEvolution::computeSteadyStateGrainSize(const Vec& sdev, 
   PetscInt Jj = 0;
   for (Ii=Istart;Ii<Iend;Ii++) {
     PetscScalar AA = A[Jj] * exp(-B[Jj]/T[Jj]) * (1.0/p[Jj]);
-    PetscScalar BB = f[Jj] / (g[Jj] *_c) * 0.5 * dgdev[Jj]; // 0.5 to convert dgdev from engineering to geophysics convention
+    PetscScalar BB = f[Jj] / (g[Jj] *_c) * dgdev[Jj]; // work rate sdev*dgdev (see d_dt)
     PetscScalar a = 1.0 - p[Jj];
     PetscScalar b = 1.0;
     PetscScalar c = 2.0;

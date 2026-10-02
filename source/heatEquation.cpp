@@ -1565,11 +1565,12 @@ PetscErrorCode HeatEquation::computeViscousShearHeating(const Vec& sdev, const V
     CHKERRQ(ierr);
   #endif
 
+  // viscous dissipation per unit volume: sigma_ij*epsdot_ij = sxy*gdot_xy + sxz*gdot_xz = sdev*dgdev,
+  // with sdev = sqrt(sxy^2 + sxz^2), dgdev = sqrt(gdot_xy^2 + gdot_xz^2) (engineering shear strain rates)
+  // and the viscous strain rate parallel to the stress. (A factor sqrt(2) used here since 2019 made the
+  // heat source exceed the mechanical work.)
   VecSet(_Qvisc,0.0);
   VecPointwiseMult(_Qvisc,sdev,dgdev);
-
-  // convert from engineering to geophysics convention for viscous strain rate
-  VecScale(_Qvisc,sqrt(2.0));
 
   #if VERBOSE > 1
     ierr = PetscPrintf(PETSC_COMM_WORLD,"Ending %s in %s: time=%.15e\n",funcName.c_str(),FILENAME,time);
