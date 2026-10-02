@@ -1089,7 +1089,8 @@ PetscErrorCode SbpOps_m_varGrid::geth11(PetscScalar &h11y, PetscScalar &h11z) { 
 PetscErrorCode SbpOps_m_varGrid::getA(Mat &mat) { mat = _A; return 0; }
 PetscErrorCode SbpOps_m_varGrid::getH(Mat &mat) { mat = _H; return 0; }
 PetscErrorCode SbpOps_m_varGrid::getDs(Mat &Dy,Mat &Dz) { Dy = _Dy_Iz; Dz = _Iy_Dz; return 0; }
-PetscErrorCode SbpOps_m_varGrid::getMus(Mat &mu,Mat &muqy,Mat &murz) { mu = _mu; muqy = _mu; murz = _mu; return 0; }
+// mu, and mu times the metric factors q_y and r_z (it returned mu for all three; no caller used them)
+PetscErrorCode SbpOps_m_varGrid::getMus(Mat &mu,Mat &muqy,Mat &murz) { mu = _mu; muqy = _muqy; murz = _murz; return 0; }
 PetscErrorCode SbpOps_m_varGrid::getEs(Mat& E0y_Iz,Mat& ENy_Iz,Mat& Iy_E0z,Mat& Iy_ENz)
 {
   E0y_Iz = _E0y_Iz;

@@ -921,6 +921,7 @@ PetscErrorCode SbpOps_m_constGrid::getH(Mat &mat) { mat = _H; return 0; }
 
 PetscErrorCode SbpOps_m_constGrid::getDs(Mat &Dy,Mat &Dz) { Dy = _Dy_Iz; Dz = _Iy_Dz; return 0; }
 
+// constant grids have no metric factors: all three are mu
 PetscErrorCode SbpOps_m_constGrid::getMus(Mat &mu,Mat &muqy,Mat &murz) { mu = _mu; muqy = _mu; murz = _mu; return 0; }
 
 PetscErrorCode SbpOps_m_constGrid::getEs(Mat& E0y_Iz,Mat& ENy_Iz,Mat& Iy_E0z,Mat& Iy_ENz)
