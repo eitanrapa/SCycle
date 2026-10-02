@@ -10,6 +10,14 @@ keys; the second, named f2, inherits them and overrides some with f2_ keys (see 
   --f2 locked  f2 never slips (lockedVals = 1, constantState): the single-fault limit
   --single     no f2 at all, on the same grid (the reference for --f2 locked)
 
+  --rheology powerlaw  the stage 4 baseline: ex4's dislocation creep and geotherm, the domain
+               deepened to --Lz (60 km) on a depth grid that is uniform (--dz) down to --zfine and
+               grows geometrically below, temperature evolving with frictional heat (a Gaussian of
+               width --w metres on each fault) and viscous heating, and the implicit-explicit
+               integrator. --grainsize adds the wattmeter grain-size law with the quartz constants
+               of docs/REVERSIBLE_STRENGTH_PLAN.md (section 4.3), uncoupled (no grain-size-sensitive
+               creep law yet).
+
 Both faults start at steady sliding at vL. A smooth patch of fault (or f2, --trigger) near 8 km
 depth starts at 1e-6 m/s, so the first event nucleates within hours, the same way in every run;
 without it the first event grows out of round-off and its timing is arbitrary.
@@ -95,7 +103,13 @@ def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('--d', type=float, default=20.0, help='fault separation (km)')
     p.add_argument('--Ly', type=float, default=200.0, help='domain width (km)')
-    p.add_argument('--Nz', type=int, default=153, help='grid points in depth (Lz = 30 km)')
+    p.add_argument('--Nz', type=int, default=153, help='grid points in depth (elastic, Lz = 30 km)')
+    p.add_argument('--rheology', choices=['elastic', 'powerlaw'], default='elastic', help='bulk rheology')
+    p.add_argument('--Lz', type=float, default=60.0, help='depth of the power-law domain (km)')
+    p.add_argument('--dz', type=float, default=0.2, help='power law: depth spacing down to --zfine (km)')
+    p.add_argument('--zfine', type=float, default=25.0, help='power law: depth of the uniform part of the depth grid (km)')
+    p.add_argument('--w', type=float, default=10.0, help='power law: width of the frictional heat source (m)')
+    p.add_argument('--grainsize', action='store_true', help='power law: evolve the grain size (uncoupled)')
     p.add_argument('--h0', type=float, default=0.05, help='grid spacing near the faults (km)')
     p.add_argument('--band', type=float, default=4.0, help='half-width of the uniform band around each fault (km)')
     p.add_argument('--growth', type=float, default=1.05, help='spacing ratio of neighbouring cells outside the bands')
@@ -110,13 +124,21 @@ def main():
     args = p.parse_args()
 
     root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    name = args.name or ('single' if args.single else '%s_d%g' % (args.f2, args.d))
-    Ly, Lz, Nz = args.Ly, 30.0, args.Nz
+    name = args.name or ('single' if args.single else '%s_d%g' % (args.f2, args.d)) + ('_pl' if args.rheology == 'powerlaw' else '')
+    Ly = args.Ly
     y1, y2 = 0.5*(Ly - args.d), 0.5*(Ly + args.d)
     y, h0 = two_fault_grid(Ly, [y1, y2], args.h0, args.band, args.growth)
+    if args.rheology == 'elastic':
+        Lz, Nz = 30.0, args.Nz
+        z = np.linspace(0, Lz, Nz)
+    else:  # uniform to zfine, then geometric growth to Lz
+        Lz = args.Lz
+        nf = int(round(args.zfine/args.dz))
+        z = np.concatenate([args.dz*np.arange(nf + 1), args.zfine + np.cumsum(geometric_cells(Lz - args.zfine, args.dz, args.growth))])
+        z[-1] = Lz
+        Nz = z.size
 
     # friction and steady state at vL (examples/ex2.in, Fault::computePsiSS)
-    z = np.linspace(0, Lz, Nz)
     aD, aV = [0, 11.0, 19.3333, 60], [0.0135, 0.0300, 0.0700, 0.2652]
     bD, bV = [0, 10, 11, 19.3333, 60], [0.0230, 0.0379, 0.0350, 0.0375, 0.0497]
     f0, v0, vL, V1 = 0.6, 1e-6, 1e-9, 1e-6
@@ -136,13 +158,15 @@ def main():
     d = os.path.join(args.out, name)
     os.makedirs(os.path.join(d, 'ic'), exist_ok=True)
     write_vec(os.path.join(d, 'ic', 'y'), np.repeat(y, Nz))  # body field, index iy*Nz + iz
+    if args.rheology == 'powerlaw':
+        write_vec(os.path.join(d, 'ic', 'z'), np.tile(z, y.size))
     write_vec(os.path.join(d, 'ic', 'psi'), psi1)
     write_vec(os.path.join(d, 'ic', 'prestress'), tau1)
     base = [l for l in open(os.path.join(root, 'examples/ex2.in')).read().splitlines() if not l.startswith((
         'outputDir', 'inputDir', 'guessSteadyStateICs', 'computeSSMomBal', 'maxTime', 'stride1D', 'stride2D',
-        'restartFromChkpt', 'momBal_bc', 'Ny =', 'Nz =', 'Ly =', 'bCoordTrans', 'maxStepCount', 'strideChkpt'))]
+        'restartFromChkpt', 'momBal_bc', 'Ny =', 'Nz =', 'Ly =', 'Lz =', 'bCoordTrans', 'maxStepCount', 'strideChkpt'))]
     lines = base + [
-        'Ny = %d' % y.size, 'Nz = %d' % Nz, 'Ly = %g' % Ly,
+        'Ny = %d' % y.size, 'Nz = %d' % Nz, 'Ly = %g' % Ly, 'Lz = %g' % Lz,
         'bCoordTrans = -1 # the grid comes from the file y in inputDir',
         'outputDir = %s/' % d, 'inputDir = %s/ic/' % d,
         'guessSteadyStateICs = 0 # interior faults take their initial state from files or keys',
@@ -151,6 +175,26 @@ def main():
         'restartFromChkpt = 1 # continue from data in outputDir if a run stopped',
         'momBal_bcL_qd = remoteLoading # full domain: the left side moves at -vL/2',
         'momBal_bcR_qd = remoteLoading', 'momBal_bcT_qd = freeSurface', 'momBal_bcB_qd = freeSurface']
+    if args.rheology == 'powerlaw':
+        pl = [l for l in open(os.path.join(root, 'examples/ex4s.in')).read().splitlines() if l.startswith((
+            'disl_', 'maxEffVisc', 'kVals', 'kDepths', 'cVals', 'cDepths', 'withViscShearHeating', 'withFrictionalHeating'))]
+        lines = [l for l in lines if not l.startswith(('bulkDeformationType', 'timeIntegrator'))]
+        lines += pl + [
+            'bulkDeformationType = powerLaw', 'momentumBalanceType = quasidynamic', 'systemEvolutionType = transient',
+            'TVals = [283.15 1488.15 1623.15] # (K) the geotherm of ex4 (its LAB at 50 km)', 'TDepths = [0 50 500]',
+            'thermalCoupling = coupled', 'evolveTemperature = 1', 'heatEquationType = transient',
+            'withRadioHeatGeneration = no', 'timeIntegrator = RK43_WBE',
+            'wVals = [%g %g] # (m) frictional heat: a Gaussian of this width on each fault' % (args.w, args.w), 'wDepths = [0 500]',
+            'bcLType_trans = Dirichlet # heat: the far left side like the right']
+        if args.grainsize:
+            lines += ['evolveGrainSize = 1', 'grainSizeEvCoupling = uncoupled # no grain-size-sensitive creep law yet',
+                      'grainSizeEv_grainSizeEvType = transient',
+                      'grainSizeEv_grainSizeVals = [1e-5 1e-5] # initial grain size', 'grainSizeEv_grainSizeDepths = [0 500]',
+                      'grainSizeEv_AVals = [1e-16 1e-16] # quartz, Tokle & Hirth (2021) (REVERSIBLE_STRENGTH_PLAN.md 4.3)',
+                      'grainSizeEv_ADepths = [0 500]', 'grainSizeEv_QRVals = [16100 16100]', 'grainSizeEv_QRDepths = [0 500]',
+                      'grainSizeEv_pVals = [3 3]', 'grainSizeEv_pDepths = [0 500]',
+                      'grainSizeEv_gammaVals = [1 1]', 'grainSizeEv_gammaDepths = [0 500]', 'grainSizeEv_c = 3.14159',
+                      'grainSizeEv_fVals = [0.015 0.015]', 'grainSizeEv_fDepths = [0 500]']
     if args.single:
         lines += ['interiorFaults = [fault]', 'fault_y = %.12g # (km)' % y1]
     else:
@@ -167,8 +211,8 @@ def main():
             lines += ['f2_sNVals = [%g %g] # (MPa)' % (args.sN2, args.sN2), 'f2_sNDepths = [0 60]']
     open(os.path.join(args.out, name + '.in'), 'w').write('\n'.join(lines) + '\n')
     dy = np.diff(y)
-    print('wrote %s.in: Ny = %d (spacing %.3g km at the faults, %.3g km at most), faults at y = %g and %g km'
-          % (os.path.join(args.out, name), y.size, h0, dy.max(), y1, y2))
+    print('wrote %s.in: Ny = %d (spacing %.3g km at the faults, %.3g km at most), Nz = %d (Lz = %g km), faults at y = %g and %g km'
+          % (os.path.join(args.out, name), y.size, h0, dy.max(), Nz, Lz, y1, y2))
 
 
 if __name__ == '__main__':
