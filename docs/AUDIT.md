@@ -4,7 +4,7 @@
 
 This document records an audit of SCycle, the C++/PETSc code for 2D antiplane earthquake-cycle simulations, and the fixes made on branch `audit/fixes-2026-10`. The audit started from an unmodified clone of upstream master (github.com/kali-allison/SCycle, last upstream commit `74a132f` of 19 December 2024).
 
-The branch adds 69 commits to master: 58 fixes, 3 tool commits, 2 commits for the repository contents, 2 for this documentation, and one each for the build, the example inputs, a code comment, and the SEAS BP1 benchmark with an input-key checker. Together they fix 94 distinct findings (32 Critical, 25 High, 25 Medium, 12 Low), listed in section 3. A 95th, A-95 (Critical), was found during stage 3 of the two-fault work and fixed on branch `stage3/two-faults` (`5bb2fee`), two more during stage 4, A-96 (Medium) and A-97 (High), on branch `stage4/viscoelastic` (`ae6c6a8`, `3f402f3`), and A-98 and A-99 (both Low) during stage 5 on branch `stage5/reversible-strength`; the tables below include them. Three are fixed only in part (A-35, A-45, A-57), and the MATLAB tools of A-93 were not run. Section 5 lists 15 open items and documented limitations. Each commit message records its finding: what was wrong, the failure it caused, the fix and the test evidence (`git show <hash>`). A few spot tests from early in the audit appear only in this document; their entries say so.
+The branch adds 69 commits to master: 58 fixes, 3 tool commits, 2 commits for the repository contents, 2 for this documentation, and one each for the build, the example inputs, a code comment, and the SEAS BP1 benchmark with an input-key checker. Together they fix 94 distinct findings (32 Critical, 25 High, 25 Medium, 12 Low), listed in section 3. A 95th, A-95 (Critical), was found during stage 3 of the two-fault work and fixed on branch `stage3/two-faults` (`5bb2fee`), two more during stage 4, A-96 (Medium) and A-97 (High), on branch `stage4/viscoelastic` (`ae6c6a8`, `3f402f3`), and A-98, A-99 (both Low) and A-100 (High) during stage 5 on branch `stage5/reversible-strength`; the tables below include them. Three are fixed only in part (A-35, A-45, A-57), and the MATLAB tools of A-93 were not run. Section 5 lists 15 open items and documented limitations. Each commit message records its finding: what was wrong, the failure it caused, the fix and the test evidence (`git show <hash>`). A few spot tests from early in the audit appear only in this document; their entries say so.
 
 How the fixes were verified:
 
@@ -35,12 +35,12 @@ How the scale is applied:
 | Group | Entries | Critical | High | Medium | Low |
 |---|---|---|---|---|---|
 | 3.1 Crashes, undefined behaviour and memory | A-01 to A-22, A-98 | 17 | 0 | 5 | 1 |
-| 3.2 Physics and numerics (wrong results) | A-23 to A-47, A-97 | 1 | 18 | 4 | 3 |
+| 3.2 Physics and numerics (wrong results) | A-23 to A-47, A-97, A-100 | 1 | 19 | 4 | 3 |
 | 3.3 Time integration, checkpoints and I/O | A-48 to A-68, A-95, A-96, A-99 | 12 | 3 | 7 | 2 |
 | 3.4 Input handling and error reporting | A-69 to A-79 | 3 | 3 | 4 | 1 |
 | 3.5 Build, repository and tooling | A-80 to A-87 | 0 | 0 | 1 | 7 |
 | 3.6 Examples, benchmarks and post-processing | A-88 to A-94 | 0 | 2 | 5 | 0 |
-| Total | 99 | 33 | 26 | 26 | 14 |
+| Total | 100 | 33 | 27 | 26 | 14 |
 
 "No run reported" means the commit message describes the fix without a dedicated test; the ex1/ex2 regression comparison still applied to it.
 
@@ -247,6 +247,11 @@ Section 4 summarizes how much each of these changes results.
 - Defect: with a finite shear-zone width (`wVals` > 0), frictional heat is spread over Gw = exp(-y^2/(2 w^2))/(sqrt(2 pi) w) on y >= 0, which integrates to 1/2 (half the fault's work for the half-space, as the boundary flux tau V/2 when w = 0) only when the grid resolves w. With w at or below the spacing at the fault only row 0 samples it, and the quadrature gives 17/48 h Gw(0) = 0.14 h/w (order 4): far more heat than the fault produced. ex4 is unaffected in practice (6 cm cells at the fault, w = 10 m); a model with 0.5 km cells and w = 10 m was heated 14 times too much.
 - Fix: `HeatEquation::normalizeGw` scales Gw at every depth so that the body quadrature (H J, which integrates dy/dq exactly) gives 1/2, as the stage 4 kernel of interior faults does.
 - Evidence: uniform 201 x 61 half-space, 0.5 km cells, frictional heat only: the integral of Qfric against half the fault's work was 14.129 (w = 10 m) and 0.999996 (w = 1 km) and is 1 to 7e-16 in both; every regression case (w = 0 or no heat) bit-identical.
+
+**A-100. The pressure equation's bottom flux used the ends of the depth lists, not the bottom node.** High. `source/pressureEq.cpp`. Found after the audit, during stage 5 of the two-fault work.
+- Defect: `setUpSBP` set the bottom boundary's flux, rho_f^2 g k/eta (1 + `bcB_ratio`), from the last entries of `rho_fVals`, `k_pVals` and `eta_pVals`, which are the values at the domain bottom only when the lists end there. Inputs commonly list profiles to 60 km on shallower domains. With a profile that varies, the boundary flux then disagreed with the interior coefficient at the bottom node, so the column carried a spurious flux and the initial steady state was not hydrostatic; once permeability evolved, `updateBoundaryCoefficient` switched to the node values and the boundary flux jumped.
+- Fix: the setup takes rho_f, k and eta of the bottom node, as `updateBoundaryCoefficient` does, which now also keeps the hydrostatic part current (needed by the pulsed flux of stage 5).
+- Evidence: a 30 km column with g = 9.8, no imposed flux (`bcB_ratio = 0`) and k from 1e-16 to 1e-18 m^2 listed to 60 km: the initial pressure was 201 MPa (68% of the bottom value) off the hydrostatic 9.8 z MPa and is now within 1e-13 of it. Uniform profiles change at most in the last bit; ex1, ex2, ex4s, ex4g and the four spot cases (pore pressure with g = 0 among them) bit-identical.
 
 ### 3.3 Time integration, checkpoints and I/O
 
@@ -500,6 +505,7 @@ Unless its message says otherwise, each code commit was followed by a bit-for-bi
 | `5bb2fee` | Default minimum time step (A-95) | quasi-dynamic runs without `minDeltaT` whose events needed steps below min(dy,dz)/cs | ex2 peak V 6.991 -> 7.229 m/s (+3.4%), onset and slip unchanged; runs that overflowed now finish |
 | `ae6c6a8` | Written fault stress, power law (A-96) | explicit power-law runs: output of locked or cohesion-held nodes | locked nodes 0 -> 33.5 to 34.0 MPa in ex4g with lockedVals; elsewhere 1e-12 MPa; rates unchanged |
 | `3f402f3` | Frictional-heat kernel normalized (A-97) | half-space runs with wVals > 0 that the grid does not resolve | heat input 14.1 times too large -> exact (w = 10 m on 0.5 km cells); 4e-6 for w = 1 km |
+| (stage 5) | Bottom flux from the bottom node (A-100) | pore pressure with g > 0 or `bcB_ratio` > 0 whose rho_f, k or eta lists end below the domain at values other than the bottom node's | hydrostatic 30 km column, k listed to 60 km: initial pressure 201 MPa (68%) off -> exact; uniform profiles: last bit at most |
 
 ## 5. Open items and documented limitations
 

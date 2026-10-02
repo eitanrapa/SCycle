@@ -617,11 +617,14 @@ PetscErrorCode PressureEq::updateBoundaryCoefficient(const Vec &coeff)
   }
 
   VecPointwiseMult(coeff_rho_g, coeff_rho_g, tmp);
-  VecScatterBegin(_scatters, coeff_rho_g, _bcB, INSERT_VALUES, SCATTER_FORWARD);
-  VecScatterEnd(_scatters, coeff_rho_g, _bcB, INSERT_VALUES, SCATTER_FORWARD);
-
-  if ( _bcB_type.compare("Q") == 0 ) {
-    VecAXPY(_bcB, 1.0, _bcB_impose);
+  if ( _bcB_type.compare("Q") == 0 ) { // hydrostatic part at the bottom node, plus the imposed flux
+    VecScatterBegin(_scatters, coeff_rho_g, _bcB_gravity, INSERT_VALUES, SCATTER_FORWARD);
+    VecScatterEnd(_scatters, coeff_rho_g, _bcB_gravity, INSERT_VALUES, SCATTER_FORWARD);
+    VecWAXPY(_bcB, 1.0, _bcB_impose, _bcB_gravity);
+  }
+  else {
+    VecScatterBegin(_scatters, coeff_rho_g, _bcB, INSERT_VALUES, SCATTER_FORWARD);
+    VecScatterEnd(_scatters, coeff_rho_g, _bcB, INSERT_VALUES, SCATTER_FORWARD);
   }
 
   // free memory
@@ -671,8 +674,20 @@ PetscErrorCode PressureEq::setUpSBP()
   VecSet(_bcL, 0);
   VecSet(_bcT, 0);
   VecSet(_bcB, 0);
-  VecSet(_bcB_gravity, _g * _rho_fVals.back() * _rho_fVals.back() * _k_pVals.back() / _eta_pVals.back());
-  VecSet(_bcB_impose, _g * _rho_fVals.back() * _rho_fVals.back() * _k_pVals.back() / _eta_pVals.back() * _bcB_ratio);
+  // bottom flux rho^2 g k/eta (1 + bcB_ratio), with rho, k and eta of the bottom node, as
+  // updateBoundaryCoefficient computes it when permeability changes (the last entries of the depth
+  // lists differ from the node values when the lists extend below the domain)
+  {
+    Vec coeff_rho_g;
+    VecDuplicate(coeff, &coeff_rho_g);
+    VecPointwiseMult(coeff_rho_g, coeff, _rho_f);
+    VecScale(coeff_rho_g, _g);
+    VecScatterBegin(_scatters, coeff_rho_g, _bcB_gravity, INSERT_VALUES, SCATTER_FORWARD);
+    VecScatterEnd(_scatters, coeff_rho_g, _bcB_gravity, INSERT_VALUES, SCATTER_FORWARD);
+    VecDestroy(&coeff_rho_g);
+  }
+  VecCopy(_bcB_gravity, _bcB_impose);
+  VecScale(_bcB_impose, _bcB_ratio);
   VecAXPY(_bcB, 1.0, _bcB_gravity);
   VecAXPY(_bcB, 1.0, _bcB_impose);
   // VecSet(_bcB, _g * _rho_fVals.back() * _k_pVals.back() / _eta_pVals.back() * (1 + _bcB_ratio));
