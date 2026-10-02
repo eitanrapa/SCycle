@@ -1074,6 +1074,9 @@ PetscErrorCode HeatEquation::d_dt(const PetscScalar time,const Vec slipVel,const
   if (_wFrictionalHeating.compare("yes")==0) {
     computeFrictionalShearHeating(tau,slipVel);
     VecAXPY(_Q,1.0,_Qfric);
+    // Neumann data at the fault is k*dT/dy = -q (heat flows into the domain), as in
+    // computeSteadyStateTemp; bcL holds +q = tau*V/2
+    VecScale(_bcL,-1.);
   }
 
   // viscous shear heating: Qvisc
@@ -1338,6 +1341,9 @@ PetscErrorCode HeatEquation::be_steadyState(const PetscScalar time,const Vec sli
     // set bcL and/or Qfric depending on shear zone width
     computeFrictionalShearHeating(tau,slipVel);
     VecAXPY(_Q,-1.0,_Qfric);
+    // Neumann data at the fault is k*dT/dy = -q (heat flows into the domain), as in
+    // computeSteadyStateTemp; bcL holds +q = tau*V/2
+    VecScale(_bcL,-1.);
   }
 
   // viscous shear heating: Qvisc
