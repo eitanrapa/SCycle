@@ -90,7 +90,12 @@ mpirun -n 4 ./source/main examples/ex2.in
   them too, then `<name>_<key>` overrides any of them (`fault2_aVals`, `fault2_vCreep`, ...); it uses
   the files `<name>_psi`, ..., the HDF5 groups `/<name>`, `/<name>_qd` and integrand keys
   `<name>_slip`, `<name>_psi`. `vCreep` sets the slip velocity of creeping nodes (default `vL`).
-  No input key declares an additional fault yet (Stage 2 of `docs/TWO_FAULT_DESIGN.md`).
+- Interior faults (elastic quasi-dynamic only): `interiorFaults = [name ...]`, `<name>_y` (km) for
+  each, and `momBal_bcL_qd = remoteLoading` for the full domain. Each is placed midway between two
+  grid rows, at least 6 rows from the y-boundaries; `mediator.txt` records where. Not with a
+  boundary fault (`symmFault` would mirror it), steady-state initial conditions, heat or pore
+  pressure. `interiorFaultKinkLift = 1` (default) gives second-order fault traction.
+  `examples/interior_fault/make_inputs.py` writes a working case and its half-space twin.
 
 ## Architecture
 
@@ -132,7 +137,8 @@ mpirun -n 4 ./source/main examples/ex2.in
 ## Conventions and traps
 
 - y is distance across the fault, z is depth (positive down). Body index `Ii = iy*Nz + iz`
-  (z fastest). The fault is the **left boundary** y = 0; there is no interior fault yet.
+  (z fastest). A fault is either the **left boundary** y = 0 (symmFault: a half-space, mirrored) or
+  an interior fault of the full domain (`InteriorFaultLift`, a jump-corrected right-hand side).
 - `Domain::_y0` is the size-Nz left-boundary template and holds **z** there; `_z0` is the size-Ny
   top-boundary template and holds **y** there.
 - `Nz = 1` is a spring slider (ex1). The combined mode refuses it.

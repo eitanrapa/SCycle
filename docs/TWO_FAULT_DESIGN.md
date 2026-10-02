@@ -1,7 +1,7 @@
 # Two-fault extension: design note
 
-Status: Stages 0 and 1 are done (branches `audit/fixes-2026-10` and `stage1/fault-generalization`);
-Stage 2 is next.
+Status: Stages 0, 1 and 2 are done (branches `audit/fixes-2026-10`, `stage1/fault-generalization`,
+`stage2/interior-fault`, each built on the previous one); Stage 3 is next.
 Line numbers refer to upstream commit `74a132f` and will drift; function names are the stable
 reference.
 
@@ -152,15 +152,27 @@ combined quasi-dynamic and dynamic mode) stay bit-identical, and so does a resta
   `tools/checkkeys.py` the prefixed keys), creates interior faults from it, and treats a model
   without a boundary fault (`_fault` then is NULL and the boundary-only couplings must be skipped).
 
-### Stage 2: one interior fault
-- New `InteriorFaultLift` (Route B). `LinearElastic::setRHS` adds `J`; `computeStresses`
-  differentiates `w`.
-- Full-domain loading (`bcL = −vL t/2`), grid from file.
-- `solveSS` / `solveSSb` (steady-state initial guess) impose Neumann `bcL = τ_ss` and only work
-  for a boundary fault. Disable them for interior faults; initialise ψ at steady state for an
-  assumed slip rate instead.
+### Stage 2: one interior fault (done)
+Done on branch `stage2/interior-fault` (commit `c602b99` and the example `cc9625d`).
+- **Input.** `interiorFaults = [name ...]`, `<name>_y = <km>` for each, and
+  `momBal_bcL_qd = remoteLoading` (the full domain: bcL = -vL t/2, bcR = +vL t/2). The fault is
+  placed midway between the two grid rows around `<name>_y`, at least 6 rows from the y-boundaries.
+  A fault named `fault` reads the plain keys and files, so a single interior fault needs no prefixes.
+- **Method.** `InteriorFaultLift` implements Route B with the B+ kink lift
+  (`interiorFaultKinkLift = 1`, the default; 0 gives the first-order traction). `LinearElastic`
+  takes the y-strain from `_uContinuous`; the physical sxy adds mu c (y - y_f) past each fault; the
+  fault traction subtracts that term's own contribution on row i_f + 1.
+- **Refused.** Interior faults with a `symmFault` boundary (mirror images) or `rigidFault`, with
+  `guessSteadyStateICs = 1`, with heat or pore pressure (stage 4), with `isMMS` or a body force.
+  Interior faults take their initial state from `<name>_stateVals`, `<name>_prestressScalar` or
+  the files `<name>_psi`, `<name>_prestress` (see `examples/interior_fault/make_inputs.py`).
+- **Results.** See gates 2a, 2b and 2d below; 2c is covered by 2a, which compares with the
+  half-space solution of the existing, separately verified code.
 
 ### Stage 3: two interior faults, elastic
+- The code already accepts several interior faults (`interiorFaults = [f1 f2]`, one lift per
+  fault; the traction of each subtracts only its own kink term). Stage 3 is the verification of
+  two interacting faults and the diagnostics of section 6.
 - Two lifts, two `Fault_qd` objects, two scatters; qd step-size control already picks up any new
   integrand key when `timeIntInds` is empty (`OdeSolver` uses all explicit keys). Inputs that list
   `timeIntInds` must add `<name>_slip`, `<name>_psi` themselves (`PressureEq::addErrorControl`
@@ -181,10 +193,10 @@ combined quasi-dynamic and dynamic mode) stay bit-identical, and so does a resta
 | Stage | Test | Pass criterion |
 |---|---|---|
 | 1 | ex1, ex2 via `tools/regress.sh` | bit-identical |
-| 2a | Prescribed smooth `δ(z)`, μ uniform, fault at `y = 0` of a symmetric full domain, vs the existing `symmFault` half-space run with `bcL = δ/2` | `u` O(h²), traction O(h) over three grids |
-| 2b | Same with `δ` linear in depth | traction O(h²) |
-| 2c | Analytic antiplane screw dislocation with free-surface image | `u` O(h²) |
-| 2d | Rate-and-state on the interior fault, other boundary far | recurrence interval and peak V within 1% of the half-space BP1-style run |
+| 2a | Prescribed smooth `δ(z)`, μ uniform, fault at `y = 0` of a symmetric full domain, vs the existing `symmFault` half-space run with `bcL = δ/2` | `u` O(h²), traction O(h) over three grids. **Passed**: Gaussian slip, Ny = 32..256 against Ny = 513: `u` rates 3.7, 3.6; traction rates 1.95, 1.89, 1.70 with B+ (0.93-0.99 without) |
+| 2b | Same with `δ` linear in depth | traction O(h²). **Passed** in the stronger form of uniform slip: exact to round-off (4e-13 in `u`) |
+| 2c | Analytic antiplane screw dislocation with free-surface image | Covered by 2a |
+| 2d | Rate-and-state on the interior fault, other boundary far | recurrence interval and peak V within 1% of the half-space BP1-style run. **Passed** with a triggered first event (steady-state start nucleates from round-off): at Ny_half = 301, onset +0.14%, peak V -0.29%, slip 0.034%; the differences shrink with refinement (0.61%, 1.8% at Ny_half = 151). Restarts bit-identical; 2 ranks match onset and slip |
 | 3a | Fault 2 locked (`lockedVals`) | reproduces 2d |
 | 3b | Fault 2 velocity-strengthening | long-term `V1 + V2 = vL` from cumulative slip |
 | 3c | Coseismic stress change on fault 2 from a fault-1 event | matches the 2D screw-dislocation formula at distance `y_f` |
