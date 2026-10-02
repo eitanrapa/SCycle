@@ -51,6 +51,7 @@ HeatEquation::HeatEquation(Domain& D)
 
 HeatEquation::~HeatEquation()
 {
+  VecDestroy(&_maxdTVec);
   KSPDestroy(&_kspSS);
   KSPDestroy(&_kspTrans);
   MatDestroy(&_B);

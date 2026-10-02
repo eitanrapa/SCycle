@@ -116,6 +116,7 @@ StrikeSlip_LinearElastic_qd_fd::~StrikeSlip_LinearElastic_qd_fd()
   }
 
 
+  VecDestroy(&_JjSSVec);
   PetscViewerDestroy(&_viewer1D);
   PetscViewerDestroy(&_viewer2D);
   PetscViewerDestroy(&_viewer_context);
@@ -1651,6 +1652,7 @@ PetscErrorCode StrikeSlip_LinearElastic_qd_fd::solveSS()
   #endif
 
   // initiate Vecs to hold index Jj
+  VecDestroy(&_JjSSVec);
   VecCreateMPI(PETSC_COMM_WORLD, PETSC_DECIDE, 1, &_JjSSVec);
   VecSetBlockSize(_JjSSVec, 1);
   PetscObjectSetName((PetscObject) _JjSSVec, "SS_index");
