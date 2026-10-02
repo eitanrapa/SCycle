@@ -53,7 +53,12 @@ public:
   PetscScalar  _vL; // loading velocity
 
   // coordinate system
-  Vec   _q,_r,_y,_z,_y0,_z0; // q(y), r(z)
+  Vec   _q,_r,_y,_z; // computational coordinates q(y), r(z) and physical coordinates y, z (size Ny*Nz)
+  // Boundary templates, named for where they live, not what they hold:
+  //   _y0: size Nz, the left boundary y = 0 (the fault); holds z there (depths of the fault nodes)
+  //   _z0: size Ny, the top boundary z = 0 (the surface); holds y there (distances from the fault)
+  // They are duplicated for every left/right (size Nz) and top/bottom (size Ny) boundary vector.
+  Vec   _y0,_z0;
   PetscScalar _dq,_dr;  // spacing in q and r
   PetscScalar _bCoordTrans; // scalar for how aggressive the coordinate transform is
 
