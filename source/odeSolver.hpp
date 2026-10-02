@@ -120,6 +120,7 @@ public:
   PetscReal   _totTol; // total tolerance, might be atol, or rtol, or a combination of both
   PetscReal   _kappa,_ord; // safety factor in step size determinance, order of accuracy of method
   PetscInt    _numRejectedSteps,_numMinSteps,_numMaxSteps;
+  PetscInt    _numInaccurateSteps; // steps accepted with the error above the tolerance
 
   PetscReal   _totErr;
 
@@ -158,6 +159,7 @@ public:
   PetscReal   _totTol;
   PetscReal   _kappa,_ord;
   PetscInt    _numRejectedSteps,_numMinSteps,_numMaxSteps;
+  PetscInt    _numInaccurateSteps; // steps accepted with the error above the tolerance
   PetscReal   _totErr;
 
   map<string,Vec> _k1,_k2,_k3,_k4,_k5,_k6,_y3,_y4;

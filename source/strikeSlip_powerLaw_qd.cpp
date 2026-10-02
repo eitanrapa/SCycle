@@ -400,13 +400,14 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::computeMinTimeStep()
   // smallest reasonable time step
   PetscScalar min_deltaT = min(min_ts_dy,min_ts_dz);
 
-  // provide if not user specified
+  // The integrators accept a step at minDeltaT whatever its error, so the default is a safeguard
+  // well below the steps fast slip needs (see StrikeSlip_LinearElastic_qd::computeMinTimeStep).
   if (_minDeltaT == -1) {
-    _minDeltaT = min_deltaT;
+    _minDeltaT = 1e-3*min_deltaT;
   }
   else if (_minDeltaT > min_deltaT) {
-    PetscPrintf(PETSC_COMM_WORLD,"Warning: minimum requested time step (minDeltaT) is larger than recommended.");
-    PetscPrintf(PETSC_COMM_WORLD," Requested: %e s, Recommended (min(dy/cs,dz/cs)): %e s\n",_minDeltaT,min_deltaT);
+    PetscPrintf(PETSC_COMM_WORLD,"Warning: minDeltaT = %e s is larger than the shear-wave time of the smallest cell, min(dy/cs,dz/cs) = %e s;\n"
+      "         steps at minDeltaT are accepted whatever their error.\n",_minDeltaT,min_deltaT);
   }
 
   #if VERBOSE > 1

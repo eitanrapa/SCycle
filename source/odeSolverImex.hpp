@@ -74,6 +74,7 @@ public:
   PetscReal   _minDeltaT,_maxDeltaT;
   PetscReal   _totTol; // total tolerance, might be atol, or rtol, or a combination of both
   PetscInt    _numRejectedSteps,_numMinSteps,_numMaxSteps;
+  PetscInt    _numInaccurateSteps; // steps accepted with the error above the tolerance
 
   // for PID error control
   double _errA[2];

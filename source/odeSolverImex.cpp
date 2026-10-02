@@ -8,7 +8,7 @@ OdeSolverImex::OdeSolverImex(PetscInt maxNumSteps,PetscReal finalT,PetscReal del
   _runTime(0),_controlType(controlType),_normType("L2_absolute"),
   _minDeltaT(0),_maxDeltaT(finalT),
   _totTol(1e-9),
-  _numRejectedSteps(0),_numMinSteps(0),_numMaxSteps(0)
+  _numRejectedSteps(0),_numMinSteps(0),_numMaxSteps(0),_numInaccurateSteps(0)
 {
 #if VERBOSE > 1
   PetscPrintf(PETSC_COMM_WORLD,"Starting OdeSolverImex constructor in odeSolverImex.cpp.\n");
@@ -141,6 +141,7 @@ PetscErrorCode RK32_WBE::view()
   ierr = PetscPrintf(PETSC_COMM_WORLD,"   tolerance: %g\n",_totTol);CHKERRQ(ierr);
   ierr = PetscPrintf(PETSC_COMM_WORLD,"   number of rejected steps: %i\n",_numRejectedSteps);CHKERRQ(ierr);
   ierr = PetscPrintf(PETSC_COMM_WORLD,"   number of times min step size enforced: %i\n",_numMinSteps);CHKERRQ(ierr);
+  ierr = PetscPrintf(PETSC_COMM_WORLD,"   number of steps accepted with error above the tolerance: %i\n",_numInaccurateSteps);CHKERRQ(ierr);
   ierr = PetscPrintf(PETSC_COMM_WORLD,"   number of times max step size enforced: %i\n",_numMaxSteps);CHKERRQ(ierr);
   ierr = PetscPrintf(PETSC_COMM_WORLD,"   total run time: %g\n",_runTime);CHKERRQ(ierr);
   ierr = PetscPrintf(PETSC_COMM_WORLD,"\n");CHKERRQ(ierr);
@@ -444,7 +445,14 @@ PetscErrorCode RK32_WBE::integrate(IntegratorContextImex *obj)
       // Accept the step as computed when the step size cannot be reduced further or there
       // have been too many attempts: state and time must advance with the same _deltaT
       // (the old code shrank _deltaT, then accepted the state computed with the larger one).
-      if (_deltaT <= _minDeltaT || attemptCount >= 100) { break; }
+      if (_deltaT <= _minDeltaT || attemptCount >= 100) {
+        // the step is accepted with its error above the tolerance
+        if (_numInaccurateSteps++ == 0) {
+          PetscPrintf(PETSC_COMM_WORLD,"Warning: a step was accepted with error %g above the tolerance %g, at the minimum step minDeltaT = %g s\n"
+            "         (or after 100 attempts). Results are inaccurate there; lower minDeltaT. The run summary counts such steps.\n",_totErr,_totTol,_minDeltaT);
+        }
+        break;
+      }
       _deltaT = computeStepSize(_totErr);
 
       _numRejectedSteps++;
@@ -669,6 +677,7 @@ PetscErrorCode RK43_WBE::view()
   ierr = PetscPrintf(PETSC_COMM_WORLD,"   tolerance: %g\n",_totTol);CHKERRQ(ierr);
   ierr = PetscPrintf(PETSC_COMM_WORLD,"   number of rejected steps: %i\n",_numRejectedSteps);CHKERRQ(ierr);
   ierr = PetscPrintf(PETSC_COMM_WORLD,"   number of times min step size enforced: %i\n",_numMinSteps);CHKERRQ(ierr);
+  ierr = PetscPrintf(PETSC_COMM_WORLD,"   number of steps accepted with error above the tolerance: %i\n",_numInaccurateSteps);CHKERRQ(ierr);
   ierr = PetscPrintf(PETSC_COMM_WORLD,"   number of times max step size enforced: %i\n",_numMaxSteps);CHKERRQ(ierr);
   ierr = PetscPrintf(PETSC_COMM_WORLD,"   total run time: %g\n",_runTime);CHKERRQ(ierr);
   ierr = PetscPrintf(PETSC_COMM_WORLD,"\n");CHKERRQ(ierr);
@@ -1099,7 +1108,14 @@ PetscErrorCode RK43_WBE::integrate(IntegratorContextImex *obj)
       // Accept the step as computed when the step size cannot be reduced further or there
       // have been too many attempts: state and time must advance with the same _deltaT
       // (the old code shrank _deltaT, then accepted the state computed with the larger one).
-      if (_deltaT <= _minDeltaT || attemptCount >= 100) { break; }
+      if (_deltaT <= _minDeltaT || attemptCount >= 100) {
+        // the step is accepted with its error above the tolerance
+        if (_numInaccurateSteps++ == 0) {
+          PetscPrintf(PETSC_COMM_WORLD,"Warning: a step was accepted with error %g above the tolerance %g, at the minimum step minDeltaT = %g s\n"
+            "         (or after 100 attempts). Results are inaccurate there; lower minDeltaT. The run summary counts such steps.\n",_totErr,_totTol,_minDeltaT);
+        }
+        break;
+      }
       _deltaT = computeStepSize(_totErr);
 
       _numRejectedSteps++;

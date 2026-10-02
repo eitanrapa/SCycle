@@ -278,7 +278,7 @@ RK32::RK32(PetscInt maxNumSteps,PetscReal finalT,PetscReal deltaT,string control
   : OdeSolver(maxNumSteps,finalT,deltaT,controlType),
     _minDeltaT(0),_maxDeltaT(finalT),
     _totTol(1e-9),_kappa(0.9),_ord(3.0),
-    _numRejectedSteps(0),_numMinSteps(0),_numMaxSteps(0)
+    _numRejectedSteps(0),_numMinSteps(0),_numMaxSteps(0),_numInaccurateSteps(0)
 {
   _totErr = 0; // error estimate of the last step (written to checkpoints)
 
@@ -340,6 +340,7 @@ PetscErrorCode RK32::view()
   ierr = PetscPrintf(PETSC_COMM_WORLD,"   tolerance: %g\n",_totTol);CHKERRQ(ierr);
   ierr = PetscPrintf(PETSC_COMM_WORLD,"   number of rejected steps: %i\n",_numRejectedSteps);CHKERRQ(ierr);
   ierr = PetscPrintf(PETSC_COMM_WORLD,"   number of times min step size enforced: %i\n",_numMinSteps);CHKERRQ(ierr);
+  ierr = PetscPrintf(PETSC_COMM_WORLD,"   number of steps accepted with error above the tolerance: %i\n",_numInaccurateSteps);CHKERRQ(ierr);
   ierr = PetscPrintf(PETSC_COMM_WORLD,"   number of times max step size enforced: %i\n",_numMaxSteps);CHKERRQ(ierr);
   ierr = PetscPrintf(PETSC_COMM_WORLD,"   total run time: %g\n",_runTime);CHKERRQ(ierr);
 
@@ -667,7 +668,14 @@ PetscErrorCode RK32::integrate(IntegratorContextEx *obj)
       // Accept the step as computed when the step size cannot be reduced further or there
       // have been too many attempts: state and time must advance with the same _deltaT
       // (the old code shrank _deltaT, then accepted the state computed with the larger one).
-      if (_deltaT <= _minDeltaT || attemptCount >= 100) { break; }
+      if (_deltaT <= _minDeltaT || attemptCount >= 100) {
+        // the step is accepted with its error above the tolerance
+        if (_numInaccurateSteps++ == 0) {
+          PetscPrintf(PETSC_COMM_WORLD,"Warning: a step was accepted with error %g above the tolerance %g, at the minimum step minDeltaT = %g s\n"
+            "         (or after 100 attempts). Results are inaccurate there; lower minDeltaT. The run summary counts such steps.\n",_totErr,_totTol,_minDeltaT);
+        }
+        break;
+      }
       _deltaT = computeStepSize(_totErr);
 
       _numRejectedSteps++;
@@ -782,7 +790,7 @@ RK43::RK43(PetscInt maxNumSteps,PetscReal finalT,PetscReal deltaT,string control
   : OdeSolver(maxNumSteps,finalT,deltaT,controlType),
   _minDeltaT(0),_maxDeltaT(finalT),
   _totTol(1e-9),_kappa(0.9),_ord(4.0),
-  _numRejectedSteps(0),_numMinSteps(0),_numMaxSteps(0)
+  _numRejectedSteps(0),_numMinSteps(0),_numMaxSteps(0),_numInaccurateSteps(0)
 {
   _totErr = 0; // error estimate of the last step (written to checkpoints)
   #if VERBOSE > 1
@@ -849,6 +857,7 @@ PetscErrorCode RK43::view()
   ierr = PetscPrintf(PETSC_COMM_WORLD,"   tolerance: %g\n",_totTol);CHKERRQ(ierr);
   ierr = PetscPrintf(PETSC_COMM_WORLD,"   number of rejected steps: %i\n",_numRejectedSteps);CHKERRQ(ierr);
   ierr = PetscPrintf(PETSC_COMM_WORLD,"   number of times min step size enforced: %i\n",_numMinSteps);CHKERRQ(ierr);
+  ierr = PetscPrintf(PETSC_COMM_WORLD,"   number of steps accepted with error above the tolerance: %i\n",_numInaccurateSteps);CHKERRQ(ierr);
   ierr = PetscPrintf(PETSC_COMM_WORLD,"   number of times max step size enforced: %i\n",_numMaxSteps);CHKERRQ(ierr);
   ierr = PetscPrintf(PETSC_COMM_WORLD,"   total run time: %g\n",_runTime);CHKERRQ(ierr);
   return 0;
@@ -1290,7 +1299,14 @@ PetscErrorCode RK43::integrate(IntegratorContextEx *obj)
       // Accept the step as computed when the step size cannot be reduced further or there
       // have been too many attempts: state and time must advance with the same _deltaT
       // (the old code shrank _deltaT, then accepted the state computed with the larger one).
-      if (_deltaT <= _minDeltaT || attemptCount >= 100) { break; }
+      if (_deltaT <= _minDeltaT || attemptCount >= 100) {
+        // the step is accepted with its error above the tolerance
+        if (_numInaccurateSteps++ == 0) {
+          PetscPrintf(PETSC_COMM_WORLD,"Warning: a step was accepted with error %g above the tolerance %g, at the minimum step minDeltaT = %g s\n"
+            "         (or after 100 attempts). Results are inaccurate there; lower minDeltaT. The run summary counts such steps.\n",_totErr,_totTol,_minDeltaT);
+        }
+        break;
+      }
       _deltaT = computeStepSize(_totErr);
 
       _numRejectedSteps++;
