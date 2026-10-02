@@ -457,6 +457,13 @@ PetscErrorCode RK32_WBE::integrate(IntegratorContextImex *obj)
     for (map<string,Vec>::iterator it = _vardTIm.begin(); it!=_vardTIm.end(); it++ ) {
       VecCopy(_vardTIm[it->first],_varIm[it->first]);
     }
+    // Explicit rates at the accepted state, now including the updated implicit variables. They
+    // are the first stage of the next step and are exactly what a restart from this state
+    // computes, so restarted runs continue bit-identically.
+    for (map<string,Vec>::iterator it = _varEx.begin(); it!=_varEx.end(); it++ ) {
+      VecSet(_dvar[it->first],0.0);
+    }
+    ierr = obj->d_dt(_currT,_varEx,_dvar);CHKERRQ(ierr);
 
     // compute new deltaT for next time step
     // but timeMonitor before updating to newDeltaT, to keep output consistent while allowing for checkpointing
@@ -1096,6 +1103,13 @@ PetscErrorCode RK43_WBE::integrate(IntegratorContextImex *obj)
       VecCopy(_vardTIm[it->first],_varIm[it->first]);
       VecSet(_vardTIm[it->first],0.);
     }
+    // Explicit rates at the accepted state, now including the updated implicit variables. They
+    // are the first stage of the next step and are exactly what a restart from this state
+    // computes, so restarted runs continue bit-identically.
+    for (map<string,Vec>::iterator it = _varEx.begin(); it!=_varEx.end(); it++ ) {
+      VecSet(_dvar[it->first],0.0);
+    }
+    ierr = obj->d_dt(_currT,_varEx,_dvar);CHKERRQ(ierr);
     // compute new deltaT for next time step
     // but timeMonitor before updating to newDeltaT, to keep output consistent while allowing for checkpointing
     if (_totErr!=0.0) { _newDeltaT = computeStepSize(_totErr); }

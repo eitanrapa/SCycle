@@ -1177,6 +1177,17 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::d_dt(const PetscScalar time,const map<str
   #if VERBOSE > 1
      PetscPrintf(PETSC_COMM_WORLD,"Ending %s in %s\n",funcName.c_str(),FILENAME);
   #endif
+  // 4. Pass the updated implicit variables to the components they feed back into, so the explicit
+  //    rates evaluated next (the integrator recomputes them before the next step) use T^{n+1} and
+  //    p^{n+1} rather than the previous step's values.
+  if (_thermalCoupling == "coupled" && varIm.find("Temp") != varIm.end()) {
+    ierr = _fault->updateTemperature(varIm.find("Temp")->second); CHKERRQ(ierr);
+    ierr = _material->updateTemperature(varIm.find("Temp")->second); CHKERRQ(ierr);
+  }
+  if (_hydraulicCoupling == "coupled" && varIm.find("pressure") != varIm.end()) {
+    ierr = _fault->setSNEff(varIm.find("pressure")->second); CHKERRQ(ierr);
+  }
+
   return ierr;
 }
 
