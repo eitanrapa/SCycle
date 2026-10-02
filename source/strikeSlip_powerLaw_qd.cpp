@@ -112,6 +112,26 @@ StrikeSlip_PowerLaw_qd::StrikeSlip_PowerLaw_qd(Domain&D)
     for (size_t i = 0; i < _pressures.size(); i++) { _faults[i]->setSNEff(_pressures[i]->_p); }
   }
 
+  // bulk state fields that feed back into the viscosity
+  {
+    HardeningState *h = new HardeningState(D,_material->_T);
+    if (h->_type == "off") { delete h; } else { _bulkStates.push_back(h); }
+  }
+  if (!_bulkStates.empty()) {
+    if (_material->_wLinearMaxwell == "yes" || _isMMS) {
+      PetscPrintf(PETSC_COMM_WORLD,"Error: bulk state fields (hard_type, ...) need a power law whose viscosity is recomputed: not with wLinearMaxwell = yes or isMMS.\n");
+      assert(0);
+    }
+    for (size_t i = 0; i < _bulkStates.size(); i++) {
+      if (_bulkStates[i]->_name == "hard" && _material->_wDislCreep != "yes") {
+        PetscPrintf(PETSC_COMM_WORLD,"Error: strain hardening (hard_type) acts on dislocation creep: it needs wDislCreep = yes.\n");
+        assert(0);
+      }
+      _bulkStates[i]->addErrorControl(_timeIntInds,_scale);
+      _bulkStates[i]->pushToMaterial(*_material);
+    }
+  }
+
   //~ // grain size distribution
   if (_evolveGrainSize == 1 || _computeSSGrainSize == 1) { _grainDist = new GrainSizeEvolution(D); }
   if (_grainSizeEvCoupling == "coupled") { VecCopy(_grainDist->_d, _material->_grainSize); }
@@ -184,6 +204,8 @@ StrikeSlip_PowerLaw_qd::~StrikeSlip_PowerLaw_qd()
   delete _he;          _he = NULL;
   for (size_t i = 0; i < _pressures.size(); i++) { delete _pressures[i]; }
   _pressures.clear();  _p = NULL;
+  for (size_t i = 0; i < _bulkStates.size(); i++) { delete _bulkStates[i]; }
+  _bulkStates.clear();
   delete _grainDist;   _grainDist = NULL;
 
   if (_varSS.find("v") != _varSS.end()) { VecDestroy(&_varSS["v"]); }
@@ -635,6 +657,7 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::initiateIntegrand()
 
   _material->initiateIntegrand(_initTime,_varEx);
   for (size_t i = 0; i < _faults.size(); i++) { ierr = _faults[i]->initiateIntegrand(_initTime,_varEx); CHKERRQ(ierr); }
+  for (size_t i = 0; i < _bulkStates.size(); i++) { ierr = _bulkStates[i]->initiateIntegrand(_initTime,_varEx); CHKERRQ(ierr); }
 
   if (_evolveTemperature == 1) {
      _he->initiateIntegrand(_initTime,_varEx,_varIm);
@@ -703,6 +726,7 @@ double startTime = MPI_Wtime();
     ierr = _material->writeStep2D(_viewer2D);CHKERRQ(ierr);
     if (_evolveTemperature == 1) { ierr =  _he->writeStep2D(_viewer2D);CHKERRQ(ierr); }
     if (_evolveGrainSize == 1) { ierr =  _grainDist->writeStep(_viewer2D);CHKERRQ(ierr); }
+    for (size_t i = 0; i < _bulkStates.size(); i++) { ierr = _bulkStates[i]->writeStep(_viewer2D); CHKERRQ(ierr); }
   }
 
   if ( _D->_saveChkpts == 1 && ((_strideChkpt > 0 && stepCount % _strideChkpt == 0) || (_currTime == _maxTime)) ) {
@@ -714,6 +738,7 @@ double startTime = MPI_Wtime();
     if (_quadEx != NULL) { ierr = _quadEx->writeCheckpoint(_viewer_chkpt); CHKERRQ(ierr); }
     if (_quadImex != NULL) { ierr = _quadImex->writeCheckpoint(_viewer_chkpt); CHKERRQ(ierr); }
     if (_grainDist != NULL) { ierr =  _grainDist->writeCheckpoint(_viewer_chkpt);CHKERRQ(ierr); }
+    for (size_t i = 0; i < _bulkStates.size(); i++) { ierr = _bulkStates[i]->writeCheckpoint(_viewer_chkpt); CHKERRQ(ierr); }
     for (size_t i = 0; i < _pressures.size(); i++) { ierr = _pressures[i]->writeCheckpoint(_viewer_chkpt); CHKERRQ(ierr); }
     // output so far is made consistent on disk first, then the checkpoint replaces the old one
     ierr = flushHDF5Viewer(_viewer1D); CHKERRQ(ierr);
@@ -731,6 +756,14 @@ double startTime = MPI_Wtime();
     PetscScalar maxDeltaT_grainSizeEv = 0;
     ierr =  _grainDist->computeMaxTimeStep(maxDeltaT_grainSizeEv,_material->_sdev,_material->_dgVdev_disl,_material->_T); CHKERRQ(ierr);
     maxTimeStep_tot = min(maxTimeStep_tot,0.9*maxDeltaT_grainSizeEv); // keep the Maxwell-time limit too
+  }
+  if (!_bulkStates.empty()) { // and the relaxation time of each bulk state law
+    const BulkInputs in = bulkInputs(time);
+    for (size_t i = 0; i < _bulkStates.size(); i++) {
+      PetscScalar dt = 0;
+      ierr = _bulkStates[i]->computeMaxTimeStep(in,dt); CHKERRQ(ierr);
+      maxTimeStep_tot = min(maxTimeStep_tot,dt);
+    }
   }
 
   // communicate maximum allowed time step to time integrator
@@ -1068,6 +1101,7 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::writeContext()
   if (_he != NULL) { _he->writeContext(_outputDir, _viewer_context); }
   for (size_t i = 0; i < _pressures.size(); i++) { _pressures[i]->writeContext(_outputDir, _viewer_context); }
   if (_grainSizeEvCoupling != "no") { _grainDist->writeContext(_outputDir, _viewer_context); }
+  for (size_t i = 0; i < _bulkStates.size(); i++) { ierr = _bulkStates[i]->writeContext(_viewer_context); CHKERRQ(ierr); }
 
   if (_forcingType == "iceStream") {
     ierr = PetscViewerHDF5PushGroup(_viewer_context, "/momBal");        CHKERRQ(ierr);
@@ -1183,6 +1217,10 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::d_dt(const PetscScalar time,const map<str
   for (size_t i = 0; i < _pressures.size(); i++) {
     if (varEx.find(_pressures[i]->_pKey) != varEx.end()) { ierr = _pressures[i]->updateFields(time,varEx); CHKERRQ(ierr); }
   }
+  for (size_t i = 0; i < _bulkStates.size(); i++) {
+    ierr = _bulkStates[i]->updateFields(time,varEx); CHKERRQ(ierr);
+    ierr = _bulkStates[i]->pushToMaterial(*_material); CHKERRQ(ierr);
+  }
   if ( varEx.find("grainSize") != varEx.end() ) { _grainDist->updateFields(time,varEx); }
   if ( _grainSizeEvCoupling == "coupled" ) { _material->updateGrainSize(_grainDist->_d); }
 
@@ -1220,6 +1258,12 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::d_dt(const PetscScalar time,const map<str
   // strength, cohesion included, that are written out)
   for (size_t i = 0; i < _faults.size(); i++) {
     ierr = _faults[i]->d_dt(time,varEx,dvarEx); CHKERRQ(ierr); // sets rates for slip and state
+  }
+
+  // rates of the bulk state fields (after the faults, for laws that use fault quantities)
+  if (!_bulkStates.empty()) {
+    const BulkInputs in = bulkInputs(time);
+    for (size_t i = 0; i < _bulkStates.size(); i++) { ierr = _bulkStates[i]->d_dt(in,dvarEx); CHKERRQ(ierr); }
   }
 
   // pressure and permeability rates (after the fault, since dk_dt uses the slip rate in dvarEx["slip"])
@@ -1260,6 +1304,10 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::d_dt(const PetscScalar time,const map<str
 
   _material->updateFields(time,varEx);
   for (size_t i = 0; i < _faults.size(); i++) { ierr = _faults[i]->updateFields(time,varEx); CHKERRQ(ierr); }
+  for (size_t i = 0; i < _bulkStates.size(); i++) {
+    ierr = _bulkStates[i]->updateFields(time,varEx); CHKERRQ(ierr);
+    ierr = _bulkStates[i]->pushToMaterial(*_material); CHKERRQ(ierr);
+  }
 
   for (size_t i = 0; i < _pressures.size(); i++) {
     PressureEq *p = _pressures[i];
@@ -1308,6 +1356,12 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::d_dt(const PetscScalar time,const map<str
     }
     else { ierr = _lifts[i]->traction(_material->_sxy, _material->_mu, f->_tauQSP); CHKERRQ(ierr); }
     ierr = f->d_dt(time,varEx,dvarEx); CHKERRQ(ierr); // sets rates for slip and state
+  }
+
+  // rates of the bulk state fields (after the faults, for laws that use fault quantities)
+  if (!_bulkStates.empty()) {
+    const BulkInputs in = bulkInputs(time);
+    for (size_t i = 0; i < _bulkStates.size(); i++) { ierr = _bulkStates[i]->d_dt(in,dvarEx); CHKERRQ(ierr); }
   }
 
   // pressure and permeability (after the fault, since dk_dt uses the slip rate in dvarEx["slip"])
@@ -1473,6 +1527,18 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::computeSurfVel()
   ierr = VecScatterBegin(_D->_scatters["body2T"], _vel, _surfVel, INSERT_VALUES, SCATTER_FORWARD); CHKERRQ(ierr);
   ierr = VecScatterEnd(_D->_scatters["body2T"], _vel, _surfVel, INSERT_VALUES, SCATTER_FORWARD); CHKERRQ(ierr);
   return ierr;
+}
+
+
+BulkInputs StrikeSlip_PowerLaw_qd::bulkInputs(const PetscScalar time) const
+{
+  BulkInputs in;
+  in.time = time;
+  in.sdev = _material->_sdev;
+  in.dgVdev = _material->_dgVdev;
+  in.dgVdev_disl = _material->_dgVdev_disl;
+  in.T = _material->_T;
+  return in;
 }
 
 

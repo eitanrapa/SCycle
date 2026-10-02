@@ -18,6 +18,7 @@
 #include "odeSolverImex.hpp"
 #include "genFuncs.hpp"
 #include "domain.hpp"
+#include "bulkStateField.hpp"
 #include "sbpOps.hpp"
 #include "sbpOps_m_constGrid.hpp"
 #include "sbpOps_m_varGrid.hpp"

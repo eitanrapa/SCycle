@@ -25,7 +25,7 @@ OBJECTS := domain.o fault.o genFuncs.o \
  dislocationCreep.o diffusionCreep.o dissolutionPrecipitationCreep.o pseudoplasticity.o powerLaw.o \
  heatEquation.o grainSizeEvolution.o \
  spmat.o sbpOps_m_constGrid.o sbpOps_m_varGrid.o \
- odeSolverImex.o odeSolver_WaveEq.o odeSolver_WaveImex.o pressureEq.o interiorFaultLift.o multiFault.o \
+ odeSolverImex.o odeSolver_WaveEq.o odeSolver_WaveImex.o pressureEq.o interiorFaultLift.o multiFault.o bulkStateField.o hardeningState.o \
  strikeSlip_linearElastic_qd.o strikeSlip_powerLaw_qd.o \
  strikeSlip_linearElastic_fd.o strikeSlip_linearElastic_qd_fd.o strikeSlip_powerLaw_qd_fd.o
 

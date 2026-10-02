@@ -22,6 +22,7 @@
 #include "sbpOps_m_varGrid.hpp"
 #include "fault.hpp"
 #include "multiFault.hpp"
+#include "hardeningState.hpp"
 #include "pressureEq.hpp"
 #include "heatEquation.hpp"
 #include "powerLaw.hpp"
@@ -142,6 +143,11 @@ public:
   FaultSeries                     _series;
   FaultWorkKernel                 _faultWork; // interior faults with heat: frictional work spread into the body
   Vec                             _Qfault;    // its result, the heat equation's frictional source
+
+  // bulk state fields that feed back into the viscosity (docs/REVERSIBLE_STRENGTH_PLAN.md): strain
+  // hardening, ...; owned
+  std::vector<BulkStateField*> _bulkStates;
+  BulkInputs bulkInputs(const PetscScalar time) const; // the current stress, strain rates and temperature
 
   PowerLaw               *_material; // power-law viscoelastic off-fault material properties
   HeatEquation           *_he;

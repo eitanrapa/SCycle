@@ -13,7 +13,8 @@ only by the pressure equation; the momentum balance reads linSolverSS and
 linSolverTrans, and the heat equation linSolver_heateq. Check the component's loadSettings when in doubt.
 
 Interior faults: for each name in interiorFaults = [...], the keys <name>_y and
-<name>_<key> (for any key above) are accepted.
+<name>_<key> (for any key above) are accepted. Bulk state fields (hard_, ...): their common
+keys, built at run time from the prefix, are added from each field's constructor.
 
 Usage: tools/checkkeys.py file.in [file.in ...]   (exit status 1 if any are unknown)
 """
@@ -35,6 +36,19 @@ for name in os.listdir(src):
 for m in re.finditer(r'"disl"\s*\+\s*_prefix\s*\+\s*"(_\w+)"', open(os.path.join(src, 'dislocationCreep.cpp')).read()):
     for prefix in ('', '2'):
         known.add('disl' + prefix + m.group(1))
+
+# bulk state fields (bulkStateField.cpp): BulkStateField(D,"name","prefix","symbol") reads the common
+# keys <prefix>type, <prefix><symbol>Vals, ... that parseCommon builds at run time
+common = open(os.path.join(src, 'bulkStateField.cpp')).read()
+plain = re.findall(r'_prefix\s*\+\s*"(\w+)"', common)
+withsym = re.findall(r'_prefix\s*\+\s*_symbol\s*\+\s*"(\w+)"', common)
+for name in os.listdir(src):
+    if name.endswith('.cpp'):
+        for m in re.finditer(r'BulkStateField\(D,\s*"(\w+)",\s*"(\w+)",\s*"(\w+)"\)', open(os.path.join(src, name), errors='replace').read()):
+            prefix, symbol = m.group(2), m.group(3)
+            known.update(prefix + k for k in plain)
+            known.update(prefix + symbol + k for k in withsym)
+
 
 def interior_faults(path):
     """Names listed by interiorFaults = [name ...] in an input file."""

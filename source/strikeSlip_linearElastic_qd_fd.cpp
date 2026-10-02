@@ -37,6 +37,7 @@ StrikeSlip_LinearElastic_qd_fd::StrikeSlip_LinearElastic_qd_fd(Domain&D)
     _quadEx_qd(NULL),_quadImex_qd(NULL), _quadWaveEx(NULL), _quadWaveImex(NULL),
     _fault_qd(NULL),_fault_fd(NULL), _material(NULL),_he(NULL),_p(NULL)
 {
+  refuseBulkStates(D._file,D._delim,"StrikeSlip_LinearElastic_qd_fd"); // hard_type, water_type, ... need StrikeSlip_PowerLaw_qd
 #if VERBOSE > 1
   std::string funcName = "StrikeSlip_LinearElastic_qd_fd::StrikeSlip_LinearElastic_qd_fd()";
   PetscPrintf(PETSC_COMM_WORLD,"Starting %s in %s\n",funcName.c_str(),FILENAME);

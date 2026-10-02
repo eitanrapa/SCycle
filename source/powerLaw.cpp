@@ -27,6 +27,7 @@ PowerLaw::PowerLaw(Domain& D,std::string bcRType,std::string bcTType,std::string
     PetscPrintf(PETSC_COMM_WORLD,"Starting %s in %s\n",funcName.c_str(),FILENAME);
   #endif
 
+  _hardH = NULL;
   loadSettings(_file);
   checkInput();
   allocateFields(); // initialize fields
@@ -68,6 +69,7 @@ PowerLaw::PowerLaw(Domain& D,std::string bcRType,std::string bcTType,std::string
 
 PowerLaw::~PowerLaw()
 {
+  VecDestroy(&_hardH);
   #if VERBOSE > 1
     string funcName = "PowerLaw::~PowerLaw";
     PetscPrintf(PETSC_COMM_WORLD,"Starting %s in %s\n",funcName.c_str(),FILENAME);
@@ -990,6 +992,10 @@ PetscErrorCode PowerLaw::computeViscosity(const PetscScalar viscCap)
   if (_wDissPrecCreep.compare("yes")==0) { _dp->computeInvEffVisc(_T,_sdev,_grainSize,_wetDist); }
   if (_wDislCreep.compare("yes")==0) { _disl->computeInvEffVisc(_T,_sdev); }
   if (_wDislCreep2.compare("yes")==0) { _disl2->computeInvEffVisc(_T,_sdev); }
+  if (_hardH != NULL) { // strain hardening: the dislocation strain rate at a given stress is divided by H^n
+    if (_wDislCreep.compare("yes")==0) { ierr = applyHardening(_disl->_invEffVisc,_disl->_n,true); CHKERRQ(ierr); }
+    if (_wDislCreep2.compare("yes")==0) { ierr = applyHardening(_disl2->_invEffVisc,_disl2->_n,true); CHKERRQ(ierr); }
+  }
   if (_wDiffCreep.compare("yes")==0) { _diff->computeInvEffVisc(_T,_sdev,_grainSize); }
 
   // 1 / effVisc = 1/(plastic eff visc) + 1/(disl eff visc) + 1/(diff eff visc) + 1/(max eff visc)
@@ -1129,6 +1135,38 @@ PetscErrorCode PowerLaw::computeTotalStrains()
   #endif
   return ierr;
 }
+
+// strain hardening (HardeningState): keep H(S) for computeViscosity and guessSteadyStateEffVisc
+PetscErrorCode PowerLaw::updateHardening(const Vec& H)
+{
+  PetscErrorCode ierr = 0;
+  if (_hardH == NULL) {
+    ierr = VecDuplicate(H,&_hardH); CHKERRQ(ierr);
+    ierr = PetscObjectSetName((PetscObject) _hardH, "hardH"); CHKERRQ(ierr);
+  }
+  ierr = VecCopy(H,_hardH); CHKERRQ(ierr);
+  return ierr;
+}
+
+
+// invEffVisc *= H^-n at a given stress (computeViscosity), H^-1 at a given strain rate (the guess)
+PetscErrorCode PowerLaw::applyHardening(Vec& invEffVisc, const Vec& n, const bool atGivenStress)
+{
+  PetscErrorCode ierr = 0;
+  PetscInt Istart, Iend;
+  ierr = VecGetOwnershipRange(invEffVisc,&Istart,&Iend); CHKERRQ(ierr);
+  PetscScalar *v;
+  const PetscScalar *H, *nn;
+  ierr = VecGetArray(invEffVisc,&v); CHKERRQ(ierr);
+  ierr = VecGetArrayRead(_hardH,&H); CHKERRQ(ierr);
+  ierr = VecGetArrayRead(n,&nn); CHKERRQ(ierr);
+  for (PetscInt Jj = 0; Jj < Iend - Istart; Jj++) { v[Jj] *= pow(H[Jj], atGivenStress ? -nn[Jj] : -1.0); }
+  ierr = VecRestoreArray(invEffVisc,&v); CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(_hardH,&H); CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(n,&nn); CHKERRQ(ierr);
+  return ierr;
+}
+
 
 // interior faults whose jumps computeTotalStrains removes from the y-strain near each fault
 PetscErrorCode PowerLaw::setInteriorFaults(const std::vector<InteriorFaultLift*>& lifts)
@@ -1338,6 +1376,10 @@ PetscErrorCode PowerLaw::guessSteadyStateEffVisc(const PetscScalar strainRate)
   //~ if (_wDissPrecCreep.compare("yes")==0) { assert(0); } // this requires a nonlinear solve, and may not be wanted
   if (_wDislCreep.compare("yes")==0) { _disl->guessInvEffVisc(_T,strainRate); }
   if (_wDislCreep2.compare("yes")==0) { _disl2->guessInvEffVisc(_T,strainRate); }
+  if (_hardH != NULL) { // strain hardening: at a given strain rate the stress is H times larger
+    if (_wDislCreep.compare("yes")==0) { ierr = applyHardening(_disl->_invEffVisc,_disl->_n,false); CHKERRQ(ierr); }
+    if (_wDislCreep2.compare("yes")==0) { ierr = applyHardening(_disl2->_invEffVisc,_disl2->_n,false); CHKERRQ(ierr); }
+  }
   if (_wDiffCreep.compare("yes")==0) { _diff->guessInvEffVisc(_T,strainRate,_grainSize); }
 
   // 1 / effVisc = 1/(plastic eff visc) + 1/(disl eff visc) + 1/(diff eff visc) + 1/(max eff visc)

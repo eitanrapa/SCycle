@@ -43,6 +43,7 @@ StrikeSlip_PowerLaw_qd_fd::StrikeSlip_PowerLaw_qd_fd(Domain&D)
   _quadEx_qd(NULL),_quadImex_qd(NULL),_quadWaveEx(NULL),
   _fault_qd(NULL),_material(NULL),_he(NULL),_p(NULL),_grainDist(NULL)
 {
+  refuseBulkStates(D._file,D._delim,"StrikeSlip_PowerLaw_qd_fd"); // hard_type, water_type, ... need StrikeSlip_PowerLaw_qd
   #if VERBOSE > 1
     std::string funcName = "StrikeSlip_PowerLaw_qd_fd::StrikeSlip_PowerLaw_qd_fd()";
     PetscPrintf(PETSC_COMM_WORLD,"Starting %s in %s\n",funcName.c_str(),FILENAME);

@@ -64,6 +64,7 @@ class PowerLaw
     Vec                   _sxy,_sxz,_sdev; // sigma_xz (MPa), deviatoric stress (MPa)
     Vec                   _gTxy,_gVxy,_dgVxy; // total strain, viscous strain, and viscous strain rate
     std::vector<InteriorFaultLift*> _lifts; // interior faults: gTxy is corrected near each (not owned)
+    Vec                   _hardH; // strain hardening H(S) (HardeningState), NULL when off
     Vec                   _gTxz,_gVxz,_dgVxz; // total strain, viscous strain, and viscous strain rate
     Vec                   _dgVdev,_dgVdev_disl; // deviatoric strain rate
 
@@ -132,6 +133,8 @@ class PowerLaw
     PetscErrorCode computeViscousStrainRateSAT(Vec &u, Vec &gL, Vec &gR, Vec &out);
     PetscErrorCode computeTotalStrains();
     PetscErrorCode setInteriorFaults(const std::vector<InteriorFaultLift*>& lifts); // NULL entries are skipped
+    PetscErrorCode updateHardening(const Vec& H); // strain hardening: dislocation creep at a given stress / H^n
+    PetscErrorCode applyHardening(Vec& invEffVisc, const Vec& n, const bool atGivenStress);
     PetscErrorCode computeStresses();
     PetscErrorCode computeSDev();
     PetscErrorCode computeDevViscStrainRates(); // deviatoric strains and strain rates

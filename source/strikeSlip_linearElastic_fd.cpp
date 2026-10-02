@@ -22,6 +22,7 @@ StrikeSlip_LinearElastic_fd::StrikeSlip_LinearElastic_fd(Domain&D)
   _mat_bcRType("Neumann"),_mat_bcTType("Neumann"),_mat_bcLType("Neumann"),_mat_bcBType("Neumann"),
   _quadWaveEx(NULL),_fault(NULL),_material(NULL)
 {
+  refuseBulkStates(D._file,D._delim,"StrikeSlip_LinearElastic_fd"); // hard_type, water_type, ... need StrikeSlip_PowerLaw_qd
   #if VERBOSE > 1
     std::string funcName = "StrikeSlip_LinearElastic_fd::StrikeSlip_LinearElastic_fd()";
     PetscPrintf(PETSC_COMM_WORLD,"Starting %s in %s\n",funcName.c_str(),FILENAME);
