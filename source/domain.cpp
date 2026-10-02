@@ -273,6 +273,14 @@ PetscErrorCode Domain::checkInput()
 
   assert(_sbpCompatibilityType.compare("fullyCompatible") == 0 ||
     _sbpCompatibilityType.compare("compatible") == 0);
+  // The "compatible" operators do not converge: the manufactured-solution test (tools/mms.in) gives
+  // displacement errors of about 0.2 at Ny = Nz = 21, 41 and 81 for order 2 and order 4, on constant
+  // and variable grids, while "fullyCompatible" converges (about 1e-5 at N = 41, order 2). Refuse them
+  // until the assembly is fixed rather than return wrong results.
+  if (_sbpCompatibilityType.compare("compatible") == 0) {
+    PetscPrintf(PETSC_COMM_WORLD,"Error: sbpCompatibilityType = compatible fails the MMS convergence test; use fullyCompatible (the default).\n");
+    assert(0);
+  }
 
   if (_bCoordTrans > 0.0) {
     _gridSpacingType = "variableGridSpacing";

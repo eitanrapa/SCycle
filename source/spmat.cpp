@@ -461,12 +461,12 @@ switch ( order ) {
       }
       else if (type.compare("compatible")==0) {
         BS(0,0,11.0/6.0*scale); BS(0,1,-3.0*scale); BS(0,2,1.5*scale); BS(0,3,-1.0/3.0*scale);
-        BS(N-1,N-1,11.0/6.0); BS(N-1,N-2,-3.0); BS(N-1,N-3,1.5); BS(N-1,N-4,-1.0/3.0);
+        BS(N-1,N-1,11.0/6.0*scale); BS(N-1,N-2,-3.0*scale); BS(N-1,N-3,1.5*scale); BS(N-1,N-4,-1.0/3.0*scale);
 
         D1(0,0,-BS(0,0)); D1(0,1,-BS(0,1)); D1(0,2,-BS(0,2)); D1(0,3,-BS(0,3));
-        D1(N-1,N-4,BS(N-1,N-4)); D1(N-1,N-4,BS(N-1,N-4)); D1(N-1,N-2,BS(N-1,N-2)); D1(N-1,N-1,BS(N-1,N-1));
+        D1(N-1,N-4,BS(N-1,N-4)); D1(N-1,N-3,BS(N-1,N-3)); D1(N-1,N-2,BS(N-1,N-2)); D1(N-1,N-1,BS(N-1,N-1));
       }
-      #if VERBOBSE > 2
+      #if VERBOSE > 2
         ierr = PetscPrintf(PETSC_COMM_WORLD,"\n\nBS:\n");CHKERRQ(ierr);
         BS.printPetsc();
       #endif
