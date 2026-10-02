@@ -81,6 +81,9 @@ public:
   PetscErrorCode write(PetscViewer& viewer);
   PetscErrorCode writeHDF5(PetscViewer& viewer);
   PetscErrorCode writeCheckpoint(PetscViewer& viewer);
+  // scatter from a body field (size Ny*Nz) to grid row iy (size Nz, laid out like _y0); created on
+  // first use and kept in _scatters as "body2row<iy>". Row 0 is the left boundary, row Ny-1 the right.
+  PetscErrorCode makeRowScatter(const PetscInt iy, VecScatter*& scatter);
 
 private:
 

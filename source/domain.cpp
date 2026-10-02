@@ -643,6 +643,31 @@ PetscErrorCode Domain::loadCheckpointSS()
 
 // scatters values from one vector to another
 // used to get slip on the fault from the displacement vector, i.e., slip = u(1:Nz); shear stress on the fault from the stress vector sxy; surface displacement; surface heat flux
+// Scatter from a body field (size Ny*Nz, index iy*Nz + iz) to grid row iy (size Nz, laid out like
+// _y0). The row is contiguous in the body vector, and each rank lists only the entries of the row
+// vector it owns. Created on first use and kept in _scatters as "body2row<iy>".
+PetscErrorCode Domain::makeRowScatter(const PetscInt iy, VecScatter*& scatter)
+{
+  PetscErrorCode ierr = 0;
+  if (iy < 0 || iy >= _Ny) {
+    SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_ARG_OUTOFRANGE,"makeRowScatter: row index out of range");
+  }
+  const string key = "body2row" + std::to_string(iy);
+  if (_scatters.find(key) == _scatters.end()) {
+    PetscInt zs, ze;
+    ierr = VecGetOwnershipRange(_y0,&zs,&ze); CHKERRQ(ierr);
+    IS isFrom, isTo;
+    ierr = ISCreateStride(PETSC_COMM_WORLD, ze - zs, iy*_Nz + zs, 1, &isFrom); CHKERRQ(ierr);
+    ierr = ISCreateStride(PETSC_COMM_WORLD, ze - zs, zs, 1, &isTo); CHKERRQ(ierr);
+    ierr = VecScatterCreate(_y, isFrom, _y0, isTo, &_scatters[key]); CHKERRQ(ierr);
+    ierr = ISDestroy(&isFrom); CHKERRQ(ierr);
+    ierr = ISDestroy(&isTo); CHKERRQ(ierr);
+  }
+  scatter = &_scatters[key];
+  return ierr;
+}
+
+
 PetscErrorCode Domain::setScatters()
 {
   PetscErrorCode ierr = 0;
