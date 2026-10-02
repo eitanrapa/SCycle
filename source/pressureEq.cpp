@@ -40,6 +40,7 @@ PressureEq::PressureEq(Domain &D, const string& name)
   }
 
   setUpSBP();
+  setUpRecharge();
 
   // Backward Eular updates
   if (_hydraulicTimeIntType.compare("implicit") == 0) {
@@ -120,6 +121,8 @@ PressureEq::~PressureEq()
   VecDestroy(&_z);
   VecDestroy(&_bcB_gravity);
   VecDestroy(&_bcB_impose);
+  VecDestroy(&_source);
+  VecDestroy(&_qbVec);
   VecDestroy(&_sN);
   KSPDestroy(&_ksp);
 
@@ -250,7 +253,7 @@ PetscErrorCode PressureEq::loadSettings(const char *file)
     for (size_t i = 0; i < vars.size(); i++) {
       if (vars[i].compare(0, _prefix.size(), _prefix) != 0) { continue; }
       const string key = vars[i].substr(_prefix.size());
-      if (key == "guessSteadyStateICs" || key == "linSolver" || key == "hydraulicTimeIntType" || key == "vL") { continue; }
+      if (key == "guessSteadyStateICs" || key == "linSolver" || key == "hydraulicTimeIntType" || key == "vL" || key == "initTime") { continue; }
       parseSetting(key, rhss[i], rhsFulls[i]);
     }
   }
@@ -266,6 +269,16 @@ bool PressureEq::parseSetting(const string& var, const string& rhs, const string
   else if (var.compare("hydraulicTimeIntType") == 0) { _hydraulicTimeIntType = rhs.c_str(); }
   else if (var.compare("bcB_ratio") == 0) { _bcB_ratio = atof(rhs.c_str()); }
   else if (var.compare("bcB_type") == 0) { _bcB_type = rhs.c_str(); }
+  // prescribed basal recharge
+  else if (var.compare("bcB_q0") == 0) { _bcB_q0 = atof(rhs.c_str()); }
+  else if (var.compare("bcB_pulseShape") == 0) { _pulseShape = rhs.c_str(); }
+  else if (var.compare("bcB_pulseAmp") == 0) { _pulseAmp.clear(); loadVectorFromInputFile(rhsFull, _pulseAmp); }
+  else if (var.compare("bcB_pulseCentre") == 0) { _pulseCentre.clear(); loadVectorFromInputFile(rhsFull, _pulseCentre); }
+  else if (var.compare("bcB_pulseHalfDur") == 0) { _pulseHalfDur.clear(); loadVectorFromInputFile(rhsFull, _pulseHalfDur); }
+  else if (var.compare("bcB_pulsePeriod") == 0) { _pulsePeriod.clear(); loadVectorFromInputFile(rhsFull, _pulsePeriod); }
+  else if (var.compare("bcB_sourceDepth") == 0) { _sourceDepth = atof(rhs.c_str()); }
+  else if (var.compare("bcB_sourceWidth") == 0) { _sourceWidth = atof(rhs.c_str()); }
+  else if (var.compare("initTime") == 0) { _runInitTime = atof(rhs.c_str()); }
 
   // loading vector inputs in the input file
   else if (var.compare("sNVals") == 0) { _sigmaNVals.clear(); loadVectorFromInputFile(rhsFull, _sigmaNVals); }
@@ -558,6 +571,33 @@ PetscErrorCode PressureEq::checkInput()
     assert(0);
   }
 
+  // prescribed basal recharge
+  const size_t np = _pulseAmp.size();
+  if (_pulseCentre.size() != np || _pulseHalfDur.size() != np || (!_pulsePeriod.empty() && _pulsePeriod.size() != np)) {
+    PetscPrintf(PETSC_COMM_WORLD,"Error: %sbcB_pulseAmp, bcB_pulseCentre and bcB_pulseHalfDur (and bcB_pulsePeriod, if given) must have the same length.\n",_prefix.c_str());
+    assert(0);
+  }
+  for (size_t i = 0; i < np; i++) {
+    if (!(_pulseHalfDur[i] > 0) || (!_pulsePeriod.empty() && !(_pulsePeriod[i] >= 0))) {
+      PetscPrintf(PETSC_COMM_WORLD,"Error: %sbcB_pulseHalfDur must be > 0 and bcB_pulsePeriod >= 0 (s).\n",_prefix.c_str());
+      assert(0);
+    }
+  }
+  if (_pulseShape != "cosine" && _pulseShape != "gaussian" && _pulseShape != "square") {
+    PetscPrintf(PETSC_COMM_WORLD,"Error: %sbcB_pulseShape must be cosine, gaussian or square.\n",_prefix.c_str());
+    assert(0);
+  }
+  if (rechargeOn() && _bcB_type != "Q") {
+    PetscPrintf(PETSC_COMM_WORLD,"Error: %sbcB_q0, pulses and a recharge source need bcB_type = Q (an imposed flux).\n",_prefix.c_str());
+    assert(0);
+  }
+  if (_sourceDepth >= 0 || _sourceWidth >= 0) {
+    if (!(_sourceWidth > 0) || !(_sourceDepth >= 0) || !(_bcB_q0 >= 0)) {
+      PetscPrintf(PETSC_COMM_WORLD,"Error: a recharge source needs %sbcB_sourceDepth >= 0, bcB_sourceWidth > 0 (km) and bcB_q0 (m/s).\n",_prefix.c_str());
+      assert(0);
+    }
+  }
+
   #if VERBOSE > 1
     PetscPrintf(PETSC_COMM_WORLD, "Ending %s in %s\n", funcName.c_str(), FILENAME);
   #endif
@@ -646,6 +686,151 @@ PetscErrorCode PressureEq::updateBoundaryCoefficient(const Vec &coeff)
 }
 
 
+// Integral over [lo, hi] of the pulse shape P((t - c)/tau) dt / tau, written so that a step much
+// shorter than tau loses no precision: P is a raised cosine (1 + cos(pi s))/2 or a box on |s| < 1
+// (both zero outside), or the Gaussian exp(-s^2/2).
+static PetscScalar pulseIntegral(const string& shape, const PetscScalar c, const PetscScalar tau,
+  PetscScalar lo, PetscScalar hi)
+{
+  if (shape == "gaussian") {
+    if (!(hi > lo)) { return 0.0; }
+    const PetscScalar ds = (hi - lo)/tau;
+    if (ds < 1e-3) { // three-point Gauss-Legendre: the erf difference would cancel
+      const PetscScalar m = 0.5*(lo + hi), h = 0.5*(hi - lo), x = sqrt(0.6)*h;
+      const PetscScalar s0 = (m - c)/tau, sm = (m - x - c)/tau, sp = (m + x - c)/tau;
+      return h/tau*(8.0*exp(-0.5*s0*s0) + 5.0*exp(-0.5*sm*sm) + 5.0*exp(-0.5*sp*sp))/9.0;
+    }
+    return sqrt(M_PI/2.0)*(erf((hi - c)/(sqrt(2.0)*tau)) - erf((lo - c)/(sqrt(2.0)*tau)));
+  }
+  lo = PetscMax(lo, c - tau); hi = PetscMin(hi, c + tau); // support |s| < 1
+  if (!(hi > lo)) { return 0.0; }
+  const PetscScalar ds = (hi - lo)/tau;
+  if (shape == "square") { return ds; }
+  // cosine: (ds + (sin(pi s_hi) - sin(pi s_lo))/pi)/2, the sine difference written as a product
+  return 0.5*(ds + 2.0*cos(M_PI*(0.5*(lo + hi) - c)/tau)*sin(0.5*M_PI*ds)/M_PI);
+}
+
+static PetscScalar pulseValue(const string& shape, const PetscScalar s)
+{
+  if (shape == "gaussian") { return exp(-0.5*s*s); }
+  if (!(fabs(s) < 1.0)) { return 0.0; }
+  return (shape == "square") ? 1.0 : 0.5*(1.0 + cos(M_PI*s));
+}
+
+// f(t) = 1 + sum_i A_i P((t - c_i - k T_i)/tau_i), over the repetitions k when T_i > 0
+PetscScalar PressureEq::pulseFactor(const PetscScalar t) const
+{
+  PetscScalar f = 1.0;
+  for (size_t i = 0; i < _pulseAmp.size(); i++) {
+    const PetscScalar tau = _pulseHalfDur[i], T = _pulsePeriod.empty() ? 0.0 : _pulsePeriod[i], c = _pulseCentre[i];
+    if (!(T > 0)) { f += _pulseAmp[i]*pulseValue(_pulseShape,(t - c)/tau); continue; }
+    const PetscScalar reach = (_pulseShape == "gaussian" ? 12.0 : 1.0)*tau; // P is 0 (or below 1e-31) beyond it
+    const long k0 = (long) ceil((t - c - reach)/T), k1 = (long) floor((t - c + reach)/T);
+    for (long k = k0; k <= k1; k++) { f += _pulseAmp[i]*pulseValue(_pulseShape,(t - c - k*T)/tau); }
+  }
+  return f;
+}
+
+// mean of f over [t1, t2]: the flux that delivers the pulses' volume over a backward-Euler step
+PetscScalar PressureEq::pulseFactorMean(const PetscScalar t1, const PetscScalar t2) const
+{
+  if (!(t2 > t1)) { return pulseFactor(t2); }
+  PetscScalar integral = 0.0; // of f - 1, in units of time
+  for (size_t i = 0; i < _pulseAmp.size(); i++) {
+    const PetscScalar tau = _pulseHalfDur[i], T = _pulsePeriod.empty() ? 0.0 : _pulsePeriod[i], c = _pulseCentre[i];
+    if (!(T > 0)) { integral += _pulseAmp[i]*tau*pulseIntegral(_pulseShape,c,tau,t1,t2); continue; }
+    const PetscScalar reach = (_pulseShape == "gaussian" ? 12.0 : 1.0)*tau;
+    const long k0 = (long) ceil((t1 - c - reach)/T), k1 = (long) floor((t2 - c + reach)/T);
+    for (long k = k0; k <= k1; k++) { integral += _pulseAmp[i]*tau*pulseIntegral(_pulseShape,c + k*T,tau,t1,t2); }
+  }
+  return 1.0 + integral/(t2 - t1);
+}
+
+// the imposed flux scaled by factor: at the base (_bcB), or through the source in depth (dp_dt, be)
+PetscErrorCode PressureEq::applyRecharge(const PetscScalar factor)
+{
+  PetscErrorCode ierr = 0;
+  _rechargeFactor = factor;
+  _qb = _qb0*factor;
+  if (_source == NULL) { ierr = VecWAXPY(_bcB, factor, _bcB_impose, _bcB_gravity); CHKERRQ(ierr); }
+  return ierr;
+}
+
+// prescribed basal recharge: the background flux for output, the source in depth, and the check that
+// no pulse is on at the start (the initial steady state carries the background flux only)
+PetscErrorCode PressureEq::setUpRecharge()
+{
+  PetscErrorCode ierr = 0;
+  if (!rechargeOn()) { return ierr; }
+
+  // background imposed flux (m/s): q0, or the bcB_ratio form, rho_f g k/eta bcB_ratio at the bottom node
+  if (_bcB_q0 >= 0) { _qb0 = _bcB_q0; }
+  else {
+    Vec rho;
+    ierr = VecDuplicate(_bcB, &rho); CHKERRQ(ierr);
+    ierr = VecScatterBegin(_scatters, _rho_f, rho, INSERT_VALUES, SCATTER_FORWARD); CHKERRQ(ierr);
+    ierr = VecScatterEnd(_scatters, _rho_f, rho, INSERT_VALUES, SCATTER_FORWARD); CHKERRQ(ierr);
+    PetscScalar r = 0, imp = 0;
+    ierr = VecSum(rho, &r); CHKERRQ(ierr);
+    ierr = VecSum(_bcB_impose, &imp); CHKERRQ(ierr);
+    _qb0 = imp/(r*1e-3);
+    VecDestroy(&rho);
+  }
+  _qb = _qb0;
+  ierr = VecDuplicate(_bcB, &_qbVec); CHKERRQ(ierr);
+  ierr = PetscObjectSetName((PetscObject) _qbVec, "qb"); CHKERRQ(ierr);
+  ierr = VecSet(_qbVec, _qb); CHKERRQ(ierr);
+
+  // source rho_f q0 G(z) (rho km/s per km): G a Gaussian in depth, normalized with the operator's own
+  // quadrature (sum of H J G = 1) so that the column receives exactly q0
+  if (_sourceDepth >= 0) {
+    Vec G, JG, HJG;
+    ierr = VecDuplicate(_p, &G); CHKERRQ(ierr);
+    ierr = VecDuplicate(_p, &JG); CHKERRQ(ierr);
+    ierr = VecDuplicate(_p, &HJG); CHKERRQ(ierr);
+    PetscInt Istart, Iend;
+    ierr = VecGetOwnershipRange(G, &Istart, &Iend); CHKERRQ(ierr);
+    const PetscScalar *z;
+    PetscScalar *g;
+    ierr = VecGetArrayRead(_z, &z); CHKERRQ(ierr);
+    ierr = VecGetArray(G, &g); CHKERRQ(ierr);
+    for (PetscInt Jj = 0; Jj < Iend - Istart; Jj++) {
+      const PetscScalar d = (z[Jj] - _sourceDepth)/_sourceWidth;
+      g[Jj] = exp(-0.5*d*d);
+    }
+    ierr = VecRestoreArrayRead(_z, &z); CHKERRQ(ierr);
+    ierr = VecRestoreArray(G, &g); CHKERRQ(ierr);
+    if (_D->_gridSpacingType.compare("variableGridSpacing")==0) {
+      Mat J, Jinv, qy, rz, yq, zr;
+      ierr = _sbp->getCoordTrans(J, Jinv, qy, rz, yq, zr); CHKERRQ(ierr);
+      ierr = MatMult(J, G, JG); CHKERRQ(ierr);
+    }
+    else { ierr = VecCopy(G, JG); CHKERRQ(ierr); }
+    ierr = _sbp->H(JG, HJG); CHKERRQ(ierr);
+    PetscScalar N = 0;
+    ierr = VecSum(HJG, &N); CHKERRQ(ierr);
+    if (!(N > 0) || PetscIsInfReal(N)) {
+      SETERRQ(PETSC_COMM_WORLD, PETSC_ERR_ARG_OUTOFRANGE, "the recharge source does not reach the grid: check bcB_sourceDepth and bcB_sourceWidth");
+    }
+    ierr = VecDuplicate(_p, &_source); CHKERRQ(ierr);
+    ierr = PetscObjectSetName((PetscObject) _source, "rechargeSource"); CHKERRQ(ierr);
+    ierr = VecPointwiseMult(_source, G, _rho_f); CHKERRQ(ierr);
+    ierr = VecScale(_source, _bcB_q0*1e-3/N); CHKERRQ(ierr);
+    VecDestroy(&G); VecDestroy(&JG); VecDestroy(&HJG);
+  }
+
+  if (!_pulseAmp.empty() && !_D->_restartFromChkpt) {
+    const PetscScalar f0 = pulseFactor(_runInitTime);
+    if (fabs(f0 - 1.0) > 1e-12) {
+      PetscPrintf(PETSC_COMM_WORLD,"Error: a %sbcB pulse is on at initTime (factor %g): the initial steady state carries the\n"
+        "       background flux only. Start the pulses after initTime.\n",_prefix.c_str(),f0);
+      assert(0);
+    }
+  }
+  return ierr;
+}
+
+
 // set up the SBP matrix
 PetscErrorCode PressureEq::setUpSBP()
 {
@@ -691,8 +876,16 @@ PetscErrorCode PressureEq::setUpSBP()
     VecScatterEnd(_scatters, coeff_rho_g, _bcB_gravity, INSERT_VALUES, SCATTER_FORWARD);
     VecDestroy(&coeff_rho_g);
   }
-  VecCopy(_bcB_gravity, _bcB_impose);
-  VecScale(_bcB_impose, _bcB_ratio);
+  if (_sourceDepth >= 0) { VecSet(_bcB_impose, 0.0); } // the recharge enters at depth (setUpRecharge)
+  else if (_bcB_q0 >= 0) { // prescribed flux q0 (m/s): rho_f q0 at the bottom node, in rho km/s
+    VecScatterBegin(_scatters, _rho_f, _bcB_impose, INSERT_VALUES, SCATTER_FORWARD);
+    VecScatterEnd(_scatters, _rho_f, _bcB_impose, INSERT_VALUES, SCATTER_FORWARD);
+    VecScale(_bcB_impose, _bcB_q0*1e-3);
+  }
+  else {
+    VecCopy(_bcB_gravity, _bcB_impose);
+    VecScale(_bcB_impose, _bcB_ratio);
+  }
   VecAXPY(_bcB, 1.0, _bcB_gravity);
   VecAXPY(_bcB, 1.0, _bcB_impose);
   // VecSet(_bcB, _g * _rho_fVals.back() * _k_pVals.back() / _eta_pVals.back() * (1 + _bcB_ratio));
@@ -884,6 +1077,7 @@ PetscErrorCode PressureEq::computeInitialSteadyStatePressure(Domain &D)
   VecPointwiseDivide(rhog, rhog, _eta_p);
   VecDuplicate(_p, &rhog_y);
   _sbp->Dz(rhog, rhog_y);
+  if (_source != NULL) { VecAXPY(rhog_y, -1.0, _source); } // background recharge source in depth (no pulse at the start)
 
   // variable grid spacing -> coordinate transform
   if (_D->_gridSpacingType.compare("variableGridSpacing")==0) {
@@ -1332,6 +1526,9 @@ PetscErrorCode PressureEq::dp_dt(const PetscScalar time, const map<string, Vec> 
     VecDestroy(&coeff);
   }
 
+  // prescribed recharge: the pulse factor at this time (after any refresh of the boundary coefficient)
+  if (!_pulseAmp.empty()) { ierr = applyRecharge(pulseFactor(time)); CHKERRQ(ierr); }
+
   Vec p_t = dvarEx[_pKey]; // to make this code slightly easier to read
 
   // source term from gravity: d/dz ( rho*k/eta * g )
@@ -1344,6 +1541,7 @@ PetscErrorCode PressureEq::dp_dt(const PetscScalar time, const map<string, Vec> 
   VecPointwiseDivide(rhog, rhog, _eta_p); // rho^2*g *k/eta
   VecDuplicate(_p, &rhog_y);
   _sbp->Dz(rhog, rhog_y); //Dz(rho^2*g*k/eta)
+  if (_source != NULL) { VecAXPY(rhog_y, -_rechargeFactor, _source); } // recharge source in depth, enters as -rhog_y
 
   Mat D2;
   _sbp->getA(D2);
@@ -1644,6 +1842,9 @@ PetscErrorCode PressureEq::be(const PetscScalar time, const map<string, Vec> &va
     }
     _miscTime += MPI_Wtime() - tmpTime;
 
+    // prescribed recharge: the mean pulse factor over this step delivers the pulses' volume exactly
+    if (!_pulseAmp.empty()) { ierr = applyRecharge(pulseFactorMean(time - dt, time)); CHKERRQ(ierr); }
+
     // source term from gravity: d/dz ( rho*k/eta * g )
     VecSet(rhog, _g);                       //g
     VecPointwiseMult(rhog, rhog, _rho_f);   //rho*g
@@ -1651,6 +1852,7 @@ PetscErrorCode PressureEq::be(const PetscScalar time, const map<string, Vec> &va
     VecPointwiseMult(rhog, rhog, _k_p);     //rho^2*g * k
     VecPointwiseDivide(rhog, rhog, _eta_p); //rhog = rho^2*g * k/eta
     _sbp->Dz(rhog, rhog_y); //rhog_y = D1(rho^2*g * k/eta)
+    if (_source != NULL) { VecAXPY(rhog_y, -_rechargeFactor, _source); } // recharge source in depth, enters as -rhog_y
 
     Mat D2;
     _sbp->getA(D2);
@@ -2027,6 +2229,19 @@ PetscErrorCode PressureEq::writeContext(const string outputDir, PetscViewer& vie
 
   ierr = PetscViewerASCIIPrintf(viewer_ascii, "g = %.15e\n", _g); CHKERRQ(ierr);
   ierr = PetscViewerASCIIPrintf(viewer_ascii, "hydraulicTimeIntType = %s\n", _hydraulicTimeIntType.c_str()); CHKERRQ(ierr);
+  if (rechargeOn()) {
+    ierr = PetscViewerASCIIPrintf(viewer_ascii, "bcB_q0 = %.15e # (m/s) background imposed flux\n", _qb0); CHKERRQ(ierr);
+    if (_sourceDepth >= 0) {
+      ierr = PetscViewerASCIIPrintf(viewer_ascii, "bcB_sourceDepth = %.15e # (km)\nbcB_sourceWidth = %.15e # (km)\n", _sourceDepth, _sourceWidth); CHKERRQ(ierr);
+    }
+    if (!_pulseAmp.empty()) {
+      ierr = PetscViewerASCIIPrintf(viewer_ascii, "bcB_pulseShape = %s\n", _pulseShape.c_str()); CHKERRQ(ierr);
+      ierr = PetscViewerASCIIPrintf(viewer_ascii, "bcB_pulseAmp = %s\n", vector2str(_pulseAmp).c_str()); CHKERRQ(ierr);
+      ierr = PetscViewerASCIIPrintf(viewer_ascii, "bcB_pulseCentre = %s # (s)\n", vector2str(_pulseCentre).c_str()); CHKERRQ(ierr);
+      ierr = PetscViewerASCIIPrintf(viewer_ascii, "bcB_pulseHalfDur = %s # (s)\n", vector2str(_pulseHalfDur).c_str()); CHKERRQ(ierr);
+      if (!_pulsePeriod.empty()) { ierr = PetscViewerASCIIPrintf(viewer_ascii, "bcB_pulsePeriod = %s # (s)\n", vector2str(_pulsePeriod).c_str()); CHKERRQ(ierr); }
+    }
+  }
   ierr = PetscViewerDestroy(&viewer_ascii); CHKERRQ(ierr);
 
   // write material parameters
@@ -2068,6 +2283,10 @@ PetscErrorCode PressureEq::writeStep(PetscViewer& viewer)
   ierr = VecView(_k_press, viewer);                                     CHKERRQ(ierr);
   ierr = VecView(_eta_p, viewer);                                       CHKERRQ(ierr);
   ierr = VecView(_rho_f, viewer);                                       CHKERRQ(ierr);
+  if (_qbVec != NULL) { // the imposed recharge flux (m/s) at the last evaluation
+    ierr = VecSet(_qbVec, _qb);                                         CHKERRQ(ierr);
+    ierr = VecView(_qbVec, viewer);                                     CHKERRQ(ierr);
+  }
 
   ierr = PetscViewerHDF5PopTimestepping(viewer);                        CHKERRQ(ierr);
   ierr = PetscViewerHDF5PopGroup(viewer);                               CHKERRQ(ierr);

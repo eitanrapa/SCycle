@@ -71,6 +71,26 @@ private:
   PetscScalar _vL;
   PetscScalar _bcB_ratio;
   string _bcB_type;
+
+  // prescribed basal recharge (docs/REVERSIBLE_STRENGTH_PLAN.md 4.4): the imposed flux q_b(t) =
+  // q0 f(t), f(t) = 1 + sum_i A_i P((t - c_i - k T_i)/tau_i) over the repetitions k of the period
+  // T_i (0: once), P a raised cosine (1 + cos(pi s))/2, a Gaussian exp(-s^2/2) or a box on |s| < 1.
+  // It enters at the base, or with sourceDepth through a Gaussian source in depth (no imposed
+  // flux at the base then). Backward Euler takes the mean of f over its step.
+  PetscScalar    _bcB_q0 = -1;          // (m/s) background imposed flux; < 0: the bcB_ratio form
+  string         _pulseShape = "cosine"; // cosine, gaussian or square
+  vector<double> _pulseAmp, _pulseCentre, _pulseHalfDur, _pulsePeriod; // A_i, c_i (s), tau_i (s), T_i (s)
+  PetscScalar    _sourceDepth = -1, _sourceWidth = -1; // (km) the Gaussian source; < 0: flux at the base
+  Vec            _source = NULL;        // rho_f q0 G(z) (code units: rho km/s per km), sum of H J G = 1
+  PetscScalar    _qb0 = 0, _qb = 0;      // (m/s) background imposed flux, and q_b at the last evaluation
+  Vec            _qbVec = NULL;         // size-1 output of _qb (/pressureEq/qb)
+  PetscScalar    _runInitTime = 0;      // initTime of the run
+  PetscScalar    _rechargeFactor = 1;   // f at the last evaluation (the mean over the step in be)
+  bool rechargeOn() const { return _bcB_q0 >= 0 || !_pulseAmp.empty() || _sourceDepth >= 0; }
+  PetscScalar pulseFactor(const PetscScalar t) const; // f(t)
+  PetscScalar pulseFactorMean(const PetscScalar t1, const PetscScalar t2) const; // mean of f over [t1, t2]
+  PetscErrorCode applyRecharge(const PetscScalar factor); // imposed flux or source scaled by factor
+  PetscErrorCode setUpRecharge(); // background flux, the source and the output Vec
   int _maxBeIteration;
   double _minBeDifference;
 
