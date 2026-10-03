@@ -1,4 +1,5 @@
 #include "multiFault.hpp"
+#include <algorithm>
 
 #define FILENAME "multiFault.cpp"
 
