@@ -17,7 +17,7 @@ StrikeSlip_LinearElastic_qd::StrikeSlip_LinearElastic_qd(Domain &D)
   _minDeltaT(-1),_maxDeltaT(1e10),_deltaT(1e-3),
   _time1DVec(NULL), _dtime1DVec(NULL),_time2DVec(NULL), _dtime2DVec(NULL),
   _stepCount(0),_timeStepTol(1e-8),_initDeltaT(1e-3),_normType("L2_absolute"),
-  _chkptTimeStep1D(0), _chkptTimeStep2D(0),
+  _chkptTimeStep1D(-1), _chkptTimeStep2D(-1), // -1: no output written yet
   _JjSSVec(NULL),
   _integrateTime(0),_writeTime(0),_linSolveTime(0),_factorTime(0),
   _startTime(MPI_Wtime()),_totalRunTime(0),

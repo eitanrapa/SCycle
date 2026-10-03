@@ -574,14 +574,15 @@ PetscErrorCode Domain::loadCheckpoint()
 
     PetscViewerDestroy(&viewer_prev_checkpoint);
 
-    // check if data_1D and data_2D exist
+    // the restart writes its first output at index chkptTimeStep + 1; a checkpoint taken before
+    // the first output holds -1, and so does a missing file, which then starts at index 0
     fileName = _outputDir + "data_1D.h5";
   fileExists = doesFileExist(fileName);
-  if (!fileExists) {_prevChkptTimeStep1D = 0;};
+  if (!fileExists) {_prevChkptTimeStep1D = -1;};
 
   fileName = _outputDir + "data_2D.h5";
   fileExists = doesFileExist(fileName);
-  if (!fileExists) {_prevChkptTimeStep2D = 0;};
+  if (!fileExists) {_prevChkptTimeStep2D = -1;};
   }
   else {
     _restartFromChkpt = 0;

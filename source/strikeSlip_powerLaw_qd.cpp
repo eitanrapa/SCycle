@@ -18,7 +18,7 @@ StrikeSlip_PowerLaw_qd::StrikeSlip_PowerLaw_qd(Domain&D)
     _maxStepCount(1e8),_initTime(0),_currTime(0),_maxTime(1e15),_minDeltaT(-1),_maxDeltaT(1e10),_deltaT(1e-3),
     _time1DVec(NULL), _dtime1DVec(NULL),_time2DVec(NULL), _dtime2DVec(NULL),
     _stepCount(0),_timeStepTol(1e-8),_initDeltaT(1e-3),_normType("L2_absolute"),
-    _chkptTimeStep1D(0), _chkptTimeStep2D(0),
+    _chkptTimeStep1D(-1), _chkptTimeStep2D(-1), // -1: no output written yet
     _JjSSVec(NULL),
     _fss_T(0.15),_fss_EffVisc(0.2),_fss_grainSize(0.2),_gss_t(1e-10),
     _SS_index(0),_maxSSIts_effVisc(50),_maxSSIts_tot(100),
