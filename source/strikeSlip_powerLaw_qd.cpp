@@ -7,7 +7,7 @@ using namespace std;
 
 StrikeSlip_PowerLaw_qd::StrikeSlip_PowerLaw_qd(Domain&D)
   : _D(&D),_delim(D._delim),_inputDir(D._inputDir),_outputDir(D._outputDir),
-    _guessSteadyStateICs(0),_isMMS(D._isMMS),
+    _guessSteadyStateICs(0),_dropSSIndex(false),_isMMS(D._isMMS),
     _thermalCoupling("no"),_grainSizeEvCoupling("no"),
     _hydraulicCoupling("no"),_hydraulicTimeIntType("explicit"),
     _stateLaw("agingLaw"),_forcingType("no"),
@@ -46,6 +46,7 @@ StrikeSlip_PowerLaw_qd::StrikeSlip_PowerLaw_qd(Domain&D)
   parseBCs();
   allocateFields();
 
+  _dropSSIndex = (_guessSteadyStateICs == 1); // read before a restart clears _guessSteadyStateICs
   if (_D->_restartFromChkpt) {
     loadCheckpoint();
     _guessSteadyStateICs = 0;
@@ -684,8 +685,8 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::initiateIntegrand()
     initiateIntegrandSS();
     solveSS(0);
     writeSS(0);
-    VecDestroy(&_JjSSVec);
   }
+  if (_dropSSIndex) { VecDestroy(&_JjSSVec); } // also after a restart, which skips the guess
   { // set up KSP context for time integration
     Mat A;
     _material->_sbp->getA(A);

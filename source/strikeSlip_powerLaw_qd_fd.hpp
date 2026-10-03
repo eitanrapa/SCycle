@@ -64,6 +64,7 @@ public:
   string          _hydraulicCoupling,_hydraulicTimeIntType; // coupling to hydraulic fault
   string          _stateLaw;
   int             _guessSteadyStateICs; // 0 = no, 1 = yes
+  bool            _dropSSIndex; // with the guess, the 1D/2D output has no SS_index, also after a restart
   string          _forcingType; // what body forcing term to include (i.e. iceStream)
   PetscScalar     _faultTypeScale; // = 2 if symmetric fault, 1 if one side of fault is rigid
   int             _evolveTemperature,_evolveGrainSize;

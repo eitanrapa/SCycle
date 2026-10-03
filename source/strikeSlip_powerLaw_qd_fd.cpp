@@ -11,7 +11,7 @@ StrikeSlip_PowerLaw_qd_fd::StrikeSlip_PowerLaw_qd_fd(Domain&D)
   _thermalCoupling("no"),_heatEquationType("transient"),
   _grainSizeEvCoupling("no"),_grainSizeEvCouplingSS("no"),
   _hydraulicCoupling("no"),_hydraulicTimeIntType("explicit"),
-  _guessSteadyStateICs(0),_forcingType("no"),_faultTypeScale(2.0),
+  _guessSteadyStateICs(0),_dropSSIndex(false),_forcingType("no"),_faultTypeScale(2.0),
   _evolveTemperature(0),_evolveGrainSize(0),_computeSSTemperature(0),_computeSSGrainSize(0),
   _cycleCount(0),_maxNumCycles(1e3),_phaseCount(0),
   _deltaT(1e-3),_deltaT_fd(-1),_CFL(0.5),
@@ -54,6 +54,7 @@ StrikeSlip_PowerLaw_qd_fd::StrikeSlip_PowerLaw_qd_fd(Domain&D)
   parseBCs();
   allocateFields();
 
+  _dropSSIndex = (_guessSteadyStateICs == 1); // read before a restart clears _guessSteadyStateICs
   if (_D->_restartFromChkpt) {
     loadCheckpoint();
     _guessSteadyStateICs = 0;
@@ -677,7 +678,6 @@ PetscErrorCode StrikeSlip_PowerLaw_qd_fd::initiateIntegrand_qd()
     ierr = initiateIntegrandSS(); CHKERRQ(ierr);
     ierr = solveSS(0); CHKERRQ(ierr);
     ierr = writeSS(0); CHKERRQ(ierr);
-    VecDestroy(&_JjSSVec); _JjSSVec = NULL;
 
     // ensure fault_fd == fault_qd
     ierr = VecCopy(_fault_qd->_psi,      _fault_fd->_psi); CHKERRQ(ierr);
@@ -688,6 +688,7 @@ PetscErrorCode StrikeSlip_PowerLaw_qd_fd::initiateIntegrand_qd()
     ierr = VecCopy(_fault_qd->_tauQSP,   _fault_fd->_tauQSP); CHKERRQ(ierr);
     ierr = VecCopy(_fault_qd->_tauP,     _fault_fd->_tauP); CHKERRQ(ierr);
   }
+  if (_dropSSIndex) { VecDestroy(&_JjSSVec); _JjSSVec = NULL; } // also after a restart, which skips the guess
 
   ierr = _material->initiateIntegrand(_initTime,_varQSEx); CHKERRQ(ierr);
   ierr = _fault_qd->initiateIntegrand(_initTime,_varQSEx); CHKERRQ(ierr);

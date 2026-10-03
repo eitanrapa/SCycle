@@ -58,6 +58,7 @@ public:
 
   // problem properties
   int             _guessSteadyStateICs; // 0 = no, 1 = yes
+  bool            _dropSSIndex; // with the guess, the 1D/2D output has no SS_index, also after a restart
   const bool      _isMMS; // true if running mms test
   string          _thermalCoupling; // thermomechanical coupling
   string          _grainSizeEvCoupling; // grain size evolution: no, uncoupled, coupled
