@@ -476,8 +476,8 @@ PetscErrorCode PressureEq::setFields(Domain &D)
   ierr = VecScatterCreate(_p, isf, _bcB, ist, &_scatters); CHKERRQ(ierr);
 
   // free memory
-  PetscFree(fi);
-  PetscFree(ti);
+  ierr = PetscFree(fi); CHKERRQ(ierr);
+  ierr = PetscFree(ti); CHKERRQ(ierr);
   ISDestroy(&isf);
   ISDestroy(&ist);
 

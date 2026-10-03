@@ -325,7 +325,7 @@ PetscErrorCode ierr = 0;
   for (PetscInt Ii=0; Ii<(_Ny); Ii++) { ti[Ii] = Ii; }
   IS ist;
   ierr = ISCreateGeneral(PETSC_COMM_WORLD, _Ny, ti, PETSC_COPY_VALUES, &ist); CHKERRQ(ierr);
-  PetscFree(ti);
+  ierr = PetscFree(ti); CHKERRQ(ierr);
 
   // create scatter
   ierr = VecScatterCreate(*_y, isf, _bcT, ist, &_scatters["body2T"]); CHKERRQ(ierr);
@@ -465,7 +465,7 @@ PetscErrorCode HeatEquation::constructScatters(Vec& T, Vec& T_l)
 
   IS isf;
   ierr = ISCreateGeneral(PETSC_COMM_WORLD, _Ny*_Nz_lab, fi, PETSC_COPY_VALUES, &isf); CHKERRQ(ierr);
-  PetscFree(fi);
+  ierr = PetscFree(fi); CHKERRQ(ierr);
 
   // indices to scatter to
   PetscInt *ti;
@@ -476,7 +476,7 @@ PetscErrorCode HeatEquation::constructScatters(Vec& T, Vec& T_l)
 
   IS ist;
   ierr = ISCreateGeneral(PETSC_COMM_WORLD, _Ny*_Nz_lab, ti, PETSC_COPY_VALUES, &ist); CHKERRQ(ierr);
-  PetscFree(ti);
+  ierr = PetscFree(ti); CHKERRQ(ierr);
 
   // create scatter
   ierr = VecScatterCreate(_T, isf, T_l, ist, &_scatters["bodyFull2bodyLith"]); CHKERRQ(ierr);

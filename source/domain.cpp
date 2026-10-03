@@ -688,7 +688,7 @@ PetscErrorCode Domain::setScatters()
     IS is;
     ierr = ISCreateGeneral(PETSC_COMM_WORLD, _Nz, indices, PETSC_COPY_VALUES, &is);
     ierr = VecScatterCreate(_y, is, _y0, is, &_scatters["body2L"]); CHKERRQ(ierr);
-    PetscFree(indices);
+    ierr = PetscFree(indices); CHKERRQ(ierr);
     ISDestroy(&is);
   }
 
@@ -704,7 +704,7 @@ PetscErrorCode Domain::setScatters()
     IS ist; ierr = ISCreateGeneral(PETSC_COMM_WORLD, _Nz, ti, PETSC_COPY_VALUES, &ist);
 
     ierr = VecScatterCreate(_y, isf, _y0, ist, &_scatters["body2R"]); CHKERRQ(ierr);
-    PetscFree(fi); PetscFree(ti);
+    ierr = PetscFree(fi); CHKERRQ(ierr); ierr = PetscFree(ti); CHKERRQ(ierr);
     ISDestroy(&isf); ISDestroy(&ist);
   }
 
@@ -718,7 +718,7 @@ PetscErrorCode Domain::setScatters()
     IS ist; ierr = ISCreateGeneral(PETSC_COMM_WORLD, _Ny, ti, PETSC_COPY_VALUES, &ist);
 
     ierr = VecScatterCreate(_y, isf, _z0, ist, &_scatters["body2T"]); CHKERRQ(ierr);
-    PetscFree(ti);
+    ierr = PetscFree(ti); CHKERRQ(ierr);
     ISDestroy(&isf); ISDestroy(&ist);
   }
 
@@ -732,7 +732,7 @@ PetscErrorCode Domain::setScatters()
     IS ist; ierr = ISCreateGeneral(PETSC_COMM_WORLD, _Ny, ti, PETSC_COPY_VALUES, &ist);
 
     ierr = VecScatterCreate(_y, isf, _z0, ist, &_scatters["body2B"]); CHKERRQ(ierr);
-    PetscFree(ti);
+    ierr = PetscFree(ti); CHKERRQ(ierr);
     ISDestroy(&isf); ISDestroy(&ist);
   }
 
