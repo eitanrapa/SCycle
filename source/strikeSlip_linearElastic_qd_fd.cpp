@@ -692,12 +692,12 @@ PetscErrorCode StrikeSlip_LinearElastic_qd_fd::integrate()
     _qdTime += MPI_Wtime() - startTime_qd;
   }
 
-  if(_currTime >= _maxTime || _stepCount >= _maxStepCount){ return 0; }
+  if(_currTime >= _maxTime || _stepCount >= _maxStepCount || stopSignal() != 0){ return 0; }
 
 
   // for all cycles after 1st cycle
   int maxPhaseCount = _maxNumCycles * 2;
-  while (_phaseCount < maxPhaseCount && _stepCount <= _maxStepCount && _currTime <= _maxTime) {
+  while (_phaseCount < maxPhaseCount && _stepCount <= _maxStepCount && _currTime <= _maxTime && stopSignal() == 0) {
     if(_inDynamic) {
       double startTime_qd = MPI_Wtime();
       _allowed = false;
@@ -2359,7 +2359,9 @@ double startTime = MPI_Wtime();
   // checkpointing
   PetscInt strideChkpt = _strideChkpt_qd;
   if (_inDynamic) {strideChkpt = _strideChkpt_fd;}
-  if ( _D->_saveChkpts== 1 && ((strideChkpt > 0 && stepCount % strideChkpt == 0) || (_currTime == _maxTime)) ) {
+  // a stop asked for by a signal checkpoints this step and ends the integration
+  const bool stop = checkStopRequest();
+  if ( _D->_saveChkpts== 1 && ((strideChkpt > 0 && stepCount % strideChkpt == 0) || (_currTime == _maxTime) || stop) ) {
     ierr = writeCheckpoint();                                           CHKERRQ(ierr);
     ierr = _D->writeCheckpoint(_viewer_chkpt);                          CHKERRQ(ierr);
     ierr = _material->writeCheckpoint(_viewer_chkpt);                   CHKERRQ(ierr);
@@ -2379,6 +2381,10 @@ double startTime = MPI_Wtime();
 
   if(_inDynamic){ if(checkSwitchRegime(_fault_fd)){ stopIntegration = 1; } }
   else { if(checkSwitchRegime(_fault_qd)){ stopIntegration = 1; } }
+  if (stop) {
+    stopIntegration = 1;
+    ierr = reportStop(stepCount, time, _D->_saveChkpts == 1); CHKERRQ(ierr);
+  }
 
   #if VERBOSE > 0
     std::string regime = "quasidynamic";

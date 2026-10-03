@@ -239,6 +239,12 @@ double startTime = MPI_Wtime();
     ierr = _material->writeStep2D(_viewer2D);CHKERRQ(ierr);
   }
 
+  // a stop asked for by a signal ends the integration (this mediator writes no checkpoints)
+  if (checkStopRequest()) {
+    stopIntegration = 1;
+    ierr = reportStop(stepCount, time, false); CHKERRQ(ierr);
+  }
+
   _writeTime += MPI_Wtime() - startTime;
 
   #if VERBOSE > 0

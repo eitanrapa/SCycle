@@ -683,7 +683,9 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::timeMonitor(PetscScalar time, PetscS
     if (_thermalCoupling.compare("no")!=0) { _he->writeStep2D(_viewer2D); }
   }
 
-  if ( _D->_saveChkpts== 1 && ((_strideChkpt > 0 && stepCount % _strideChkpt == 0) || (_currTime == _maxTime)) ) {
+  // a stop asked for by a signal checkpoints this step and ends the integration
+  const bool stop = checkStopRequest();
+  if ( _D->_saveChkpts== 1 && ((_strideChkpt > 0 && stepCount % _strideChkpt == 0) || (_currTime == _maxTime) || stop) ) {
     ierr = writeCheckpoint();                                           CHKERRQ(ierr);
     ierr = _D->writeCheckpoint(_viewer_chkpt);                          CHKERRQ(ierr);
     ierr = _material->writeCheckpoint(_viewer_chkpt);                   CHKERRQ(ierr);
@@ -697,6 +699,10 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::timeMonitor(PetscScalar time, PetscS
     ierr = flushHDF5Viewer(_viewer2D); CHKERRQ(ierr);
     ierr = commitCheckpoint(_viewer_chkpt, _outputDir); CHKERRQ(ierr);
     _series.flush();
+  }
+  if (stop) {
+    stopIntegration = 1;
+    ierr = reportStop(stepCount, time, _D->_saveChkpts == 1); CHKERRQ(ierr);
   }
 
   _writeTime += MPI_Wtime() - startTime;

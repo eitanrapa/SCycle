@@ -1,5 +1,7 @@
 #include "genFuncs.hpp"
 #include <cstdio>
+#include <cstring>
+#include <signal.h>
 
 using namespace std;
 
@@ -1247,5 +1249,46 @@ PetscErrorCode commitCheckpoint(PetscViewer& viewer, const std::string& outputDi
   if (failed) {
     SETERRQ(PETSC_COMM_WORLD, PETSC_ERR_FILE_WRITE, "could not rename checkpoint.h5.tmp to checkpoint.h5");
   }
+  return ierr;
+}
+
+
+static volatile sig_atomic_t stopSignalReceived = 0; // set by the handler on this rank
+static int stopSignalDecided = 0;                     // agreed by all ranks in checkStopRequest
+
+extern "C" void stopSignalHandler(int sig)
+{
+  if (stopSignalReceived == sig) { signal(sig, SIG_DFL); raise(sig); } // asked twice: terminate now
+  stopSignalReceived = sig;
+}
+
+void installStopHandler()
+{
+  struct sigaction action;
+  memset(&action, 0, sizeof(action));
+  action.sa_handler = stopSignalHandler;
+  sigemptyset(&action.sa_mask);
+  action.sa_flags = SA_RESTART; // system calls interrupted by the signal carry on
+  sigaction(SIGTERM, &action, NULL);
+  sigaction(SIGINT, &action, NULL);
+}
+
+bool checkStopRequest()
+{
+  if (stopSignalDecided != 0) { return true; }
+  int local = stopSignalReceived, global = 0;
+  MPI_Allreduce(&local, &global, 1, MPI_INT, MPI_MAX, PETSC_COMM_WORLD);
+  stopSignalDecided = global;
+  return global != 0;
+}
+
+int stopSignal() { return stopSignalDecided; }
+
+PetscErrorCode reportStop(PetscInt stepCount, PetscScalar time, bool checkpointed)
+{
+  PetscErrorCode ierr = 0;
+  ierr = PetscPrintf(PETSC_COMM_WORLD, "Stopping on signal %i at step %i, t = %.15e s: %s\n", stopSignalDecided,
+                     stepCount, time, checkpointed ? "checkpoint written, run again to continue" : "no checkpoint written");
+  CHKERRQ(ierr);
   return ierr;
 }

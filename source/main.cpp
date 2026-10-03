@@ -264,6 +264,7 @@ int main(int argc,char **args)
   PetscErrorCode ierr = 0;
   ierr = PetscInitialize(&argc,&args,NULL,NULL);
   if (ierr) { return 1; }
+  installStopHandler(); // after PetscInitialize, which may install its own SIGTERM handler
 
   const char * inputFile;
 
@@ -279,5 +280,6 @@ int main(int argc,char **args)
   }
 
   PetscFinalize();
-  return (ierr != 0); // nonzero exit status if the run reported a PETSc error
+  if (ierr != 0) { return 1; } // the run reported a PETSc error
+  return stopSignal() == 0 ? 0 : 128 + stopSignal(); // stopped by a signal: the shell's status for it
 }

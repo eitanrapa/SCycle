@@ -798,7 +798,9 @@ double startTime = MPI_Wtime();
   }
   else { ierr = _quadEx->setTimeStepBounds(_minDeltaT,maxTimeStep_tot);CHKERRQ(ierr); }
 
-  if ( _D->_saveChkpts == 1 && ((_strideChkpt > 0 && stepCount % _strideChkpt == 0) || (_currTime == _maxTime)) ) {
+  // a stop asked for by a signal checkpoints this step and ends the integration
+  const bool stop = checkStopRequest();
+  if ( _D->_saveChkpts == 1 && ((_strideChkpt > 0 && stepCount % _strideChkpt == 0) || (_currTime == _maxTime) || stop) ) {
     ierr = writeCheckpoint();                                           CHKERRQ(ierr);
     ierr = _D->writeCheckpoint(_viewer_chkpt);                          CHKERRQ(ierr);
     ierr = _material->writeCheckpoint(_viewer_chkpt);                   CHKERRQ(ierr);
@@ -818,6 +820,10 @@ double startTime = MPI_Wtime();
 
 
   // stopping criteria for time integration
+  if (stop) {
+    stopIntegration = 1;
+    ierr = reportStop(stepCount, time, _D->_saveChkpts == 1); CHKERRQ(ierr);
+  }
   if (_D->_systemEvolutionType == "steadyStateIts") {
     if (time >= _maxSSIts_time) { stopIntegration = 1; }
   }
@@ -1673,6 +1679,7 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::integrateSS()
 
     // brute force time integrate for steady-state shear stress the fault
     solveSStau(_SS_index);
+    if (stopSignal() != 0) { break; } // stopped by a signal during the transient
 
     // find steady-state temperature
     if (_computeSSTemperature == 1) { solveSSHeatEquation(_SS_index); }

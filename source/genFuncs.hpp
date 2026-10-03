@@ -91,6 +91,16 @@ PetscErrorCode flushHDF5Viewer(PetscViewer viewer);
 // renames it to <outputDir>checkpoint.h5, so a job killed while writing keeps the previous one.
 std::string checkpointTmpName(const std::string& outputDir);
 PetscErrorCode commitCheckpoint(PetscViewer& viewer, const std::string& outputDir);
+// Graceful stop. SIGTERM or SIGINT (a batch system, tools/batch.sh stop, Ctrl-C) asks the run to
+// stop after the current step: the time monitor writes a checkpoint and ends the integration, the
+// output files are closed, and main exits with 128 + the signal. A second signal of the same kind
+// terminates at once. Killed outright instead, a run can leave its HDF5 output unreadable.
+// checkStopRequest is collective, so every rank stops at the same step; stopSignal is the signal
+// once a stop has been decided, 0 before.
+void installStopHandler();
+bool checkStopRequest();
+int stopSignal();
+PetscErrorCode reportStop(PetscInt stepCount, PetscScalar time, bool checkpointed);
 double computeNorm_Mat(const Mat& mat,const Vec& vec);
 
 // functions to make computing the energy much easier
