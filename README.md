@@ -17,7 +17,7 @@ make -C source -j8                                      # builds source/main
 mpirun -n 4 ./source/main examples/ex2.in               # 2D elastic, quasi-dynamic
 ```
 
-Output goes to the prefix given by `outputDir` in the input file (`data/ex2_data_1D.h5`, ...). If `<outputDir>checkpoint.h5` exists, a run restarts from it unless the input sets `restartFromChkpt = 0`. Load results with `examples/loadFuncs.py` (Python, h5py) or `matlab/visualizePetsc` (MATLAB); `examples/visualize_ex*.ipynb` and `visualize_ex*.m` show how.
+Output goes to the prefix given by `outputDir` in the input file (`data/ex2_data_1D.h5`, ...). If `<outputDir>checkpoint.h5` exists, a run restarts from it unless the input sets `restartFromChkpt = 0`. Stop a run with Ctrl-C or `kill` (SIGTERM): it writes a checkpoint and closes its files first, and running it again continues it. Do not use `kill -9`, which can leave the HDF5 output unreadable. Load results with `examples/loadFuncs.py` (Python, h5py) or `matlab/visualizePetsc` (MATLAB); `examples/visualize_ex*.ipynb` and `visualize_ex*.m` show how.
 
 Unknown keys in an input file are ignored without a warning; `tools/checkkeys.py file.in` lists them.
 
@@ -26,5 +26,6 @@ Unknown keys in an input file are ignored without a warning; `tools/checkkeys.py
 - `CLAUDE.md`: build, run, input rules, code map and conventions.
 - `docs/AUDIT.md`: defects found in an October 2026 audit, how each was fixed and verified, and the known limitations that remain.
 - `docs/TWO_FAULT_DESIGN.md`: design for extending the code to two interacting faults.
-- `tools/regress.sh`, `tools/mms.in`: regression and convergence checks.
+- `docs/SERVER.md`: building on a Linux server and running batches of long runs there with `tools/batch.sh`.
+- `tools/regress.sh`, `tools/mms.in`: regression and convergence checks; `tools/compare_runs.py` compares the output of different builds by its physics.
 - `SEAS_benchmarks/BP1`: SEAS benchmark problem 1 (`createICs.py` writes its grid and initial conditions).

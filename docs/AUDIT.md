@@ -36,11 +36,11 @@ How the scale is applied:
 |---|---|---|---|---|---|
 | 3.1 Crashes, undefined behaviour and memory | A-01 to A-22, A-98 | 17 | 0 | 5 | 1 |
 | 3.2 Physics and numerics (wrong results) | A-23 to A-47, A-97, A-100 | 1 | 19 | 4 | 3 |
-| 3.3 Time integration, checkpoints and I/O | A-48 to A-68, A-95, A-96, A-99, A-102 | 12 | 3 | 8 | 2 |
+| 3.3 Time integration, checkpoints and I/O | A-48 to A-68, A-95, A-96, A-99, A-102, A-105 to A-107 | 13 | 3 | 9 | 3 |
 | 3.4 Input handling and error reporting | A-69 to A-79, A-101 | 3 | 3 | 5 | 1 |
-| 3.5 Build, repository and tooling | A-80 to A-87 | 0 | 0 | 1 | 7 |
+| 3.5 Build, repository and tooling | A-80 to A-87, A-103, A-104 | 0 | 0 | 2 | 8 |
 | 3.6 Examples, benchmarks and post-processing | A-88 to A-94 | 0 | 2 | 5 | 0 |
-| Total | 102 | 33 | 27 | 28 | 14 |
+| Total | 107 | 34 | 27 | 30 | 16 |
 
 "No run reported" means the commit message describes the fix without a dedicated test; the ex1/ex2 regression comparison still applied to it.
 
@@ -359,6 +359,21 @@ Section 4 summarizes how much each of these changes results.
 - Fix: RK32, RK43, RK32_WBE and RK43_WBE write the bound in force (`maxDeltaT`) to the checkpoint and restore it (older checkpoints keep the input value); both power-law mediators set the bound before writing the checkpoint.
 - Evidence: ex4s with the fault locked and `maxDeltaT = 1e13`, so that the Maxwell time (1.7e8 s) limits the steps, 300 steps against 150 plus a restart for 150: the second step after the restart was 2.95e8 s instead of 1.72e8 s and 9 of 22 1D datasets differed; now all are identical. ex1, ex2, ex4s, ex4g and the four spot cases bit-identical.
 
+**A-105. A run killed between checkpoints could lose its output.** Critical. `4df9668`. `source/genFuncs.cpp`, `source/main.cpp` and the five `source/strikeSlip_*.cpp` classes. Found after the audit, when preparing a Linux server.
+- Defect: the 1D and 2D output files stay open for the whole run and are consistent on disk only after the flush made with each checkpoint (A-65). A run killed in between, by `kill`, a reboot or a batch system's time limit, could leave metadata pointing at chunks that were never written: the file could not be opened again, so the restart failed and the run's history was unreadable.
+- Fix: SIGTERM and SIGINT stop the run after the current step. The time monitor reads the request once per step through an MPI_Allreduce, so all ranks stop at the same step; it writes a checkpoint, the integration ends, the files are closed, and the exit status is 128 + the signal (143, 130). A second signal ends the run at once. `kill -9` and power loss still risk the output.
+- Evidence: of two ex1 runs stopped by SIGTERM 34 and 41 steps after a checkpoint, one left data_1D.h5 unreadable ("can't determine chunked dataset btree info") and its restart failed. Now ex1 and ex2 stopped by SIGTERM, and ex1 by SIGINT, resume to output bit-identical with uninterrupted runs; with 2 ranks a SIGTERM to one rank stops both at the same step. A SIGTERM to Open MPI's `mpirun` kills its ranks before they can stop, so `tools/batch.sh stop` signals the ranks.
+
+**A-106. A restart from a checkpoint taken before the first output shifted the output by one entry.** Medium. `8986bdb`. `source/domain.cpp` and the four checkpointing `source/strikeSlip_*.cpp` classes. Found after the audit, when testing A-105.
+- Defect: a checkpoint stores the index of the last 1D and of the last 2D output, with 0 both for index 0 and for nothing written yet, and a restart continues at that index + 1. After a checkpoint taken before the first output (`strideChkpt` smaller than `stride1D` or `stride2D`, or a stop in the first steps), every later entry landed one index late, behind a row of zeros at t = 0.
+- Fix: -1 stands for nothing written; a missing output file also gives -1.
+- Evidence: ex4s and ex4g checkpointed at step 5, before their first output at step 10, and resumed for the other 195 steps: before, data_1D.h5 and data_2D.h5 were shifted by one entry; now every output file is bit-identical with the uninterrupted runs (with A-107), also after a SIGTERM at step 1 and a resume for 199 steps. ex1, ex2, ex4s, ex4g bit-identical.
+
+**A-107. Restarted power-law runs wrote a steady-state index that fresh runs do not.** Low. `1a81344`. `source/strikeSlip_powerLaw_qd.cpp`, `source/strikeSlip_powerLaw_qd_fd.cpp`. Found after the audit, when testing A-106.
+- Defect: with `guessSteadyStateICs = 1`, a fresh run drops the steady-state index after its initial guess, but a restart, which skips the guess, kept it: the restarted run's data_1D.h5 and data_2D.h5 gained a `/time/SS_index` dataset, so they could not be compared with an uninterrupted run's.
+- Fix: the restart drops the index too. Runs without the guess, which include all interior-fault runs, still write `SS_index` (always 0).
+- Evidence: the four restart cases of A-106 give output files identical under h5diff to the uninterrupted runs; a fresh ex4s run without the guess is bit-identical to before, `SS_index` included. ex1, ex2, ex4s, ex4g bit-identical.
+
 ### 3.4 Input handling and error reporting
 
 **A-69. Failed runs exited with status 0.** Medium. `e9cdc49`. `source/main.cpp`.
@@ -443,6 +458,14 @@ Section 4 summarizes how much each of these changes results.
 **A-87. Misleading comment on Domain::_y0 and _z0.** Low. `c844c59`. `source/domain.hpp`.
 - Defect: the comment "q(y), r(z)" described neither: `_y0` is the size-Nz fault template and holds z, `_z0` the size-Ny surface template and holds y (the variable misused in A-46).
 - Evidence: comment change only.
+
+**A-103. GCC could not compile the multi-fault helpers.** Medium. `933d1bd`. `source/multiFault.cpp`. Found after the audit, when preparing a Linux server; introduced in `e6e260b` (stage 4) and `c2f556e` (stage 5).
+- Defect: `multiFault.cpp` called `std::find` and `std::max_element` without including `<algorithm>`. Apple's libc++ includes it through other headers and GNU libstdc++ does not, so g++ stopped with "'max_element' is not a member of 'std'" and the code did not build on a typical Linux server.
+- Evidence: g++ 16.2 (libstdc++, the optimized build's flags) compiles all 33 sources; ex1, ex2, ex4s, ex4g bit-identical. A binary built with g++ runs the four cases with the same events as the clang builds (`tools/compare_runs.py`: onsets within 0.021 yr over 4753 yr for ex1, as for clang -O3).
+
+**A-104. GCC warned at ten unchecked PetscFree calls.** Low. `89da3ae`. `source/domain.cpp`, `source/heatEquation.cpp`, `source/pressureEq.cpp`. Found after the audit, when preparing a Linux server.
+- Defect: `PetscFree` expands to an expression whose value these calls discarded; g++ warns (-Wunused-value), so a `WERROR=1` build failed with GCC. Clang does not warn.
+- Evidence: the calls check the error code like the code around them; g++ compiles the tree without diagnostics; ex1, ex2, ex4s, ex4g bit-identical.
 
 ### 3.6 Examples, benchmarks and post-processing
 
@@ -600,7 +623,8 @@ tools/checkkeys.py examples/*.in                 # keys no component reads (also
 
 Notes:
 
-- `tools/regress.sh` needs `h5diff` on the PATH. `REGRESS_NP` sets the number of MPI ranks, `REGRESS_CASES` the examples (default `ex1 ex2`), `REGRESS_DELTA` an absolute tolerance (default: exact), `REGRESS_WORK` the scratch directory and `SCYCLE_BIN` the executable. Each case starts fresh, and checkpoint.h5 is not compared.
+- `tools/regress.sh` needs `h5diff` on the PATH. `REGRESS_NP` sets the number of MPI ranks, `REGRESS_CASES` the examples (default `ex1 ex2 ex4s ex4g`), `REGRESS_DELTA` an absolute tolerance (default: exact), `REGRESS_WORK` the scratch directory and `SCYCLE_BIN` the executable. Each case starts fresh, and checkpoint.h5 is not compared.
 - `tools/mms.in` prints the L2 errors of u and sigma_xy and their rates. Expected for order 4: about 3.5 for u and 2.5 for sigma_xy (errors 4.3e-9 and 1.2e-4 at Ny = 81); for order 2: about 2.2 for u. Change `order` and `gridSpacingType` in the file to test the other cases.
 - For a leak check on a debug PETSc build, add PETSc's `-objects_dump` option after the input file, as in `8916df7`.
+- On another machine, or with another compiler, results differ in the last digits; `tools/compare_runs.py` compares regression outputs by their events and end state instead, as `docs/SERVER.md` describes.
 - Configurations that ex1 and ex2 do not cover were checked with the spot runs described in each commit message; repeat those for changes in the matching code.

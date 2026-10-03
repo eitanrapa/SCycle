@@ -22,8 +22,8 @@ profiles. Design and verification gates: `docs/TWO_FAULT_DESIGN.md`.
 Upstream: `origin` = github.com/kali-allison/SCycle (`master`). Audit fixes live on branch
 `audit/fixes-2026-10`, pushed to the user's fork (remote `fork`, github.com/eitanrapa/SCycle). The
 two-fault work continues on `stage1/fault-generalization`, `stage2/interior-fault`,
-`stage3/two-faults` and `stage4/viscoelastic`, each built on the previous one (not pushed).
-`docs/REVERSIBLE_STRENGTH_PLAN.md` plans the next stage.
+`stage3/two-faults`, `stage4/viscoelastic` and `stage5/reversible-strength`, each built on the
+previous one and pushed to `fork`. `docs/REVERSIBLE_STRENGTH_PLAN.md` plans and tracks stage 5.
 
 ## Build
 
@@ -41,6 +41,8 @@ make -C source clean
 ```
 
 MPI is Homebrew Open MPI (`mpirun`). `h5diff`/`h5dump`/`h5ls` come from Homebrew `hdf5`.
+Linux servers: `docs/SERVER.md` (PETSc configure line, build, checks, batches). GCC builds the tree
+without warnings too (checked with g++ 16 against libstdc++).
 A scratch Python with h5py for the loaders: `python3 -m venv <dir> && <dir>/bin/pip install h5py numpy`.
 MATLAB is installed but its license has expired (the MATLAB loaders are untested).
 
@@ -58,7 +60,13 @@ mpirun -n 4 ./source/main examples/ex2.in
   or `restartFromChkpt = 0` for a clean run. After a restart, `maxStepCount` counts steps taken in
   the new run, not the total.
 - Checkpoints (every `strideChkpt` steps) are written to `checkpoint.h5.tmp` and renamed when
-  complete; the 1D/2D output is flushed at the same time, so a killed job keeps a usable restart.
+  complete; the 1D/2D output is flushed at the same time.
+- **Stop a run with SIGTERM or SIGINT** (`kill <pid>`, Ctrl-C): it finishes the step, writes a
+  checkpoint, closes its files and exits with 128 + the signal (143, 130); a second signal ends it
+  at once. With MPI, signal the ranks, not `mpirun` (Open MPI's kills them at once). A run killed
+  outright (`kill -9`, power loss) can leave its HDF5 output unreadable between checkpoints.
+- `tools/batch.sh start|status|stop <dir>` runs the inputs `<dir>/*.in` detached (outliving the
+  shell), resumes them after a stop or reboot, and records each run's end in `<outputDir>run.exit`.
 - The exit status is nonzero after a PETSc error. Input errors stop with a message and `assert(0)`
   (exit 134); asserts are always on (no `NDEBUG`).
 - Modes (`main.cpp`): `bulkDeformationType` = `linearElastic` | `powerLaw`; `momentumBalanceType`
@@ -198,15 +206,17 @@ tools/regress.sh compare  <dir>      # rerun and h5diff every dataset; exit 1 on
 SCYCLE_BIN=... REGRESS_NP=2 REGRESS_CASES="ex1 ex2" REGRESS_DELTA=1e-12 REGRESS_WORK=... tools/regress.sh ...
 ./source/main tools/mms.in           # MMS convergence, Ny = Nz = 21, 41, 81 (order 4: u ~3.5, sxy ~2.5)
 tools/checkkeys.py examples/*.in     # keys no component reads
+tools/compare_runs.py REF OTHER      # regression outputs of different builds: events and end state
 python3 SEAS_benchmarks/BP1/createICs.py [--dz 0.1]   # BP1 grid and initial conditions
 ./source/main <input> -objects_dump all  # every PETSc object never freed (none expected; without
                                          # "all" only objects made by a Create call are listed)
 ```
 
-- Runs are bit-reproducible for a given build and rank count; 1 vs 2 ranks agree to round-off
-  (~1e-10). Debug and optimized builds differ slightly once adaptive steps diverge (ex1: 2201 vs
-  2202 steps, event onsets within 0.02 yr over 4500 yr), so compare a build only with a baseline
-  made by the same PETSC_ARCH.
+- Runs on 1 rank are bit-reproducible for a given build, also across a stop and restart. Runs on 2
+  ranks are not: two identical 2-rank runs of ex2 differ by 2.6e-9 (relative, slip), so compare them
+  with a tolerance. Debug and optimized builds differ slightly once adaptive steps diverge (ex1:
+  2201 vs 2202 steps, event onsets within 0.02 yr over 4500 yr), so compare a build only with a
+  baseline made by the same PETSC_ARCH, and different builds with `tools/compare_runs.py`.
 - The baseline (debug build, 1 rank) is in `data/regress-baseline/` (ignored by git; `README.txt`
   there records its commit, `5bb2fee`; the one from the end of the audit is kept in
   `data/regress-baseline-35ba52f/`). Regenerate it after any intended change of results and say so

@@ -24,7 +24,7 @@ strains faster by (2 km)/w_c, so gamma_h = 1.25e-3 here stands for 0.06 in a 40 
 Each runs 3.8e11 s (12,000 yr), with a checkpoint every 2000 steps and a 2D snapshot every 20000.
 Usage:
   python3 examples/two_faults/stage5_batch1.py OUTDIR
-  for n in null hard fab alt lockin share; do ./source/main OUTDIR/$n.in > OUTDIR/$n/run.log & done
+  tools/batch.sh start OUTDIR            (detached; tools/batch.sh status OUTDIR follows it)
   python3 tools/two_fault.py OUTDIR/alt/ --zref 10 --window 1000
 """
 import os, subprocess, sys
