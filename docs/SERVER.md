@@ -1,8 +1,8 @@
 # Running SCycle on a Linux server
 
-How to build SCycle on a Linux machine and run long batches there. Use the branch
-`stage5/reversible-strength`: it holds all the two-fault work (stages 1 to 5) and the fixes that
-let GCC build the code (`933d1bd`, `89da3ae`); `stage4/viscoelastic` does not compile with GCC.
+How to build SCycle on a Linux machine and run long batches there. Use `master`, the fork's only
+branch: it holds all the two-fault work (stages 1 to 5) and the fixes that let GCC build the code
+(`933d1bd`, `89da3ae`); the code at the tag `stage4` does not compile with GCC.
 The steps assume a machine you log into with ssh; for a cluster with a scheduler, see section 6.
 
 ## 1. Packages
@@ -52,7 +52,7 @@ made with `--prefix`).
 ## 3. SCycle
 
 ```bash
-git clone -b stage5/reversible-strength https://github.com/eitanrapa/SCycle.git ~/SCycle
+git clone https://github.com/eitanrapa/SCycle.git ~/SCycle
 cd ~/SCycle
 export PETSC_DIR=$HOME/opt/petsc-3.26.0 PETSC_ARCH=arch-linux-c-opt   # also put this in ~/.bashrc
 make -C source -j8 WERROR=1

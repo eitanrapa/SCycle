@@ -3,8 +3,8 @@
 Status: planning note, written 2026-10-02 against commit `5bb2fee`; line numbers refer to it and
 will drift, function names are the stable reference. It follows `docs/TWO_FAULT_DESIGN.md`, whose
 Stages 3 (two elastic interior faults) and 4 (power law, heat, grain size and pore pressure per
-fault) are done on branch `stage4/viscoelastic`. This stage is in progress on branch
-`stage5/reversible-strength`; section 6 marks the items that are done.
+fault) are done (tag `stage4`). This stage is in progress on `master`; section 6 marks the items
+that are done.
 
 ## 1. Goal
 
@@ -943,7 +943,7 @@ sweeps small. Long runs rely on the atomic checkpoints and `restartFromChkpt = 1
 
 ## 6. Order of work
 
-One branch (`stage5/reversible-strength`) built on Stage 4; one commit per item, each with its
+On `master` after Stage 4 (tag `stage4`); one commit per item, each with its
 tests in the message, each leaving ex1, ex2 and the power-law baseline bit-identical unless the
 message says why not.
 

@@ -19,11 +19,11 @@ single-fault limit; (ii) power-law viscoelastic; (iii) grain-size evolution, fau
 heating. Output: a library of two-fault models with partitioning histories and surface-velocity
 profiles. Design and verification gates: `docs/TWO_FAULT_DESIGN.md`.
 
-Upstream: `origin` = github.com/kali-allison/SCycle (`master`). Audit fixes live on branch
-`audit/fixes-2026-10`, pushed to the user's fork (remote `fork`, github.com/eitanrapa/SCycle). The
-two-fault work continues on `stage1/fault-generalization`, `stage2/interior-fault`,
-`stage3/two-faults`, `stage4/viscoelastic` and `stage5/reversible-strength`, each built on the
-previous one and pushed to `fork`. `docs/REVERSIBLE_STRENGTH_PLAN.md` plans and tracks stage 5.
+Upstream: `origin` = github.com/kali-allison/SCycle (`master`). All work is on `master` of the
+user's fork (remote `fork`, github.com/eitanrapa/SCycle), ahead of upstream's: the audit fixes,
+two-fault stages 1 to 4, then stage 5, which continues there. Tags mark where each part ended:
+`audit-2026-10` and `stage1` to `stage4` (they were branches until 2026-10-03, when the user asked
+for a single branch). `docs/REVERSIBLE_STRENGTH_PLAN.md` plans and tracks stage 5.
 
 ## Build
 
@@ -227,8 +227,8 @@ python3 SEAS_benchmarks/BP1/createICs.py [--dz 0.1]   # BP1 grid and initial con
 
 ## Working agreements
 
-- One branch per task; one commit per fix, with the defect, the failure it caused and the test
-  evidence in the message. Never push without asking.
+- Work on `master`, without a branch per task or stage; one commit per fix, with the defect, the
+  failure it caused and the test evidence in the message. Never push without asking.
 - Run `tools/regress.sh compare` after any change under `source/`. ex1/ex2 must stay bit-identical
   unless the change is meant to alter results; then say how much and why.
 - Mirror fixes across the mediator classes; build with `WERROR=1`.

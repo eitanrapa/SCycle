@@ -1,7 +1,7 @@
 # Two-fault extension: design note
 
-Status: Stages 0 to 4 are done (branches `audit/fixes-2026-10`, `stage1/fault-generalization`,
-`stage2/interior-fault`, `stage3/two-faults`, `stage4/viscoelastic`, each built on the previous one).
+Status: Stages 0 to 4 are done, in that order on `master`; the tags `audit-2026-10` and `stage1` to
+`stage4` mark where each ended.
 `docs/REVERSIBLE_STRENGTH_PLAN.md` plans the next stage, reversible strength mechanisms.
 Line numbers refer to upstream commit `74a132f` and will drift; function names are the stable
 reference.
@@ -110,7 +110,7 @@ can replace it without touching the mediators.
 
 ## 4. Code changes by stage
 
-### Stage 0: regression baseline (done in branch `audit/fixes-2026-10`)
+### Stage 0: regression baseline (done in the audit, tag `audit-2026-10`)
 - `tools/regress.sh baseline|compare <dir>` runs `examples/ex1.in` and `examples/ex2.in` and
   compares every HDF5 dataset with `h5diff`. Every later stage must keep these bit-identical in
   single-fault mode. A baseline from the end of the audit is in `data/regress-baseline/`.
@@ -127,7 +127,7 @@ can replace it without touching the mediators.
   and atomic checkpoints for long runs.
 
 ### Stage 1: generalize the fault class, still one fault, bit-identical (done)
-Done on branch `stage1/fault-generalization` (commits `8d78596`, `3967df3`, `64c6ea0`); ex1, ex2 and
+Done (tag `stage1`; commits `8d78596`, `3967df3`, `64c6ea0`); ex1, ex2 and
 a spot suite (ex5 with heat and flash heating, implicit pore pressure through an event, BP1, the
 combined quasi-dynamic and dynamic mode) stay bit-identical, and so does a restart.
 - **Named faults.** `Fault`, `Fault_qd` and `Fault_fd` take a name, default `"fault"`, which keeps
@@ -154,7 +154,7 @@ combined quasi-dynamic and dynamic mode) stay bit-identical, and so does a resta
   without a boundary fault (`_fault` then is NULL and the boundary-only couplings must be skipped).
 
 ### Stage 2: one interior fault (done)
-Done on branch `stage2/interior-fault` (commit `c602b99` and the example `cc9625d`).
+Done (tag `stage2`; commit `c602b99` and the example `cc9625d`).
 - **Input.** `interiorFaults = [name ...]`, `<name>_y = <km>` for each, and
   `momBal_bcL_qd = remoteLoading` (the full domain: bcL = -vL t/2, bcR = +vL t/2). The fault is
   placed midway between the two grid rows around `<name>_y`, at least 6 rows from the y-boundaries.
@@ -177,7 +177,7 @@ Done on branch `stage2/interior-fault` (commit `c602b99` and the example `cc9625
   half-space solution of the existing, separately verified code.
 
 ### Stage 3: two interior faults, elastic (done)
-Done on branch `stage3/two-faults` (`44312d7`, `cd2fac5`, `5bb2fee` and the example and tool).
+Done (tag `stage3`; `44312d7`, `cd2fac5`, `5bb2fee` and the example and tool).
 - **Input.** `interiorFaults = [fault f2]` with `fault_y`, `f2_y`; the second fault inherits the
   plain keys and overrides them with `f2_` keys. `examples/two_faults/make_inputs.py` writes a
   case with a seismic (`--f2 rs`), creeping (`vs`) or locked (`locked`) second fault, or none
@@ -194,7 +194,7 @@ Done on branch `stage3/two-faults` (`44312d7`, `cd2fac5`, `5bb2fee` and the exam
 - **Results.** Gates 3a, 3b and 3c below all pass.
 
 ### Stage 4: viscoelastic and reversible-strength physics (done)
-Done on branch `stage4/viscoelastic`. Interior faults now work in both quasi-dynamic mediators
+Done (tag `stage4`). Interior faults now work in both quasi-dynamic mediators
 with every physics module; the gates are in section 5.
 - **4a, power law** (`e1a40ae`, `e6e260b`, `18bb957`). `StrikeSlip_PowerLaw_qd` has the fault
   list, interior faults, remote loading on the left and the stage 3 outputs, through the helpers
