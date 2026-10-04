@@ -114,6 +114,56 @@ of `T_h` at the lower edge to several `T_h` at the upper edge. Partial swings (t
 takes 80 % rather than 100 %) occur near the lower edge; full switching near the upper edge. The
 script `zero_d_trading.py` reproduces every number here in under a minute.
 
+### 2.2 The laws as implemented (added 2026-10-04)
+
+The states as built (4.1, 4.5) saturate in [0, 1] and enter the flow law as strength factors, so the
+reduction above overstates both feedbacks; the first batch of the run matrix (section 6, item 10),
+mapped through it, shared slip equally in all six runs. With the implemented laws a root creeps at
+`[(1 + beta_f Phi)/H]^n` times the rate of the unaltered law at the same stress,
+`H = 1 + a (S - S_ref)`, and in units of the recovery time `tau_r`
+
+    dS/dt   = Xh f (1 - S) - S,                   Xh = e_full tau_r / gamma_h
+    dPhi/dt = (Xf f (1 - Phi) - Phi) / r,         Xf = e_full tau_c / gamma_f,   r = tau_c / tau_r
+
+with `e_full = vL/w` the strain rate of a root of width `w` that takes the whole plate rate and `f`
+its share (`zero_d_trading.py --laws implemented`, which also reads these keys from an input file).
+Three results:
+
+1. **The fabric's gain is bounded.** Equal sharing is unstable when
+   `N_f = n beta_f u/((1 + u)(1 + u + beta_f u)) > 1`, `u = Xf/2`. Its largest value over `Xf`,
+   `n beta_f/(1 + sqrt(1 + beta_f))^2` at `Xf = 2/sqrt(1 + beta_f)`, exceeds 1 only for `beta_f > 3`
+   (n = 3): 0.80 at `beta_f = 2`, 1.15 at 4, 1.50 at 8, 1.61 at 10, tending to `n`. The saturation
+   `(1 - Phi)` and the gentler weakening `1/(1 + beta_f Phi)` against `exp(-beta D)` remove most of
+   the gain the linear model gives the same parameters.
+2. **The memory's push is bounded too.** Above the threshold the fabric locks one root in, and its
+   lock-in branch withstands a hardening bias `b = n ln(H_fast/H_slow)` up to a hold `b_c` (largest
+   of `n ln[(1 + beta_f Phi(f))/(1 + beta_f Phi(1 - f))] - ln(f/(1 - f))` over `f > 1/2`, at `f*`).
+   The memory builds at most `b_max = n ln[H(S_ss(f*))/H(S_ss(1 - f*))]`, `S_ss(f) = Xh f/(1 + Xh f)`,
+   below `n ln(1 + a)` and largest for `Xh` of 2 to 3; a saturated memory (`Xh >> 1`, both roots
+   near `S = 1`) pushes little.
+3. **Alternation when `b_max > b_c`**, given a fast fabric. Over 135 cases (`beta_f` 4-10, `Xf`
+   0.5 to 1, `a` 0.5-1, `Xh` 1.5-4) this criterion gives the regime of the two-root equations in 134
+   with `r = 0.01` and 127 with `r = 0.03` (the others: `N_f` within 7 % of 1, which shares, and
+   `b_max` within 1 % of `b_c`); with `r = 0.1` it fails in half of them.
+
+Selected cases (`r = 0.03`, `Xh = 2.5`; A alternation with the period in `tau_r` and the range of
+the share `f`, L lock-in with the dominant share):
+
+| `beta_f` | `Xf` | `N_f` | `b_c` | `a = 0.5` | `a = 0.7` | `a = 1.0` |
+|---|---|---|---|---|---|---|
+| 4 | 1.0 | 1.14 | 0.15 | A 1.57, 0.10-0.90 | A 1.32, 0.11-0.89 | A 1.12, 0.11-0.89 |
+| 5 | 0.5 | 1.20 | 0.16 | A 1.74, 0.13-0.87 | A 1.43, 0.13-0.87 | A 1.21, 0.14-0.86 |
+| 6 | 0.76 | 1.35 | 0.46 | A 3.61, 0.03-0.97 | A 2.34, 0.03-0.97 | A 1.78, 0.03-0.97 |
+| 8 | 0.5 | 1.48 | 0.60 | L 0.89 | A 3.33, 0.03-0.97 | A 2.22, 0.03-0.97 |
+| 10 | 0.5 | 1.60 | 0.87 | L 0.95 | L 0.92 | A 3.36, 0.01-0.99 |
+
+So with a hardened-to-recovered stress ratio of 1.5 (`a = 0.5`) alternation needs `beta_f` of 4 to
+6, `beta_f = 8` needs `a` of 0.7 and `beta_f = 10` about 1; the window of `N_f` that alternates is
+narrow (1.1 to 1.6) where the linear model's was wide, and the 2D model's own stabilising effects
+(the substrate beneath the roots, elastic coupling) may move it up. The first batch mapped to
+`N_f` = 0.80 (alt, fab), 0.65 (lockin) and 0.29 (share) with `Xh = 20`: sharing in every run,
+as observed. `zero_d_trading.py --laws implemented --scan` prints the full table in about a minute.
+
 ## 3. Common infrastructure (one commit, bit-identical)
 
 All new bulk physics follows the pattern of `GrainSizeEvolution`: a scalar body field on the
