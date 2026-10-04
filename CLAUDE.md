@@ -28,23 +28,32 @@ for a single branch). `docs/REVERSIBLE_STRENGTH_PLAN.md` plans and tracks stage 
 ## Build
 
 Requires PETSc >= 3.14 (HDF5 timestepping API) with HDF5 and MUMPS, real scalars, 32-bit indices;
-HYPRE for the `AMG` and `CG_PCAMG` solver options. On this machine PETSc 3.26.0 is built from source
-(Homebrew's `petsc` was unusable: its `hdf5-mpi` conflicts with `hdf5`, and it lacks MUMPS/HYPRE):
+HYPRE for the `AMG` and `CG_PCAMG` solver options. Since 2026-10-04 the work runs on a Mac Studio
+(M2 Ultra, 24 cores, 192 GB; before that an M4 Mac). PETSc 3.26.0 is built from source, both arches,
+by `~/opt/build-mpi-petsc.sh` (logs in `~/opt`), with the configure options of `docs/SERVER.md`:
 
 ```bash
 export PETSC_DIR=$HOME/opt/petsc-3.26.0
 export PETSC_ARCH=arch-darwin-c-debug     # or arch-darwin-c-opt (-O3) for production runs
+export PATH=$HOME/opt/openmpi-5.0.11/bin:$PATH   # mpirun
 make -C source -j8                        # -> source/main
 make -C source -j8 WERROR=1               # warnings as errors (the tree is warning-free)
 make -C source DEBUG_MODULES=-DVERBOSE=2  # more tracing; VERBOSE=1 (default) prints one line per step
-make -C source clean
+make -C source clean                      # also after switching PETSC_ARCH (objects are per arch)
 ```
 
-MPI is Homebrew Open MPI (`mpirun`). `h5diff`/`h5dump`/`h5ls` come from Homebrew `hdf5`.
+Two traps on this machine. Homebrew (`/opt/homebrew`) belongs to another account, so `brew install`
+fails; Open MPI 5.0.11 is therefore built into `~/opt/openmpi-5.0.11`, and PETSc uses Homebrew's
+CMake 4.4.3 (`--with-cmake-exec`) instead of `--download-cmake`. And the Command Line Tools keep a
+stale `/Library/Developer/CommandLineTools/usr/include/c++/v1` (four files from 2020-22) that hides
+the SDK's libc++: plain `clang++` cannot compile `#include <vector>`. `mpicxx` passes the SDK's
+directory itself (`-stdlib++-isystem`, set in `~/opt/openmpi-5.0.11/share/openmpi/mpic++-wrapper-data.txt`),
+so builds through PETSc work; deleting that stale directory (sudo) would fix `clang++` for everyone.
+`h5diff`/`h5dump`/`h5ls` come from Homebrew `hdf5`, `gfortran` from Homebrew `gcc` (16).
 Linux servers: `docs/SERVER.md` (PETSc configure line, build, checks, batches). GCC builds the tree
 without warnings too (checked with g++ 16 against libstdc++).
-A scratch Python with h5py for the loaders: `python3 -m venv <dir> && <dir>/bin/pip install h5py numpy`.
-MATLAB is installed but its license has expired (the MATLAB loaders are untested).
+Python with numpy, h5py, scipy and matplotlib for the tools and loaders: `~/venvs/scycle/bin/python`.
+MATLAB R2023a is installed (its license not checked); the MATLAB loaders are untested.
 
 ## Run
 
@@ -217,13 +226,19 @@ python3 SEAS_benchmarks/BP1/createICs.py [--dz 0.1]   # BP1 grid and initial con
   with a tolerance. Debug and optimized builds differ slightly once adaptive steps diverge (ex1:
   2201 vs 2202 steps, event onsets within 0.02 yr over 4500 yr), so compare a build only with a
   baseline made by the same PETSC_ARCH, and different builds with `tools/compare_runs.py`.
-- The baseline (debug build, 1 rank) is in `data/regress-baseline/` (ignored by git; `README.txt`
-  there records its commit, `5bb2fee`; the one from the end of the audit is kept in
-  `data/regress-baseline-35ba52f/`). Regenerate it after any intended change of results and say so
-  in the commit message.
-- ex2 takes about 70 s with the debug build; ex1 about 13 s; ex4s and ex4g (short power-law runs:
-  coupled heat with the implicit-explicit integrator; grain size coupled to diffusion creep with
-  the explicit one) about 30 s each. They are the only cases that exercise `StrikeSlip_PowerLaw_qd`.
+  Another machine is another build too: on the Mac Studio ex1 reproduces the M4 Mac's baseline bit
+  for bit, but ex2, ex4s and ex4g differ in the last digits (probably MUMPS through Accelerate's
+  BLAS, which is tuned per chip) while agreeing in the physics (`tools/compare_runs.py`: the
+  same events, onsets within 1.5e-6 yr in ex2, 6.5e-5 yr in ex4s, 1.5e-4 yr in ex4g).
+- The baseline (debug build, 1 rank) is in `data/regress-baseline/` (ignored by git), made on the
+  Mac Studio at `64a5211` (`README.txt` there); the M4 Mac's is kept in `data/regress-baseline-m4/`
+  and the one from the end of the audit in `data/regress-baseline-35ba52f/`. Regenerate it after any
+  intended change of results and say so in the commit message.
+- With the debug build ex1 takes about 30 s, ex2 140 s, ex4s and ex4g 50 s each on the Mac Studio
+  while a batch runs (13, 70 and 30 s on the M4); the optimized build runs ex2 in about 65 s and
+  ex4s, ex4g in 5 s. ex4s and ex4g are short power-law runs (coupled heat with the
+  implicit-explicit integrator; grain size coupled to diffusion creep with the explicit one), the
+  only cases that exercise `StrikeSlip_PowerLaw_qd`.
 
 ## Working agreements
 

@@ -139,12 +139,12 @@ Three results:
    lock-in branch withstands a hardening bias `b = n ln(H_fast/H_slow)` up to a hold `b_c` (largest
    of `n ln[(1 + beta_f Phi(f))/(1 + beta_f Phi(1 - f))] - ln(f/(1 - f))` over `f > 1/2`, at `f*`).
    The memory builds at most `b_max = n ln[H(S_ss(f*))/H(S_ss(1 - f*))]`, `S_ss(f) = Xh f/(1 + Xh f)`,
-   below `n ln(1 + a)` and largest for `Xh` of 2 to 3; a saturated memory (`Xh >> 1`, both roots
-   near `S = 1`) pushes little.
+   below `n ln(1 + a)` for `S_ref = 0` and largest for `Xh` of 2 to 3; a saturated memory
+   (`Xh >> 1`, both roots near `S = 1`) pushes little.
 3. **Alternation when `b_max > b_c`**, given a fast fabric. Over 135 cases (`beta_f` 4-10, `Xf`
    0.5 to 1, `a` 0.5-1, `Xh` 1.5-4) this criterion gives the regime of the two-root equations in 134
    with `r = 0.01` and 127 with `r = 0.03` (the others: `N_f` within 7 % of 1, which shares, and
-   `b_max` within 1 % of `b_c`); with `r = 0.1` it fails in half of them.
+   `b_max` within 1 % of `b_c`); with `r = 0.1` it fails in 59.
 
 Selected cases (`r = 0.03`, `Xh = 2.5`; A alternation with the period in `tau_r` and the range of
 the share `f`, L lock-in with the dominant share):
