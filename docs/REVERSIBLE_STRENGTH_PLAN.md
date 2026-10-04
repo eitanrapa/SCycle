@@ -1051,6 +1051,23 @@ message says why not.
    a localizing feedback (grain-size-sensitive creep with the wattmeter), or a wider fault
    separation; and the state strain scales then follow from the root width through the 0D screen
    (alternation for n = 3, R = 10, beta = 2, T_D = 0.1, T_h = 10: period 24.7 w gamma/vL).
+   **Weak bands, first batch** (`a85d91a`; the weak band was chosen on 2026-10-02): a band 2 km wide
+   from 20 to 30 km beneath each fault with 1000 times the dislocation-creep prefactor
+   (`--weak-band`). Inside the bands the roots strain at 1.7e-13 to 2.8e-13 /s at equal sharing, as
+   two roots in series at `vL/(2 km) = 5e-13 /s` would (the probes of `seriesWidth = 2` km average
+   them with the slow rock beside the band, to about 1.1e-13 /s). The first batch
+   (`stage5_batch1.py`: null, hardening alone, fabric alone, and three pairings placed with the
+   linear model at sharing, alternation and lock-in), six runs of 12,000 yr finished on 2026-10-03,
+   shared slip equally in every run: long-term shares of 0.495 to 0.505 at 10 km over about 24
+   cycles per fault, the faults rupturing in turn every 250 yr, in the null run too (which
+   `switches.csv`, with its share threshold of 0.6 over 1000-yr windows, counts as switching).
+   Section 2.2 explains it: with the laws as implemented the fabric's gain was 0.80 at most and the
+   memory was saturated. **Second batch** (`stage5_batch2.py`, started 2026-10-04): the same
+   geometry, eight runs placed with section 2.2 at `Xh = 2.5`, `Xf = 0.5`, `r = 0.03` (`tau_r` =
+   1000 yr, `tau_c` = 30 yr): the fabric alone at `beta_f` = 5, 8, 10 (`N_f` = 1.20, 1.48, 1.60,
+   lock-in; gate 5.5b together with the first batch's 0.80), three pairings in the alternation band
+   (`beta_f`/`a` = 5/0.5, 8/0.7, 10/1.0, periods 1740 to 3360 yr) and two outside it (8/0.5, 10/0.7,
+   lock-in).
 11. Optional: fixed anisotropy (4.7).
 
 Each physics commit is marked as altering published behaviour only when it is on, so it can be
