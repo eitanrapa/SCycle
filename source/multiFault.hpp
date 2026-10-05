@@ -107,4 +107,37 @@ public:
   PetscErrorCode writeContext(PetscViewer& viewer, const std::vector<Fault_qd*>& faults);
 };
 
+// The bottom boundary moving with the plates (momBal_bcB_qd = movingBase): the base displacement is
+//   u(y, Lz, t) = (vL t / faultTypeScale) s(y) + shift(y),   s(y) = tanh((y - yc) / w),
+// imposed as a Dirichlet condition. s goes from -1 to 1 across a transition centred at yc
+// (momBal_bcB_center, km; default mid-domain) of width W (momBal_bcB_width, km) that holds 90% of
+// the velocity change, w = W / (2 atanh 0.9); W = 0 is a step at yc. With a boundary fault
+// (half-space, y >= 0) the transition is centred on the fault and s goes from 0 to 1; there a step
+// is s = 1 everywhere. shift is the base row of the initial displacement (steady-state guess, file
+// or zero) and is kept in the checkpoint. Where a fault meets the base the base pins it, so an
+// interior fault must be locked at its deepest node, and a boundary fault too unless W = 0, when
+// it must not be.
+class MovingBase
+{
+private:
+  MovingBase(const MovingBase& that);
+  MovingBase& operator=(const MovingBase& rhs);
+
+public:
+  PetscScalar _center, _width; // (km); _center is unset (default) while below -1e30
+  Vec         _profile, _shift; // s(y) and shift(y) (m), size Ny, laid out like Domain::_z0
+
+  MovingBase();
+  ~MovingBase();
+  // the profile from the y of the bottom grid row; halfSpace: the left boundary is a fault
+  PetscErrorCode setup(Domain& D, const bool halfSpace);
+  PetscErrorCode checkFaults(const std::vector<Fault_qd*>& faults, const std::vector<InteriorFaultLift*>& lifts);
+  PetscErrorCode setShift(Domain& D, const Vec& u); // shift = u on the bottom row
+  PetscErrorCode update(Vec& bcB, const PetscScalar time, const PetscScalar vL, const PetscScalar faultTypeScale);
+  PetscErrorCode rate(Vec& bcBRate, const PetscScalar vL, const PetscScalar faultTypeScale);
+  PetscErrorCode writeContext(PetscViewer& ascii);   // mediator.txt lines
+  PetscErrorCode writeCheckpoint(PetscViewer& viewer);
+  PetscErrorCode loadCheckpoint(PetscViewer& viewer);
+};
+
 #endif

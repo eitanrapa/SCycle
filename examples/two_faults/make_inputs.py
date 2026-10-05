@@ -27,6 +27,9 @@ keys. --weak-band W gives each fault its own viscous root: a band W km wide bene
 times larger (the file
 ic/disl_A, which the power law reads as a body field; log-linear cosine tapers of --weak-taper km at
 the edges). Without one the flow beneath the faults is broad and the two roots merge.
+--moving-base W moves the bottom boundary with the plates instead of leaving it traction-free:
+from -vL/2 to +vL/2 across a transition W km wide centred between the faults (--base-center), so
+the base carries load beneath the far field (the faults must then be locked at depth).
 
 Both faults start at steady sliding at vL. A smooth patch of fault (or f2, --trigger) near 8 km
 depth starts at 1e-6 m/s, so the first event nucleates within hours, the same way in every run;
@@ -139,6 +142,10 @@ def main():
     p.add_argument('--weak-bottom', type=float, default=30.0, help='bottom of the band (km): deeper, the hot mantle is weak already and\n'
                    'a weaker band shortens the Maxwell time that caps the steps')
     p.add_argument('--weak-taper', type=float, default=0.5, help='width of the band edges (km)')
+    p.add_argument('--moving-base', type=float, default=None, metavar='W',
+                   help='move the bottom boundary with the plates (momBal_bcB_qd = movingBase), from -vL/2 to +vL/2 across\n'
+                   'a transition W km wide (holding 90%% of the change; 0: a step); needs --lock-depth')
+    p.add_argument('--base-center', type=float, default=None, help='centre of that transition (km; default midway between the faults)')
     p.add_argument('--name', default=None, help='run name (default from the options)')
     p.add_argument('--out', default='data/two_faults', help='directory for inputs, initial conditions and output')
     args = p.parse_args()
@@ -232,6 +239,13 @@ def main():
     if args.lock_depth is not None:
         lines += ['lockedVals = [0 0 1 1] # the faults end at %g km: the plate motion beneath flows viscously' % args.lock_depth,
                   'lockedDepths = [0 %g %g 500]' % (args.lock_depth, args.lock_depth)]
+    if args.moving_base is not None:
+        if args.lock_depth is None: raise SystemExit('--moving-base needs --lock-depth: the base pins the faults where they meet it')
+        yc = args.base_center if args.base_center is not None else (y1 if args.single else 0.5*(y1 + y2))
+        lines = [l for l in lines if not l.startswith('momBal_bcB_qd')] + [
+            'momBal_bcB_qd = movingBase # the base moves with the plates, -vL/2 to +vL/2 across the transition',
+            'momBal_bcB_center = %.12g # (km)' % yc,
+            'momBal_bcB_width = %g # (km) holds 90%% of the velocity change' % args.moving_base]
     if args.series_depth is not None:
         lines += ['seriesDepth = %g # (km) root-strength probes in faultSeries.txt' % args.series_depth, 'seriesWidth = %g # (km)' % args.series_width]
     if args.weak_band is not None:

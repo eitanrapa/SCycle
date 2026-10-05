@@ -1,5 +1,6 @@
 #include "multiFault.hpp"
 #include <algorithm>
+#include <cmath>
 
 #define FILENAME "multiFault.cpp"
 
@@ -400,5 +401,153 @@ PetscErrorCode FaultWorkKernel::writeContext(PetscViewer& viewer, const vector<F
     ierr = VecView(_Gw[k], viewer); CHKERRQ(ierr);
     ierr = PetscViewerHDF5PopGroup(viewer); CHKERRQ(ierr);
   }
+  return ierr;
+}
+
+
+MovingBase::MovingBase() : _center(-1e300), _width(0.0), _profile(NULL), _shift(NULL) {}
+
+MovingBase::~MovingBase()
+{
+  VecDestroy(&_profile);
+  VecDestroy(&_shift);
+}
+
+
+PetscErrorCode MovingBase::setup(Domain& D, const bool halfSpace)
+{
+  PetscErrorCode ierr = 0;
+  ierr = VecDuplicate(D._z0,&_profile); CHKERRQ(ierr);
+  ierr = PetscObjectSetName((PetscObject) _profile, "baseProfile"); CHKERRQ(ierr);
+  ierr = VecDuplicate(D._z0,&_shift); CHKERRQ(ierr);
+  ierr = VecSet(_shift,0.0); CHKERRQ(ierr);
+  ierr = PetscObjectSetName((PetscObject) _shift, "baseShift"); CHKERRQ(ierr);
+
+  // y (km) along the bottom grid row
+  Vec yB;
+  ierr = VecDuplicate(D._z0,&yB); CHKERRQ(ierr);
+  ierr = VecScatterBegin(D._scatters["body2B"], D._y, yB, INSERT_VALUES, SCATTER_FORWARD); CHKERRQ(ierr);
+  ierr = VecScatterEnd(D._scatters["body2B"], D._y, yB, INSERT_VALUES, SCATTER_FORWARD); CHKERRQ(ierr);
+  PetscScalar yMin = 0, yMax = 0;
+  ierr = VecMin(yB,NULL,&yMin); CHKERRQ(ierr);
+  ierr = VecMax(yB,NULL,&yMax); CHKERRQ(ierr);
+
+  if (_center < -1e30) { _center = halfSpace ? yMin : 0.5*(yMin + yMax); }
+  if (!(_width >= 0)) {
+    PetscPrintf(PETSC_COMM_WORLD,"Error: momBal_bcB_width must be 0 (a step) or positive (km).\n");
+    assert(0);
+  }
+  if (halfSpace && PetscAbsScalar(_center - yMin) > 1e-9*PetscMax(1.0,yMax)) {
+    PetscPrintf(PETSC_COMM_WORLD,"Error: with a boundary fault the moving base changes velocity at the fault; leave momBal_bcB_center\n"
+      "       unset or set it to %g km.\n",yMin);
+    assert(0);
+  }
+  if (!halfSpace && !(_center > yMin && _center < yMax)) {
+    PetscPrintf(PETSC_COMM_WORLD,"Error: momBal_bcB_center = %g km lies outside the domain (%g to %g km).\n",_center,yMin,yMax);
+    assert(0);
+  }
+
+  const PetscScalar w = _width/(2.0*atanh(0.9)); // tanh(W/(2w)) = 0.9
+  PetscInt Istart, Iend;
+  ierr = VecGetOwnershipRange(_profile,&Istart,&Iend); CHKERRQ(ierr);
+  const PetscScalar *y;
+  PetscScalar *s;
+  ierr = VecGetArrayRead(yB,&y); CHKERRQ(ierr);
+  ierr = VecGetArray(_profile,&s); CHKERRQ(ierr);
+  for (PetscInt j = 0; j < Iend - Istart; j++) {
+    if (_width > 0) { s[j] = tanh((y[j] - _center)/w); }
+    else if (halfSpace) { s[j] = 1.0; }
+    else { s[j] = (y[j] > _center) ? 1.0 : ((y[j] < _center) ? -1.0 : 0.0); }
+  }
+  ierr = VecRestoreArray(_profile,&s); CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(yB,&y); CHKERRQ(ierr);
+  ierr = VecDestroy(&yB); CHKERRQ(ierr);
+  return ierr;
+}
+
+
+PetscErrorCode MovingBase::checkFaults(const vector<Fault_qd*>& faults, const vector<InteriorFaultLift*>& lifts)
+{
+  PetscErrorCode ierr = 0;
+  for (size_t i = 0; i < faults.size(); i++) {
+    // lockedVals at the fault's deepest node, z = Lz (> 0.5: locked)
+    PetscInt N = 0, Istart = 0, Iend = 0;
+    ierr = VecGetSize(faults[i]->_locked,&N); CHKERRQ(ierr);
+    ierr = VecGetOwnershipRange(faults[i]->_locked,&Istart,&Iend); CHKERRQ(ierr);
+    PetscScalar local = -PETSC_MAX_REAL, locked = 0;
+    if (N - 1 >= Istart && N - 1 < Iend) {
+      const PetscScalar *l;
+      ierr = VecGetArrayRead(faults[i]->_locked,&l); CHKERRQ(ierr);
+      local = l[N - 1 - Istart];
+      ierr = VecRestoreArrayRead(faults[i]->_locked,&l); CHKERRQ(ierr);
+    }
+    ierr = MPIU_Allreduce(&local,&locked,1,MPIU_SCALAR,MPIU_MAX,PETSC_COMM_WORLD); CHKERRQ(ierr);
+    const bool boundary = (lifts[i] == NULL);
+    const bool needLocked = !boundary || _width > 0;
+    if ((locked > 0.5) == needLocked) { continue; }
+    if (needLocked) {
+      PetscPrintf(PETSC_COMM_WORLD,"Error: momBal_bcB_qd = movingBase pins fault %s where it meets the base; lock it there\n"
+        "       (lockedVals > 0.5 at the bottom of the domain)%s.\n",faults[i]->_name.c_str(),
+        boundary ? ", or move the base with a step (momBal_bcB_width = 0)" : "");
+    }
+    else {
+      PetscPrintf(PETSC_COMM_WORLD,"Error: momBal_bcB_qd = movingBase with a step (momBal_bcB_width = 0) moves the base beside the\n"
+        "       boundary fault %s with the plate, so the fault must slip there: do not lock its deepest node.\n",faults[i]->_name.c_str());
+    }
+    assert(0);
+  }
+  return ierr;
+}
+
+
+PetscErrorCode MovingBase::setShift(Domain& D, const Vec& u)
+{
+  PetscErrorCode ierr = 0;
+  ierr = VecScatterBegin(D._scatters["body2B"], u, _shift, INSERT_VALUES, SCATTER_FORWARD); CHKERRQ(ierr);
+  ierr = VecScatterEnd(D._scatters["body2B"], u, _shift, INSERT_VALUES, SCATTER_FORWARD); CHKERRQ(ierr);
+  return ierr;
+}
+
+
+PetscErrorCode MovingBase::update(Vec& bcB, const PetscScalar time, const PetscScalar vL, const PetscScalar faultTypeScale)
+{
+  return VecWAXPY(bcB,vL*time/faultTypeScale,_profile,_shift);
+}
+
+
+PetscErrorCode MovingBase::rate(Vec& bcBRate, const PetscScalar vL, const PetscScalar faultTypeScale)
+{
+  PetscErrorCode ierr = 0;
+  ierr = VecCopy(_profile,bcBRate); CHKERRQ(ierr);
+  ierr = VecScale(bcBRate,vL/faultTypeScale); CHKERRQ(ierr);
+  return ierr;
+}
+
+
+PetscErrorCode MovingBase::writeContext(PetscViewer& ascii)
+{
+  PetscErrorCode ierr = 0;
+  ierr = PetscViewerASCIIPrintf(ascii,"momBal_bcB_center = %.15e # (km)\n",_center); CHKERRQ(ierr);
+  ierr = PetscViewerASCIIPrintf(ascii,"momBal_bcB_width = %.15e # (km) 90%% of the base's velocity change; 0: a step\n",_width); CHKERRQ(ierr);
+  return ierr;
+}
+
+
+PetscErrorCode MovingBase::writeCheckpoint(PetscViewer& viewer)
+{
+  PetscErrorCode ierr = 0;
+  ierr = PetscViewerHDF5PushGroup(viewer,"/movingBase"); CHKERRQ(ierr);
+  ierr = VecView(_shift,viewer); CHKERRQ(ierr);
+  ierr = PetscViewerHDF5PopGroup(viewer); CHKERRQ(ierr);
+  return ierr;
+}
+
+
+PetscErrorCode MovingBase::loadCheckpoint(PetscViewer& viewer)
+{
+  PetscErrorCode ierr = 0;
+  ierr = PetscViewerHDF5PushGroup(viewer,"/movingBase"); CHKERRQ(ierr);
+  ierr = VecLoad(_shift,viewer); CHKERRQ(ierr);
+  ierr = PetscViewerHDF5PopGroup(viewer); CHKERRQ(ierr);
   return ierr;
 }

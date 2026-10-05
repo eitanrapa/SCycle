@@ -130,6 +130,13 @@ mpirun -n 4 ./source/main examples/ex2.in
   `faultSeries.txt` every N steps (restarts append; keep the last line per step).
   `data_context.h5` gives each interior fault's `y`, `iRow` and `dy` as attributes of its group.
   `tools/two_fault.py <outputDir>` writes `events.csv`, `partition.csv` and `surfvel.csv`.
+- The base (`momBal_bcB_qd`) is traction-free by default, so with loading only at the sides the
+  depth-averaged velocity is a straight line to the loaded side and the surface velocity meets vL/2
+  there with a slope (docs/TWO_FAULT_DESIGN.md, section 7). `movingBase` (quasi-dynamic mediators)
+  moves the base with the plates: (vL t/faultTypeScale) tanh((y - yc)/w) plus its initial
+  displacement, `momBal_bcB_center` (km, default mid-domain; a boundary fault: 0) and
+  `momBal_bcB_width` (km, holds 90% of the change, 0 a step; about 60 km for the two-fault models).
+  Faults must be locked where they meet it (a boundary fault under a step must not be).
 - A `timeIntInds` that lists `slip` or `psi` means those of every fault: `<name>_slip`, `<name>_psi`
   are added with the same scale (a note prints the final list).
 - Stage 5 mechanisms (`docs/REVERSIBLE_STRENGTH_PLAN.md`, section 6 lists what is done). Bulk state
@@ -205,7 +212,8 @@ mpirun -n 4 ./source/main examples/ex2.in
 - Near an interior fault (rows iRow-2 .. iRow+3) the y-strain comes from u without the fault's jump
   (`InteriorFaultLift::correctStress` in `LinearElastic::computeStresses`, `correctStrain` in
   `PowerLaw::computeTotalStrains`); anything new that differentiates u in y must do the same.
-- `momBal_bcT_qd`/`momBal_bcB_qd = remoteLoading` stay at their initial displacement.
+- `momBal_bcT_qd`/`momBal_bcB_qd = remoteLoading` stay at their initial displacement (`movingBase`
+  is the bottom boundary that moves).
 
 ## Testing
 

@@ -274,3 +274,77 @@ Implemented in stage 3 (`cd2fac5`), on by default when interior faults are decla
   depth, potency, moment per unit length), slip at a reference depth and each fault's share over a
   trailing window (`partition.csv`), and the mean and latest interseismic surface velocity
   (`surfvel.csv`, outputs where every fault is slower than `--vinter`).
+
+## 7. Bottom boundary: free or moving base (added 2026-10-04)
+
+**The free base and the far field.** With traction-free top and bottom (`momBal_bcB_qd =
+freeSurface`, the default) and the load applied only at the sides, equilibrium makes the
+depth-integrated shear force `F = ∫ σ_xy dz` the same at every `y`, so the depth-averaged velocity
+is a straight line from the faults' depth-averaged slip rate to `vL/2` at the loaded side. The
+surface velocity follows that line beyond a few times `Lz/π` from the faults and meets `vL/2` only at
+the boundary, with a slope: from below while the faults are locked, from above after an
+earthquake. In ex2 (one fault, 100 km by 30 km) the line holds to a few millionths of `vL/2`
+beyond 20 km; 5 yr before its earthquake the surface moves at 0.74 `vL/2` at 50 km and 0.95 at
+90 km, 5 yr after at up to 1.79 `vL/2`. Making the domain wider only flattens the line toward the
+faults' rate; a steady basal traction would change no velocity (the elastic response is linear
+in the rates of the loads). The base has to carry load beneath the far field.
+
+**`momBal_bcB_qd = movingBase`** (`MovingBase` in `multiFault.hpp`, both quasi-dynamic
+mediators): the base displacement is imposed, `u(y, Lz, t) = (vL t/faultTypeScale) s(y) +
+shift(y)` with `s(y) = tanh((y - yc)/w)`, from `-vL/2` to `+vL/2` across a transition centred at
+`yc` (`momBal_bcB_center`, km; default the middle of the domain) whose width `W`
+(`momBal_bcB_width`, km) holds 90% of the change, `w = W/(2 atanh 0.9)`; `W = 0` is a step. With a
+boundary fault the transition is centred on it and a step moves the whole base at `vL/2`. `shift`
+is the base row of the initial displacement (steady-state guess, file or zero), kept in the
+checkpoint; the surface-velocity solve gets the base's rate. Where a fault meets the base, the base
+pins it: interior faults must be locked at their deepest node (the two-fault runs are, below
+`--lock-depth`), a boundary fault too unless `W = 0`, when it must slip there; the code checks.
+`remoteLoading` keeps its old meaning (the base held at its initial displacement). The other
+mediators refuse `movingBase`. Generator: `make_inputs.py --moving-base W [--base-center Y]`.
+A step beneath a boundary fault in a power-law model is costly unless the fault creeps at `vL`
+where it meets the base: in ex4s the mismatch at that corner shears the hot mantle so hard that
+the smallest Maxwell time drops from 3e7 s to 3e4 s and bounds the steps. Give the transition a
+width and lock the fault at the base instead (as in the two-fault models).
+
+Verification: off by default, `tools/regress.sh compare` is bit-identical on all 16 datasets;
+with the fault creeping at `vL` at every depth the surface moves at `vL/2` to 1e-12; ex2 with a
+moving base matches an independent finite-difference solve of the same problem (its own fault
+slip rate, Dirichlet base) to 0.014 `vL/2`, while a free-base solve with that slip differs by
+0.16; a run stopped after 300 steps and restarted is bit-identical to the uninterrupted one. With
+the moving base, ex2's surface moves at 0.944, 0.981 and 0.996 `vL/2` at 50, 70 and 90 km before
+its earthquake and has no overshoot after it; an unbounded elastic half-space with the same fault
+slip levels off more slowly (a `1/y` tail), since a base pinned at 30 km couples more stiffly.
+
+**Width of the transition.** The base stands for the mantle below the model: far from the plate
+boundary it moves with the plates, beneath it the mantle shear zone carries the plate motion.
+Observations of that zone at the base of the lithosphere: beneath the central San Andreas fault
+the lithosphere-asthenosphere boundary changes character across less than 50 km, read as shear
+localized through the whole lithosphere (Ford, Fischer & Lekic 2014, Geology,
+doi:10.1130/G35128.1); SKS anisotropy gives each fault of the San Andreas system a shear zone about
+40 km wide at the base of the lithosphere, intense shear over 50-100 km beneath the system, and
+broadening into horizontal asthenospheric shear below (Bonnin, Tommasi et al. 2012, GJI); beneath
+New Zealand the mantle deforms across about 200 km (Molnar et al. 1999, Science), while at the
+initiation of the Alpine fault deformation at 25-50 km depth spread across at least 60 km in
+strands (Kidder et al. 2021, Geology). For two faults 20 km apart (SAF-SJF, the Marlborough
+faults) two such 40-km zones overlap into one about 60 km wide, and the model's base at 60 km lies
+just below its lithosphere (the ex4 geotherm reaches 1488 K at 50 km). Estimate: `W = 60 km`,
+centred between the faults, with 40 to 100 km as the range to explore (200 km would need a wider
+domain: the tanh tail must be negligible at the sides, 1e-4 for 60 km at 100 km from the centre).
+
+**What the moving base changes in the trading problem.** With a free base the two fault columns
+carry the same depth-integrated force, the series condition of the screen
+(docs/REVERSIBLE_STRENGTH_PLAN.md, section 2). A moving base takes part of that load and fixes
+where the deep motion changes from one plate's velocity to the other's: centred between the
+faults it favours neither, and how much it pulls toward the symmetric partition depends on how
+strongly the mantle above it couples to the lithosphere.
+
+**Coupling through a power-law mantle.** An interseismic deficit near the faults spreads along the
+lithosphere over `lambda = sqrt(mu H_e R_b t)`, with `R_b = ∫ dz/eta` through the mantle above the
+base, before the base takes it up (a lithosphere coupled to a viscous channel, Elsasser's stress
+diffusion). Only where `lambda` is shorter than the distance to the side boundaries does the base,
+rather than the sides, carry the far field. In the two-fault power-law model (ex4 geotherm, 1488 K
+at 50 km) the mantle at 45-60 km has effective viscosities of 2e18 to 9e18 Pa s 30 km from the
+side in test runs at 340-410 yr (`R_b` 4e-15 to 7e-15 m/(Pa s)), so `lambda` is 170-220 km over a
+250-yr cycle with `H_e` = 30 km: longer than the 90 km from the faults to the sides of the 200 km
+domain. There the moving base changes the surface velocity by about 1% (free and 60 km moving
+base, 50-150 yr after the first event), and the sides still set the ramp.

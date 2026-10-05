@@ -339,6 +339,8 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::loadSettings(const char *file)
     else if (var.compare("momBal_bcT_qd")==0) { _bcTType = rhs.c_str(); }
     else if (var.compare("momBal_bcL_qd")==0) { _bcLType = rhs.c_str(); }
     else if (var.compare("momBal_bcB_qd")==0) { _bcBType = rhs.c_str(); }
+    else if (var.compare("momBal_bcB_center")==0) { _base._center = atof( rhs.c_str() ); }
+    else if (var.compare("momBal_bcB_width")==0) { _base._width = atof( rhs.c_str() ); }
     else if (var.compare("interiorFaults")==0) { _interiorFaultNames.clear(); loadVectorFromInputFile(rhsFull,_interiorFaultNames); }
     else if (var.compare("interiorFaultKinkLift")==0) { _interiorFaultKinkLift = atoi( rhs.c_str() ); }
     else if (var.compare("interiorFaultKinkSource")==0) { _interiorFaultKinkSource = atoi( rhs.c_str() ); }
@@ -402,7 +404,15 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::checkInput()
   assert(_bcRType == "freeSurface" || _bcRType == "remoteLoading");
   assert(_bcTType == "freeSurface" || _bcTType == "remoteLoading" || _bcTType == "atan_u");
   assert(_bcLType == "symmFault"   || _bcLType == "rigidFault" || _bcLType == "remoteLoading");
-  assert(_bcBType == "freeSurface" || _bcBType == "remoteLoading");
+  if (_bcBType != "freeSurface" && _bcBType != "remoteLoading" && _bcBType != "movingBase") {
+    PetscPrintf(PETSC_COMM_WORLD,"Error: momBal_bcB_qd must be freeSurface, remoteLoading or movingBase (not %s).\n",_bcBType.c_str());
+    assert(0);
+  }
+  if (_bcBType == "movingBase" && (_isMMS || _forcingType != "no" || _D->_systemEvolutionType == "steadyStateIts")) {
+    PetscPrintf(PETSC_COMM_WORLD,"Error: momBal_bcB_qd = movingBase is not available in MMS tests, with a forcing term or with\n"
+      "       systemEvolutionType = steadyStateIts.\n");
+    assert(0);
+  }
 
   // interior faults
   for (size_t i = 0; i < _interiorFaultNames.size(); i++) {
@@ -499,6 +509,8 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::allocateFields()
     string funcName = "StrikeSlip_PowerLaw_qd::allocateFields";
     PetscPrintf(PETSC_COMM_WORLD,"Starting %s in %s\n",funcName.c_str(),FILENAME);
   #endif
+
+  if (_bcBType == "movingBase") { ierr = _base.setup(*_D,_bcLType == "symmFault" || _bcLType == "rigidFault"); CHKERRQ(ierr); }
 
   // initiate Vecs to hold current time and time step
   ierr = VecCreateMPI(PETSC_COMM_WORLD, PETSC_DECIDE, 1, &_time1DVec); CHKERRQ(ierr);
@@ -636,7 +648,8 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::parseBCs()
     _mat_bcLType = "Neumann";
   }
 
-  if (_bcBType.compare("symmFault")==0 || _bcBType.compare("rigidFault")==0 || _bcBType.compare("remoteLoading")==0) {
+  if (_bcBType.compare("symmFault")==0 || _bcBType.compare("rigidFault")==0 || _bcBType.compare("remoteLoading")==0
+      || _bcBType.compare("movingBase")==0) {
     _mat_bcBType = "Dirichlet";
   }
   else if (_bcBType.compare("freeSurface")==0 || _bcBType.compare("outGoingCharacteristics")==0) {
@@ -687,6 +700,11 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::initiateIntegrand()
     writeSS(0);
   }
   if (_dropSSIndex) { VecDestroy(&_JjSSVec); } // also after a restart, which skips the guess
+  if (_bcBType == "movingBase") { // the base starts at the initial displacement (a restart keeps the saved start)
+    ierr = _base.checkFaults(_faults,_lifts); CHKERRQ(ierr);
+    if (!_D->_restartFromChkpt) { ierr = _base.setShift(*_D,_material->_u); CHKERRQ(ierr); }
+    ierr = _base.update(_material->_bcB,_initTime,_vL,_faultTypeScale); CHKERRQ(ierr);
+  }
   { // set up KSP context for time integration
     Mat A;
     _material->_sbp->getA(A);
@@ -971,6 +989,7 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::writeCheckpoint()
   ierr = PetscViewerHDF5WriteAttribute(_viewer_chkpt, "time2D", "chkptTimeStep", PETSC_INT, &_chkptTimeStep2D); CHKERRQ(ierr);
   ierr = PetscViewerHDF5WriteAttribute(_viewer_chkpt, "time2D", "currTime", PETSC_SCALAR, &_currTime); CHKERRQ(ierr);
   ierr = PetscViewerHDF5PopGroup(_viewer_chkpt);                      CHKERRQ(ierr);
+  if (_bcBType == "movingBase") { ierr = _base.writeCheckpoint(_viewer_chkpt); CHKERRQ(ierr); }
 
 
   #if VERBOSE > 1
@@ -1007,6 +1026,7 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::loadCheckpoint()
   ierr = VecLoad(_time2DVec, viewer);                            CHKERRQ(ierr);
   ierr = VecLoad(_dtime2DVec, viewer);                           CHKERRQ(ierr);
   ierr = PetscViewerHDF5PopGroup(viewer);                        CHKERRQ(ierr);
+  if (_bcBType == "movingBase") { ierr = _base.loadCheckpoint(viewer); CHKERRQ(ierr); }
 
   PetscViewerDestroy(&viewer);
 
@@ -1139,6 +1159,7 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::writeContext()
   ierr = PetscViewerASCIIPrintf(viewer,"momBal_bcT = %s\n",_bcTType.c_str());CHKERRQ(ierr);
   ierr = PetscViewerASCIIPrintf(viewer,"momBal_bcL = %s\n",_bcLType.c_str());CHKERRQ(ierr);
   ierr = PetscViewerASCIIPrintf(viewer,"momBal_bcB = %s\n",_bcBType.c_str());CHKERRQ(ierr);
+  if (_bcBType == "movingBase") { ierr = _base.writeContext(viewer); CHKERRQ(ierr); }
 
   PetscViewerDestroy(&viewer);
 
@@ -1263,6 +1284,9 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::d_dt(const PetscScalar time,const map<str
     ierr = VecSet(_material->_bcR,_vL*time/_faultTypeScale);CHKERRQ(ierr);
     ierr = VecAXPY(_material->_bcR,1.0,_material->_bcRShift);CHKERRQ(ierr);
   }
+  if (_bcBType=="movingBase") { // the base moves with the plates
+    ierr = _base.update(_material->_bcB,time,_vL,_faultTypeScale);CHKERRQ(ierr);
+  }
   if (_bcTType == "atan_u") { updateBCT_atan_u(time); }
 
   _material->updateFields(time,varEx);
@@ -1346,6 +1370,9 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::d_dt(const PetscScalar time,const map<str
   if (_bcRType=="remoteLoading") {
     ierr = VecSet(_material->_bcR,_vL*time/_faultTypeScale);CHKERRQ(ierr);
     ierr = VecAXPY(_material->_bcR,1.0,_material->_bcRShift);CHKERRQ(ierr);
+  }
+  if (_bcBType=="movingBase") { // the base moves with the plates
+    ierr = _base.update(_material->_bcB,time,_vL,_faultTypeScale);CHKERRQ(ierr);
   }
   if (_bcTType=="atan_u") { updateBCT_atan_u(time); }
 
@@ -1541,6 +1568,7 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::computeSurfVel()
   else { ierr = VecSet(_bcLRate,0.0); CHKERRQ(ierr); }
   if (_bcRType == "remoteLoading") { ierr = VecSet(_bcRRate,_vL/_faultTypeScale); CHKERRQ(ierr); }
   else { ierr = VecSet(_bcRRate,0.0); CHKERRQ(ierr); }
+  if (_bcBType == "movingBase") { ierr = _base.rate(_bcBRate,_vL,_faultTypeScale); CHKERRQ(ierr); }
   if (_bcTType == "atan_u") { // the rate of the imposed top displacement
     Vec bcT;
     ierr = VecDuplicate(_material->_bcT,&bcT); CHKERRQ(ierr);

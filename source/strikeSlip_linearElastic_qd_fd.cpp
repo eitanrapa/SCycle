@@ -299,6 +299,10 @@ PetscErrorCode StrikeSlip_LinearElastic_qd_fd::checkInput()
   assert(_qd_bcRType.compare("freeSurface")==0 || _qd_bcRType.compare("remoteLoading")==0 );
   assert(_qd_bcTType.compare("freeSurface")==0 || _qd_bcTType.compare("remoteLoading")==0 );
   assert(_qd_bcLType.compare("symmFault")==0 || _qd_bcLType.compare("rigidFault")==0 );
+  if (_qd_bcBType == "movingBase") {
+    PetscPrintf(PETSC_COMM_WORLD,"Error: momBal_bcB_qd = movingBase needs momentumBalanceType = quasidynamic.\n");
+    assert(0);
+  }
   assert(_qd_bcBType.compare("freeSurface")==0 || _qd_bcBType.compare("remoteLoading")==0 );
 
   assert(_fd_bcRType.compare("freeSurface")==0 || _fd_bcRType.compare("outGoingCharacteristics")==0 );

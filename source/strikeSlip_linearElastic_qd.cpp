@@ -271,6 +271,8 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::loadSettings(const char *file)
     else if (var.compare("momBal_bcT_qd")==0) { _bcTType = rhs.c_str(); }
     else if (var.compare("momBal_bcL_qd")==0) { _bcLType = rhs.c_str(); }
     else if (var.compare("momBal_bcB_qd")==0) { _bcBType = rhs.c_str(); }
+    else if (var.compare("momBal_bcB_center")==0) { _base._center = atof( rhs.c_str() ); }
+    else if (var.compare("momBal_bcB_width")==0) { _base._width = atof( rhs.c_str() ); }
     else if (var.compare("interiorFaults")==0) { _interiorFaultNames.clear(); loadVectorFromInputFile(rhsFull,_interiorFaultNames); }
     else if (var.compare("interiorFaultKinkLift")==0) { _interiorFaultKinkLift = atoi( rhs.c_str() ); }
     else if (var.compare("computeSurfVel")==0) { _computeSurfVel = atoi( rhs.c_str() ); }
@@ -391,7 +393,14 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::checkInput()
     PetscPrintf(PETSC_COMM_WORLD,"Error: momBal_bcL_qd = remoteLoading leaves the model without a fault; declare interiorFaults.\n");
     assert(0);
   }
-  assert(_bcBType == "freeSurface" || _bcBType == "remoteLoading");
+  if (_bcBType != "freeSurface" && _bcBType != "remoteLoading" && _bcBType != "movingBase") {
+    PetscPrintf(PETSC_COMM_WORLD,"Error: momBal_bcB_qd must be freeSurface, remoteLoading or movingBase (not %s).\n",_bcBType.c_str());
+    assert(0);
+  }
+  if (_bcBType == "movingBase" && (_isMMS || _forcingType != "no")) {
+    PetscPrintf(PETSC_COMM_WORLD,"Error: momBal_bcB_qd = movingBase is not available in MMS tests or with a forcing term.\n");
+    assert(0);
+  }
   if (_bcTType == "remoteLoading" || _bcBType == "remoteLoading") {
     PetscPrintf(PETSC_COMM_WORLD,"Note: momBal_bcT_qd/momBal_bcB_qd = remoteLoading holds that boundary at its initial (steady-state) displacement;\n"
       "      unlike momBal_bcR_qd it is not moved with vL*t during the simulation (that update is commented out in d_dt).\n");
@@ -425,6 +434,8 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::allocateFields()
     string funcName = "StrikeSlip_LinearElastic_qd::allocateFields";
     PetscPrintf(PETSC_COMM_WORLD,"Starting %s in %s\n",funcName.c_str(),FILENAME);
   #endif
+
+  if (_bcBType == "movingBase") { ierr = _base.setup(*_D,_bcLType == "symmFault" || _bcLType == "rigidFault"); CHKERRQ(ierr); }
 
   // initiate Vecs to hold current time and time step
   ierr = VecCreateMPI(PETSC_COMM_WORLD, PETSC_DECIDE, 1, &_time1DVec); CHKERRQ(ierr);
@@ -551,7 +562,8 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::parseBCs()
     _mat_bcLType = "Neumann";
   }
 
-  if (_bcBType.compare("symmFault")==0 || _bcBType.compare("rigidFault")==0 || _bcBType.compare("remoteLoading")==0) {
+  if (_bcBType.compare("symmFault")==0 || _bcBType.compare("rigidFault")==0 || _bcBType.compare("remoteLoading")==0
+      || _bcBType.compare("movingBase")==0) {
     _mat_bcBType = "Dirichlet";
   }
   else if (_bcBType.compare("freeSurface")==0 || _bcBType.compare("outGoingCharacteristics")==0) {
@@ -602,6 +614,11 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::initiateIntegrand()
   }
 
   if (_guessSteadyStateICs == 1) { solveSS(); }
+  if (_bcBType == "movingBase") { // the base starts at the initial displacement (a restart keeps the saved start)
+    ierr = _base.checkFaults(_faults,_lifts); CHKERRQ(ierr);
+    if (!_D->_restartFromChkpt) { ierr = _base.setShift(*_D,_material->_u); CHKERRQ(ierr); }
+    ierr = _base.update(_material->_bcB,_initTime,_vL,_faultTypeScale); CHKERRQ(ierr);
+  }
 
   { // set up KSP context for time integration
     Mat A;
@@ -835,6 +852,7 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::computeSurfVel()
   else { ierr = VecSet(_bcLRate,0.0); CHKERRQ(ierr); }
   if (_bcRType == "remoteLoading") { ierr = VecSet(_bcRRate,_vL/_faultTypeScale); CHKERRQ(ierr); }
   else { ierr = VecSet(_bcRRate,0.0); CHKERRQ(ierr); }
+  if (_bcBType == "movingBase") { ierr = _base.rate(_bcBRate,_vL,_faultTypeScale); CHKERRQ(ierr); }
 
   ierr = VecSet(_rhsVel,0.0); CHKERRQ(ierr);
   ierr = _material->_sbp->setRhs(_rhsVel,_bcLRate,_bcRRate,_bcTRate,_bcBRate); CHKERRQ(ierr);
@@ -1011,6 +1029,7 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::writeCheckpoint()
   ierr = PetscViewerHDF5WriteAttribute(_viewer_chkpt, "time2D", "chkptTimeStep", PETSC_INT, &_chkptTimeStep2D); CHKERRQ(ierr);
   ierr = PetscViewerHDF5WriteAttribute(_viewer_chkpt, "time2D", "currTime", PETSC_SCALAR, &_currTime); CHKERRQ(ierr);
   ierr = PetscViewerHDF5PopGroup(_viewer_chkpt);                      CHKERRQ(ierr);
+  if (_bcBType == "movingBase") { ierr = _base.writeCheckpoint(_viewer_chkpt); CHKERRQ(ierr); }
 
 
 
@@ -1049,6 +1068,7 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::loadCheckpoint()
   ierr = VecLoad(_time2DVec, viewer);                                   CHKERRQ(ierr);
   ierr = VecLoad(_dtime2DVec, viewer);                                  CHKERRQ(ierr);
   ierr = PetscViewerHDF5PopGroup(viewer);                               CHKERRQ(ierr);
+  if (_bcBType == "movingBase") { ierr = _base.loadCheckpoint(viewer); CHKERRQ(ierr); }
 
   PetscViewerDestroy(&viewer);
 
@@ -1152,6 +1172,7 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::writeContext()
   ierr = PetscViewerASCIIPrintf(viewer,"momBal_bcT = %s\n",_bcTType.c_str());CHKERRQ(ierr);
   ierr = PetscViewerASCIIPrintf(viewer,"momBal_bcL = %s\n",_bcLType.c_str());CHKERRQ(ierr);
   ierr = PetscViewerASCIIPrintf(viewer,"momBal_bcB = %s\n",_bcBType.c_str());CHKERRQ(ierr);
+  if (_bcBType == "movingBase") { ierr = _base.writeContext(viewer); CHKERRQ(ierr); }
   ierr = PetscViewerASCIIPrintf(viewer,"faultTypeScale = %g\n",_faultTypeScale);CHKERRQ(ierr);
 
   // free memory
@@ -1282,6 +1303,9 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::d_dt(const PetscScalar time,const ma
     ierr = VecSet(_material->_bcR,_vL*time/_faultTypeScale);CHKERRQ(ierr);
     ierr = VecAXPY(_material->_bcR,1.0,_material->_bcRShift);CHKERRQ(ierr);
   }
+  if (_bcBType=="movingBase") { // the base moves with the plates
+    ierr = _base.update(_material->_bcB,time,_vL,_faultTypeScale);CHKERRQ(ierr);
+  }
   //~ if (_bcTType=="remoteLoading") {
     //~ ierr = VecSet(_material->_bcT,_vL*time/_faultTypeScale);CHKERRQ(ierr);
     //~ ierr = VecAXPY(_material->_bcT,1.0,_material->_bcTShift);CHKERRQ(ierr);
@@ -1348,6 +1372,9 @@ PetscErrorCode StrikeSlip_LinearElastic_qd::d_dt(const PetscScalar time,const ma
   if (_bcRType=="remoteLoading") {
     ierr = VecSet(_material->_bcR,_vL*time/_faultTypeScale);CHKERRQ(ierr);
     ierr = VecAXPY(_material->_bcR,1.0,_material->_bcRShift);CHKERRQ(ierr);
+  }
+  if (_bcBType=="movingBase") { // the base moves with the plates
+    ierr = _base.update(_material->_bcB,time,_vL,_faultTypeScale);CHKERRQ(ierr);
   }
   //~ if (_bcTType=="remoteLoading") {
     //~ ierr = VecSet(_material->_bcT,_vL*time/_faultTypeScale);CHKERRQ(ierr);

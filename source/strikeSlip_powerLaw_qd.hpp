@@ -116,6 +116,7 @@ public:
   // Options: freeSurface, tau, outgoingCharacteristics, remoteLoading, symmFault, rigidFault
   string              _bcRType,_bcTType,_bcLType,_bcBType;
   string              _mat_bcRType,_mat_bcTType,_mat_bcLType,_mat_bcBType;
+  MovingBase          _base; // momBal_bcB_qd = movingBase: the base moves with the plates
 
   // for mapping from body fields to the fault
   VecScatter* _body2fault;

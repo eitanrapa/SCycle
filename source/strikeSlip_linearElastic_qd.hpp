@@ -98,6 +98,7 @@ private:
   // Options: freeSurface, tau, outgoingCharacteristics, remoteLoading, symmFault, rigidFault
   string  _bcRType,_bcTType,_bcLType,_bcBType;
   string  _mat_bcRType,_mat_bcTType,_mat_bcLType,_mat_bcBType;
+  MovingBase _base; // momBal_bcB_qd = movingBase: the base moves with the plates
   //~ string  _bcRType_ss,_bcTType_ss,_bcLType_ss,_bcBType_ss; // steady-state type
   //~ string  _bcRType_trans,_bcTType_trans,_bcLType_trans,_bcBType_trans; // steady-state type
 
