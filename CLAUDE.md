@@ -214,6 +214,9 @@ mpirun -n 4 ./source/main examples/ex2.in
   `PowerLaw::computeTotalStrains`); anything new that differentiates u in y must do the same.
 - `momBal_bcT_qd`/`momBal_bcB_qd = remoteLoading` stay at their initial displacement (`movingBase`
   is the bottom boundary that moves).
+- Outputs come every `stride1D`/`stride2D` (and `strideSeries`) steps, not at even times, and the
+  adaptive steps are short in and after events: weight any average over outputs by time (a plain
+  mean of the interseismic surface velocity overshot vL/2 by up to 25%; `tools/two_fault.py` weights).
 
 ## Testing
 
