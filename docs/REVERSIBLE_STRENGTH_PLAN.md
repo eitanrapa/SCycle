@@ -1068,6 +1068,38 @@ message says why not.
    lock-in; gate 5.5b together with the first batch's 0.80), three pairings in the alternation band
    (`beta_f`/`a` = 5/0.5, 8/0.7, 10/1.0, periods 1740 to 3360 yr) and two outside it (8/0.5, 10/0.7,
    lock-in).
+   **Second batch, results** (2026-10-05; six runs finished at 12,000 yr, `fab8` and `fab10` still
+   running). No run locks in, and the hardening memory does not set the switching. The faults fail in
+   runs of consecutive earthquakes on one fault where the first batch took strict turns, and the runs
+   lengthen with `beta_f`. After 2000 yr of spin-up the fraction of consecutive earthquakes on the
+   same fault is 0.03 and 0.00 in the first batch's null and fabric runs, 0.41 (alt5) and 0.61 (fab5)
+   at `beta_f = 5`, 0.60 and 0.61 (alt8, lock8) at 8, 0.70 and 0.70 (alt10, lock10) at 10, and 0.84
+   in `fab10` so far (to 6500 yr), with runs of up to six earthquakes. One fault takes over 75% of
+   the slip at 10 km over 1000 yr for 0 to 38% of the time (alt5 0, lock8 9, fab5 14, alt8 17,
+   lock10 37, alt10 38; fab10 45 so far); the long-term shares stay between 0.47 and 0.53.
+   *Mechanism*, from the root probes at 25 km: every earthquake hands the deep motion to its own
+   root, in the first batch too. The first earthquake on the other fault after a run raises the
+   share of the root beneath it from 0.02-0.45 to 0.65-0.99 within 100 yr in all 95 cases of the
+   second batch and all 78 of the first batch's null and fabric runs. The fabric sets how long the
+   root keeps the majority of the deep motion after an earthquake: a median of 250 and 275 yr in
+   the first batch's null and fabric runs, about the 240 yr between earthquakes, and 325 to 550 yr
+   in the second batch (712 yr in fab10 so far), two to three intervals. The fault above is then
+   reloaded faster and fails again, until the other fault, loaded more slowly all along, fails first
+   and takes the deep motion. The hardening amplitude makes no difference between 0.5 and 1.0 at
+   `beta_f` = 8 and 10 (lock8 and alt8, lock10 and alt10 agree), while hardening against none
+   shortens the runs (fab5 0.61 against alt5 0.41; fab10 0.84 so far against 0.70) and in alt5
+   turns them into regular pairs from 5.5 kyr on (fifteen pairs, a period of about 930 yr against
+   the screen's 1740 yr). *Gate 5.5b*: the change from turns to runs falls between `N_f` = 0.80
+   (first batch) and 1.20 (fab5), within a factor 2 of the threshold, but above it the 2D model
+   clusters and switches instead of locking in. The screen has no earthquakes, and the quiet fault's
+   earthquake resets the competition. *Gate 5.9* is not met as intended: every run switches (9 to
+   16 times in `switches.csv`), those the screen placed outside the alternation band as often as
+   those inside it. *Surface velocity* (time-weighted, both faults below 1e-8 m/s): at the
+   midpoint between the faults it differs by 4 to 6 mm/yr between phases dominated by one fault
+   or the other (lock10, alt10), the steepest gradient moving to the dominant fault; averaged over
+   the run it is the same in all twelve runs of both batches (0.84, 0.66 and 0.29 vL/2 at 60, 30
+   and 10 km from the midpoint). Scripts and figures: `data/stage5_batch2/` (`analyze_batch2.py`,
+   `plot_*.py`, `figs/`).
 11. Optional: fixed anisotropy (4.7).
 
 Each physics commit is marked as altering published behaviour only when it is on, so it can be
