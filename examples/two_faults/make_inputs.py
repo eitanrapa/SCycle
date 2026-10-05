@@ -27,6 +27,9 @@ keys. --weak-band W gives each fault its own viscous root: a band W km wide bene
 times larger (the file
 ic/disl_A, which the power law reads as a body field; log-linear cosine tapers of --weak-taper km at
 the edges). Without one the flow beneath the faults is broad and the two roots merge.
+--mantle-zone W adds a mantle shear zone W km wide beneath both bands (centred between the faults),
+weak like them from --weak-bottom to --mantle-bottom and tapering into the asthenosphere below, so
+that the plate motion beneath the roots stays localized instead of spreading through the mantle.
 --moving-base W moves the bottom boundary with the plates instead of leaving it traction-free:
 from -vL/2 to +vL/2 across a transition W km wide centred between the faults (--base-center), so
 the base carries load beneath the far field (the faults must then be locked at depth).
@@ -142,6 +145,11 @@ def main():
     p.add_argument('--weak-bottom', type=float, default=30.0, help='bottom of the band (km): deeper, the hot mantle is weak already and\n'
                    'a weaker band shortens the Maxwell time that caps the steps')
     p.add_argument('--weak-taper', type=float, default=0.5, help='width of the band edges (km)')
+    p.add_argument('--mantle-zone', type=float, default=None, metavar='W',
+                   help='with --weak-band: a mantle shear zone W km wide below the bands, centred between the faults\n'
+                   '(--base-center), weakened like the bands from --weak-bottom to --mantle-bottom')
+    p.add_argument('--mantle-bottom', type=float, default=40.0, help='bottom of the fully weak mantle zone (km)')
+    p.add_argument('--mantle-taper', type=float, default=5.0, help='width of the mantle zone\'s sides and bottom edge (km)')
     p.add_argument('--moving-base', type=float, default=None, metavar='W',
                    help='move the bottom boundary with the plates (momBal_bcB_qd = movingBase), from -vL/2 to +vL/2 across\n'
                    'a transition W km wide (holding 90%% of the change; 0: a step); needs --lock-depth')
@@ -259,9 +267,18 @@ def main():
         my = np.max([ramp((0.5*args.weak_band + T - np.abs(y - yk))/T) for yk in faults_y], axis=0)
         mz = ramp((z - (top - T))/T)*ramp((args.weak_bottom + T - z)/T)
         m = my[:, None]*mz[None, :]
+        if args.mantle_zone is not None:  # one zone below both bands: weak from where they end, tapering into the asthenosphere
+            yc = args.base_center if args.base_center is not None else (y1 if args.single else 0.5*(y1 + y2))
+            Tm = args.mantle_taper
+            myz = ramp((0.5*args.mantle_zone + Tm - np.abs(y - yc))/Tm)
+            mzz = ramp((z - (args.weak_bottom - T))/T)*ramp((args.mantle_bottom + Tm - z)/Tm)
+            m = np.maximum(m, myz[:, None]*mzz[None, :])
         write_vec(os.path.join(d, 'ic', 'disl_A'), (A0*args.weak_factor**m).ravel())  # index iy*Nz + iz
         lines.append('# weak band: ic/disl_A is %g x the prefactor within %g km of each fault from %g to %g km (tapers %g km)'
                      % (args.weak_factor, 0.5*args.weak_band, top, args.weak_bottom, T))
+        if args.mantle_zone is not None:
+            lines.append('# mantle zone: the same factor within %g km of y = %g km from %g to %g km (sides and bottom taper %g km)'
+                         % (0.5*args.mantle_zone, yc, args.weak_bottom, args.mantle_bottom, Tm))
     for kv in args.set:
         k, v = kv.split('=', 1)
         lines.append('%s = %s' % (k.strip(), v.strip()))
