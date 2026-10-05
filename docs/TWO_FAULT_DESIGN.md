@@ -364,3 +364,22 @@ the cycle. That needs a mantle that couples (an effective viscosity above about 
 that carry the plate motion down to the base beneath the faults: choices about the model's
 physics, not its boundary. Test runs and figures: `data/mb_tests/` (`plot_elastic.py`,
 `plot_twofault.py`).
+
+**After spin-up (correction, 2026-10-05).** The runs above started from zero stress and covered
+300-650 yr. Run to 3000 yr and compared after 2000 yr of spin-up with the first batch's null run
+(free base), the moving base alone and the moving base with a mantle shear zone
+(`make_inputs.py --mantle-zone 60`: the bands' factor 1000 from 30 to 40 km, 60 km wide, tapering
+into the asthenosphere by 45 km) all give late-interseismic surface velocities that match the
+elastic half-space with both faults locked to 20 km and each slipping `vL/2` below (Savage &
+Burford 1973) within about 75 km of the faults. 5 yr before an earthquake: 0.54, 0.62 and 0.59
+`vL/2` at 30 km from the midpoint (half-space 0.60), 0.68, 0.74 and 0.72 at 50 km (0.75). They
+leave it near the sides, where the boundary forces `vL/2` at 100 km and the half-space gives 0.86.
+With a 20 km locking depth the half-space itself approaches the plate rate only as
+`1 - 2D/(pi x)` (0.92 at 150 km, 0.95 at 250 km), so what remains of the "taper" is the domain's
+width, not missing physics; velocities above the plate rate near the faults after an earthquake
+(up to 1.6-1.9 `vL/2` 5 yr after) are afterslip and viscous relaxation, also physical. The mantle
+zone changes nothing; the moving base costs about 40% more steps by 3000 yr (the zone 50%). The
+conclusion above, that plate-rate far fields need a stiffer mantle or shear zones to the base,
+came from runs that were not spun up and from the wrong criterion (the plate rate within 100 km
+of the faults); it is superseded. A wider domain would remove the boundary's pull but needs a much
+longer spin-up, its faults loading far more slowly. Figure: `data/mb_tests/plot_late.py`.
