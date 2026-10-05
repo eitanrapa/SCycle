@@ -1068,8 +1068,8 @@ message says why not.
    lock-in; gate 5.5b together with the first batch's 0.80), three pairings in the alternation band
    (`beta_f`/`a` = 5/0.5, 8/0.7, 10/1.0, periods 1740 to 3360 yr) and two outside it (8/0.5, 10/0.7,
    lock-in).
-   **Second batch, results** (2026-10-05; six runs finished at 12,000 yr, `fab8` and `fab10` still
-   running). No run locks in, and the hardening memory does not set the switching. The faults fail in
+   **Second batch, results** (2026-10-05; six runs finished at 12,000 yr and are quoted below,
+   `fab8` finished later that day and is summarized at the end, `fab10` still running). No run locks in, and the hardening memory does not set the switching. The faults fail in
    runs of consecutive earthquakes on one fault where the first batch took strict turns, and the runs
    lengthen with `beta_f`. After 2000 yr of spin-up the fraction of consecutive earthquakes on the
    same fault is 0.03 and 0.00 in the first batch's null and fabric runs, 0.41 (alt5) and 0.61 (fab5)
@@ -1095,7 +1095,7 @@ message says why not.
    and takes the deep motion. *Attribution* (`decompose_roots.py`, `stress_shadow.py`): the ratio of
    the strain rate of the root beneath the last ruptured fault to the other root's splits into
    stress (at the band centre: the fault's `tau` at 25 km, where it is locked, less its prestress),
-   fabric, hardening and temperature factors of the flow law, closing within a factor of 1.8 (7% in
+   fabric, hardening and temperature factors of the flow law, closing within a factor of 1.9 (7% in
    the null run). In the null run the ratio is stress alone: 4 one year after an earthquake, 1.5
    after 200 yr. In the second batch the earthquake's stress gives a factor of 10 to 15 in the first
    year; then the fabric takes over, 12 to 37 after 10 yr, 24 to 55 after 30 yr, 7 to 15 after
@@ -1132,8 +1132,15 @@ message says why not.
    switch the ruptured fault's share falls from 0.84 at 100 yr to 0.54 at 10 yr and 0.21 at 2 yr,
    before a repeat it stays near 0.85 and then rises, and the midpoint velocity changes by 1.1 mm/yr
    10 yr before a switch. The earthquake history adds the position in the run: the first earthquake
-   of a run is followed by one on the same fault in 86% of cases, later ones in about half. Scripts
-   and figures: `data/stage5_batch2/` (`analyze_batch2.py`, `plot_*.py`, `figs/`).
+   of a run is followed by one on the same fault in 86% of cases, later ones in about half.
+   *fab8* (fabric alone, `beta_f = 8`; finished at 13:56): the strongest clustering of the batch, a
+   fraction of 0.80 of consecutive earthquakes on the same fault (runs of up to eight), one fault
+   over 75% of the slip at 10 km for 61% of the time and its root keeping the majority of the deep
+   motion for 838 yr after an earthquake (median), against 0.60-0.61 and 500-525 yr with hardening
+   at the same `beta_f` (alt8, lock8). Long-term shares 0.49 and 0.51. The rest as above: while one
+   fault dominates it takes 92% of the creep at 16 km and of the root's shear; the fabric factor is
+   46-50 at 10-30 yr after an earthquake; the geodetic share follows the root's with r = 0.996.
+   Scripts and figures: `data/stage5_batch2/` (`analyze_batch2.py`, `plot_*.py`, `figs/`).
 11. Optional: fixed anisotropy (4.7).
 
 Each physics commit is marked as altering published behaviour only when it is on, so it can be
