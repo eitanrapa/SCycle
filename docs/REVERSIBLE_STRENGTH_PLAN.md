@@ -1076,7 +1076,14 @@ message says why not.
    at `beta_f = 5`, 0.60 and 0.61 (alt8, lock8) at 8, 0.70 and 0.70 (alt10, lock10) at 10, and 0.84
    in `fab10` so far (to 6500 yr), with runs of up to six earthquakes. One fault takes over 75% of
    the slip at 10 km over 1000 yr for 0 to 38% of the time (alt5 0, lock8 9, fab5 14, alt8 17,
-   lock10 37, alt10 38; fab10 45 so far); the long-term shares stay between 0.47 and 0.53.
+   lock10 37, alt10 38; fab10 45 so far); the long-term shares stay between 0.47 and 0.53. The
+   slip itself clusters, not only the nucleation: while one fault takes over 75% of the slip at
+   10 km over 1000 yr, it also takes 82-88% of the creep at 16 km (velocity strengthening) and of
+   the root's shear at 25 km, slipping at 1.5-1.7 times its long-term rate while the quiet fault
+   slips at 0.2-0.3 times. The quiet fault does not store its share: its earthquakes after 1000 to
+   2000 yr of quiet slip 5.6 m at 10 km, against 4.5 m after less than 300 yr and the 20 m its full
+   share would have loaded. No earthquake triggers one on the other fault (the closest pair is
+   8.5 yr apart, the others over 90 yr; `slip_budget.py`).
    *Mechanism*, from the root probes at 25 km: every earthquake hands the deep motion to its own
    root, in the first batch too. The first earthquake on the other fault after a run raises the
    share of the root beneath it from 0.02-0.45 to 0.65-0.99 within 100 yr in all 95 cases of the
