@@ -348,3 +348,19 @@ side in test runs at 340-410 yr (`R_b` 4e-15 to 7e-15 m/(Pa s)), so `lambda` is 
 250-yr cycle with `H_e` = 30 km: longer than the 90 km from the faults to the sides of the 200 km
 domain. There the moving base changes the surface velocity by about 1% (free and 60 km moving
 base, 50-150 yr after the first event), and the sides still set the ramp.
+
+**A wider domain** (1000 km, Ny 651 instead of 581, faults and base transition centred) lets the
+base act: 50 yr after the initial earthquake the moving base holds the surface at the plate rate
+beyond about 150 km from the faults (0.97 and 1.05 `vL/2` at 150 and 270 km, against 0.47 and 0.65
+with a free base). Late in the cycle it does not: 300 yr after, the lithosphere lags the plates over
+hundreds of kilometres with either base (0.41 and 0.64 against 0.36 and 0.58), the faults being
+locked and the mantle too weak to hold the lithosphere to the base; the profile is narrow early and
+broad late, as for an elastic layer over a viscous half-space (Savage & Prescott 1978, JGR). The
+wide domain also loads the faults far more slowly: after the initial earthquake `f2` first ruptured
+at 1412 yr with a free base, and not by 661 yr with the moving base, against 415 and 407 yr in the
+200 km domain. So with the ex4 mantle the base condition cannot give plate-rate far fields late in
+the cycle. That needs a mantle that couples (an effective viscosity above about 1e20 Pa s over the
+30 km above the base, which also shortens `lambda` below the distance to the sides) or shear zones
+that carry the plate motion down to the base beneath the faults: choices about the model's
+physics, not its boundary. Test runs and figures: `data/mb_tests/` (`plot_elastic.py`,
+`plot_twofault.py`).
