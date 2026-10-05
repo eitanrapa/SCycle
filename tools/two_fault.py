@@ -9,8 +9,9 @@ outputDir of StrikeSlip_LinearElastic_qd with interior faults; see examples/two_
                  integrated over depth) and moment per unit fault length (N m/m)
   partition.csv  per 1D output: time (yr), each fault's slip at --zref (m), and each fault's
                  share of the slip at --zref over the trailing --window years
-  surfvel.csv    surface position y (km), the mean interseismic surface velocity and the latest
-                 interseismic one (mm/yr), from outputs where every fault slips slower than --vinter
+  surfvel.csv    surface position y (km), the mean interseismic surface velocity (weighted by time)
+                 and the latest interseismic one (mm/yr), from outputs where every fault slips slower
+                 than --vinter
   switches.csv   one row per change of the dominant fault: time (yr), the faults it passes from and to,
                  the length of the phase that ended (yr) and each fault's slip at --zref during it (m).
                  The dominant fault has the largest share; a switch needs the new one's share above
@@ -192,14 +193,19 @@ def main():
         first = cat[0]['end'] if cat else t1[0]
         sel = np.flatnonzero((vmax < args.vinter) & (t1 > first))
         if sel.size:
+            # each output stands for the time halfway to its neighbours: outputs come every stride1D
+            # steps, and a plain mean would weight the short steps after earthquakes far beyond their time
+            edges = np.concatenate([[t1[0]], 0.5*(t1[1:] + t1[:-1]), [t1[-1]]])
+            w = np.clip(np.diff(edges), 0.0, None)[sel]
+            if w.sum() <= 0.0: w = np.ones(sel.size)
             with open(run + 'surfvel.csv', 'w') as f:
                 f.write('y_km,mean_interseismic_mm_per_yr,latest_interseismic_mm_per_yr\n')
-                mean, last = V[sel].mean(axis=0), V[sel[-1]]
+                mean, last = (w[:, None]*V[sel]).sum(axis=0)/w.sum(), V[sel[-1]]
                 for k in range(Ny):
                     f.write('%.9g,%.6g,%.6g\n' % (ys[k], mean[k], last[k]))
             wrote.append('surfvel.csv')
-            print('\ninterseismic surface velocity: %d outputs with every fault below %g m/s; far-field %.3f and %.3f mm/yr (vL/2 = %.3f)'
-                  % (sel.size, args.vinter, mean[0], mean[-1], 0.5*vL*1e3*YEAR))
+            print('\ninterseismic surface velocity: %d outputs (%.4g yr) with every fault below %g m/s; far-field %.3f and %.3f mm/yr (vL/2 = %.3f)'
+                  % (sel.size, w.sum()/YEAR, args.vinter, mean[0], mean[-1], 0.5*vL*1e3*YEAR))
         else:
             print('\nno interseismic outputs (every fault below %g m/s after the first earthquake)' % args.vinter)
     print('\nwrote %s in %s' % (', '.join(wrote), run))

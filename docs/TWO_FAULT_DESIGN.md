@@ -272,8 +272,8 @@ Implemented in stage 3 (`cd2fac5`), on by default when interior faults are decla
   `data_context.h5`.
 - `tools/two_fault.py <outputDir>`: event catalog (`events.csv`: onset and end, duration, peak V,
   depth, potency, moment per unit length), slip at a reference depth and each fault's share over a
-  trailing window (`partition.csv`), and the mean and latest interseismic surface velocity
-  (`surfvel.csv`, outputs where every fault is slower than `--vinter`).
+  trailing window (`partition.csv`), and the time-weighted mean and the latest interseismic surface
+  velocity (`surfvel.csv`, outputs where every fault is slower than `--vinter`).
 
 ## 7. Bottom boundary: free or moving base (added 2026-10-04)
 
