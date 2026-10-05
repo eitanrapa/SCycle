@@ -1118,8 +1118,22 @@ message says why not.
    midpoint between the faults it differs by 4 to 6 mm/yr between phases dominated by one fault
    or the other (lock10, alt10), the steepest gradient moving to the dominant fault; averaged over
    the run it is the same in all twelve runs of both batches (0.84, 0.66 and 0.29 vL/2 at 60, 30
-   and 10 km from the midpoint). Scripts and figures: `data/stage5_batch2/` (`analyze_batch2.py`,
-   `plot_*.py`, `figs/`).
+   and 10 km from the midpoint). *Surface signal of the cycle* (`surface_signal.py`,
+   `surface_forecast*.py`, `surface_precursor.py`): two screw dislocations at the faults fitted to
+   the interseismic surface velocity within 50 km (locking depth 10 km, with an offset and a linear
+   term) give each fault's share of the deep slip. It follows the root's share at 25 km with
+   r = 0.95 to 0.99 in the second batch (0.72 in the null run), and stations every 5 km with
+   0.5 mm/yr noise recover it within 0.05. It shows the regime: 150 yr after an earthquake the
+   ruptured fault still has 0.85 to 0.9 of the deep slip in the second batch, against 0.55 to 0.6
+   in the null run. At a given time since the last earthquake it does not show whether the next one
+   repeats or switches (0.86 against 0.84 at 200 yr, 161 earthquakes of alt8, lock8, alt10 and
+   lock10); that is decided by the stress on the locked faults, which the surface does not see. The
+   coming earthquake's nucleation at about 10 km does show in the last decade or two: before a
+   switch the ruptured fault's share falls from 0.84 at 100 yr to 0.54 at 10 yr and 0.21 at 2 yr,
+   before a repeat it stays near 0.85 and then rises, and the midpoint velocity changes by 1.1 mm/yr
+   10 yr before a switch. The earthquake history adds the position in the run: the first earthquake
+   of a run is followed by one on the same fault in 86% of cases, later ones in about half. Scripts
+   and figures: `data/stage5_batch2/` (`analyze_batch2.py`, `plot_*.py`, `figs/`).
 11. Optional: fixed anisotropy (4.7).
 
 Each physics commit is marked as altering published behaviour only when it is on, so it can be
