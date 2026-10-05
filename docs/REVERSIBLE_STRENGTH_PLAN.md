@@ -1092,7 +1092,20 @@ message says why not.
    the first batch's null and fabric runs, about the 240 yr between earthquakes, and 325 to 550 yr
    in the second batch (712 yr in fab10 so far), two to three intervals. The fault above is then
    reloaded faster and fails again, until the other fault, loaded more slowly all along, fails first
-   and takes the deep motion. The hardening amplitude makes no difference between 0.5 and 1.0 at
+   and takes the deep motion. *Attribution* (`decompose_roots.py`, `stress_shadow.py`): the ratio of
+   the strain rate of the root beneath the last ruptured fault to the other root's splits into
+   stress (at the band centre: the fault's `tau` at 25 km, where it is locked, less its prestress),
+   fabric, hardening and temperature factors of the flow law, closing within a factor of 1.8 (7% in
+   the null run). In the null run the ratio is stress alone: 4 one year after an earthquake, 1.5
+   after 200 yr. In the second batch the earthquake's stress gives a factor of 10 to 15 in the first
+   year; then the fabric takes over, 12 to 37 after 10 yr, 24 to 55 after 30 yr, 7 to 15 after
+   100 yr and 2 to 4 after 200 yr, while the stress factor falls to 1 to 2, so the weakened root
+   carries the deep motion at about the other root's stress. Hardening works against it, 0.65 to
+   0.95; shear heating contributes nothing (the roots differ by 0.002 K at most). Each earthquake
+   also lowers the other fault's stress over 0-12 km by 0.6 to 1.0 MPa, which costs it about 100 yr
+   of loading in the null run and about 210 yr in the second batch, where the quiet fault's
+   stressing rate is halved (0.006-0.007 against 0.013 MPa/yr). The hardening amplitude makes no
+   difference between 0.5 and 1.0 at
    `beta_f` = 8 and 10 (lock8 and alt8, lock10 and alt10 agree), while hardening against none
    shortens the runs (fab5 0.61 against alt5 0.41; fab10 0.84 so far against 0.70) and in alt5
    turns them into regular pairs from 5.5 kyr on (fifteen pairs, a period of about 930 yr against
