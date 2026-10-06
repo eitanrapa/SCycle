@@ -1139,79 +1139,87 @@ message says why not.
    lock-in; gate 5.5b together with the first batch's 0.80), three pairings in the alternation band
    (`beta_f`/`a` = 5/0.5, 8/0.7, 10/1.0, periods 1740 to 3360 yr) and two outside it (8/0.5, 10/0.7,
    lock-in).
-   **Second batch, results** (2026-10-05; six runs finished at 12,000 yr and are quoted below,
-   `fab8` finished later that day and is summarized at the end, `fab10` still running). No run locks in, and the hardening memory does not set the switching. The faults fail in
-   runs of consecutive earthquakes on one fault where the first batch took strict turns, and the runs
-   lengthen with `beta_f`. After 2000 yr of spin-up the fraction of consecutive earthquakes on the
-   same fault is 0.03 and 0.00 in the first batch's null and fabric runs, 0.41 (alt5) and 0.61 (fab5)
-   at `beta_f = 5`, 0.60 and 0.61 (alt8, lock8) at 8, 0.70 and 0.70 (alt10, lock10) at 10, and 0.84
-   in `fab10` so far (to 6500 yr), with runs of up to six earthquakes. One fault takes over 75% of
-   the slip at 10 km over 1000 yr for 0 to 38% of the time (alt5 0, lock8 9, fab5 14, alt8 17,
-   lock10 37, alt10 38; fab10 45 so far); the long-term shares stay between 0.47 and 0.53. The
-   slip itself clusters, not only the nucleation: while one fault takes over 75% of the slip at
-   10 km over 1000 yr, it also takes 82-88% of the creep at 16 km (velocity strengthening) and of
-   the root's shear at 25 km, slipping at 1.5-1.7 times its long-term rate while the quiet fault
-   slips at 0.2-0.3 times. The quiet fault does not store its share: its earthquakes after 1000 to
-   2000 yr of quiet slip 5.6 m at 10 km, against 4.5 m after less than 300 yr and the 20 m its full
-   share would have loaded. No earthquake triggers one on the other fault (the closest pair is
-   8.5 yr apart, the others over 90 yr; `slip_budget.py`).
-   *Mechanism*, from the root probes at 25 km: every earthquake hands the deep motion to its own
-   root, in the first batch too. The first earthquake on the other fault after a run raises the
-   share of the root beneath it from 0.02-0.45 to 0.65-0.99 within 100 yr in all 95 cases of the
-   second batch and all 78 of the first batch's null and fabric runs. The fabric sets how long the
-   root keeps the majority of the deep motion after an earthquake: a median of 250 and 275 yr in
-   the first batch's null and fabric runs, about the 240 yr between earthquakes, and 325 to 550 yr
-   in the second batch (712 yr in fab10 so far), two to three intervals. The fault above is then
-   reloaded faster and fails again, until the other fault, loaded more slowly all along, fails first
-   and takes the deep motion. *Attribution* (`decompose_roots.py`, `stress_shadow.py`): the ratio of
-   the strain rate of the root beneath the last ruptured fault to the other root's splits into
-   stress (at the band centre: the fault's `tau` at 25 km, where it is locked, less its prestress),
-   fabric, hardening and temperature factors of the flow law, closing within a factor of 1.9 (7% in
-   the null run). In the null run the ratio is stress alone: 4 one year after an earthquake, 1.5
-   after 200 yr. In the second batch the earthquake's stress gives a factor of 10 to 15 in the first
-   year; then the fabric takes over, 12 to 37 after 10 yr, 24 to 55 after 30 yr, 7 to 15 after
-   100 yr and 2 to 4 after 200 yr, while the stress factor falls to 1 to 2, so the weakened root
-   carries the deep motion at about the other root's stress. Hardening works against it, 0.65 to
-   0.95; shear heating contributes nothing (the roots differ by 0.002 K at most). Each earthquake
-   also lowers the other fault's stress over 0-12 km by 0.6 to 1.0 MPa, which costs it about 100 yr
-   of loading in the null run and about 210 yr in the second batch, where the quiet fault's
-   stressing rate is halved (0.006-0.007 against 0.013 MPa/yr). The hardening amplitude makes no
-   difference between 0.5 and 1.0 at
-   `beta_f` = 8 and 10 (lock8 and alt8, lock10 and alt10 agree), while hardening against none
-   shortens the runs (fab5 0.61 against alt5 0.41; fab10 0.84 so far against 0.70) and in alt5
-   turns them into regular pairs from 5.5 kyr on (fifteen pairs, a period of about 930 yr against
-   the screen's 1740 yr). *Gate 5.5b*: the change from turns to runs falls between `N_f` = 0.80
-   (first batch) and 1.20 (fab5), within a factor 2 of the threshold, but above it the 2D model
-   clusters and switches instead of locking in. The screen has no earthquakes, and the quiet fault's
-   earthquake resets the competition. *Gate 5.9* is not met as intended: every run switches (9 to
-   16 times in `switches.csv`), those the screen placed outside the alternation band as often as
-   those inside it. *Surface velocity* (time-weighted, both faults below 1e-8 m/s): at the
-   midpoint between the faults it differs by 4 to 6 mm/yr between phases dominated by one fault
-   or the other (lock10, alt10), the steepest gradient moving to the dominant fault; averaged over
-   the run it is the same in all twelve runs of both batches (0.84, 0.66 and 0.29 vL/2 at 60, 30
-   and 10 km from the midpoint). *Surface signal of the cycle* (`surface_signal.py`,
-   `surface_forecast*.py`, `surface_precursor.py`): two screw dislocations at the faults fitted to
-   the interseismic surface velocity within 50 km (locking depth 10 km, with an offset and a linear
-   term) give each fault's share of the deep slip. It follows the root's share at 25 km with
-   r = 0.95 to 0.99 in the second batch (0.72 in the null run), and stations every 5 km with
-   0.5 mm/yr noise recover it within 0.05. It shows the regime: 150 yr after an earthquake the
-   ruptured fault still has 0.85 to 0.9 of the deep slip in the second batch, against 0.55 to 0.6
-   in the null run. At a given time since the last earthquake it does not show whether the next one
-   repeats or switches (0.86 against 0.84 at 200 yr, 161 earthquakes of alt8, lock8, alt10 and
-   lock10); that is decided by the stress on the locked faults, which the surface does not see. The
-   coming earthquake's nucleation at about 10 km does show in the last decade or two: before a
-   switch the ruptured fault's share falls from 0.84 at 100 yr to 0.54 at 10 yr and 0.21 at 2 yr,
-   before a repeat it stays near 0.85 and then rises, and the midpoint velocity changes by 1.1 mm/yr
-   10 yr before a switch. The earthquake history adds the position in the run: the first earthquake
-   of a run is followed by one on the same fault in 86% of cases, later ones in about half.
-   *fab8* (fabric alone, `beta_f = 8`; finished at 13:56): the strongest clustering of the batch, a
-   fraction of 0.80 of consecutive earthquakes on the same fault (runs of up to eight), one fault
-   over 75% of the slip at 10 km for 61% of the time and its root keeping the majority of the deep
-   motion for 838 yr after an earthquake (median), against 0.60-0.61 and 500-525 yr with hardening
-   at the same `beta_f` (alt8, lock8). Long-term shares 0.49 and 0.51. The rest as above: while one
-   fault dominates it takes 92% of the creep at 16 km and of the root's shear; the fabric factor is
-   46-50 at 10-30 yr after an earthquake; the geodetic share follows the root's with r = 0.996.
-   Scripts and figures: `data/stage5_batch2/` (`analyze_batch2.py`, `plot_*.py`, `figs/`).
+   **Second batch, results** (2026-10-05 and 06; all eight runs to 12,000 yr). `fab8` and `fab10`
+   finished last and are summarized at the end; the numbers below are of the six others unless they
+   name these two. No run locks in, and the hardening memory does not set the switching. The faults
+   fail in runs of consecutive earthquakes on one fault where the first batch took strict turns, and
+   the runs lengthen with `beta_f`. After 2000 yr of spin-up the fraction of consecutive earthquakes
+   on the same fault is 0.03 and 0.00 in the first batch's null and fabric runs, 0.41 (alt5) and
+   0.61 (fab5) at `beta_f = 5`, 0.60 and 0.61 (alt8, lock8) at 8 and 0.70 and 0.70 (alt10, lock10)
+   at 10, with runs of up to six earthquakes; with the fabric alone it is 0.80 at 8 (fab8) and 0.88
+   at 10 (fab10), with runs of up to eight and eleven. One fault takes over 75% of the slip at 10 km
+   over 1000 yr for 0 to 67% of the time (alt5 0, lock8 9, fab5 14, alt8 17, lock10 37, alt10 38,
+   fab8 61, fab10 67); the long-term shares stay between 0.47 and 0.53. The slip itself clusters,
+   not only the nucleation: while one fault takes over 75% of the slip at 10 km over 1000 yr, it
+   also takes 82-88% of the creep at 16 km (velocity strengthening) and of the root's shear at 25
+   km, slipping at 1.5-1.7 times its long-term rate while the quiet fault slips at 0.2-0.3 times.
+   The quiet fault does not store its share: its earthquakes after 1000 to 2000 yr of quiet slip 5.6
+   m at 10 km, against 4.5 m after less than 300 yr and the 20 m its full share would have loaded.
+   No earthquake triggers one on the other fault (the closest pair is 8.5 yr apart, the others over
+   90 yr; `slip_budget.py`). *Mechanism*, from the root probes at 25 km: every earthquake hands the
+   deep motion to its own root, in the first batch too. The first earthquake on the other fault
+   after a run raises the share of the root beneath it from 0.02-0.45 to 0.65-0.99 within 100 yr in
+   all 95 cases of the second batch and all 78 of the first batch's null and fabric runs. The fabric
+   sets how long the root keeps the majority of the deep motion after an earthquake: a median of 250
+   and 275 yr in the first batch's null and fabric runs, about the 240 yr between earthquakes, and
+   325 to 550 yr in the second batch (838 and 925 yr in fab8 and fab10), two to four intervals. The
+   fault above is then reloaded faster and fails again, until the other fault, loaded more slowly
+   all along, fails first and takes the deep motion. *Attribution* (`decompose_roots.py`,
+   `stress_shadow.py`): the ratio of the strain rate of the root beneath the last ruptured fault to
+   the other root's splits into stress (at the band centre: the fault's `tau` at 25 km, where it is
+   locked, less its prestress), fabric, hardening and temperature factors of the flow law, closing
+   within a factor of 2.3 (7% in the null run). In the null run the ratio is stress alone: 4 one
+   year after an earthquake, 1.5 after 200 yr. In the second batch the earthquake's stress gives a
+   factor of 10 to 15 in the first year; then the fabric takes over, 12 to 37 after 10 yr, 24 to 55
+   after 30 yr, 7 to 15 after 100 yr and 2 to 4 after 200 yr, while the stress factor falls to 1 to
+   2, so the weakened root carries the deep motion at about the other root's stress. Hardening works
+   against it, 0.65 to 0.95; shear heating contributes nothing (the roots differ by 0.002 K at
+   most). Each earthquake also lowers the other fault's stress over 0-12 km by 0.6 to 1.0 MPa, which
+   costs it about 100 yr of loading in the null run and about 210 yr in the second batch, where the
+   quiet fault's stressing rate is halved (0.006-0.007 against 0.013 MPa/yr). The hardening
+   amplitude makes no difference between 0.5 and 1.0 at `beta_f` = 8 and 10 (lock8 and alt8, lock10
+   and alt10 agree), while hardening against none shortens the runs (fab5 0.61 against alt5 0.41,
+   fab8 0.80 against 0.60-0.61, fab10 0.88 against 0.70) and in alt5 turns them into regular pairs
+   from 5.5 kyr on (fifteen pairs, a period of about 930 yr against the screen's 1740 yr). *Gate
+   5.5b*: the change from turns to runs falls between `N_f` = 0.80 (first batch) and 1.20 (fab5),
+   within a factor 2 of the threshold, but above it the 2D model clusters and switches instead of
+   locking in. The screen has no earthquakes, and the quiet fault's earthquake resets the
+   competition. *Gate 5.9* is not met as intended: every run switches (9 to 16 times in
+   `switches.csv`), those the screen placed outside the alternation band as often as those inside
+   it. *Surface velocity* (time-weighted, both faults below 1e-8 m/s): at the midpoint between the
+   faults it differs by 4 to 6 mm/yr between phases dominated by one fault or the other (lock10,
+   alt10), the steepest gradient moving to the dominant fault; averaged over the run it is the same
+   in all twelve runs of both batches (0.84, 0.66 and 0.29 vL/2 at 60, 30 and 10 km from the
+   midpoint). *Surface signal of the cycle* (`surface_signal.py`, `surface_forecast*.py`,
+   `surface_precursor.py`): two screw dislocations at the faults fitted to the interseismic surface
+   velocity within 50 km (locking depth 10 km, with an offset and a linear term) give each fault's
+   share of the deep slip. It follows the root's share at 25 km with r = 0.95 to 0.99 in the second
+   batch (0.72 in the null run), and stations every 5 km with 0.5 mm/yr noise recover it within
+   0.05. It shows the regime: 150 yr after an earthquake the ruptured fault still has 0.85 to 0.9 of
+   the deep slip in the second batch, against 0.55 to 0.6 in the null run. At a given time since the
+   last earthquake it does not show whether the next one repeats or switches (0.86 against 0.84 at
+   200 yr, 161 earthquakes of alt8, lock8, alt10 and lock10); that is decided by the stress on the
+   locked faults, which the surface does not see. The coming earthquake's nucleation at about 10 km
+   does show in the last decade or two: before a switch the ruptured fault's share falls from 0.84
+   at 100 yr to 0.54 at 10 yr and 0.21 at 2 yr, before a repeat it stays near 0.85 and then rises,
+   and the midpoint velocity changes by 1.1 mm/yr 10 yr before a switch. The earthquake history adds
+   the position in the run: the first earthquake of a run is followed by one on the same fault in
+   86% of cases, later ones in about half. *fab8* (fabric alone, `beta_f = 8`; finished on
+   2026-10-05 at 13:56): a fraction of 0.80 of consecutive earthquakes on the same fault (runs of up
+   to eight), one fault over 75% of the slip at 10 km for 61% of the time and its root keeping the
+   majority of the deep motion for 838 yr after an earthquake (median), against 0.60-0.61 and
+   500-525 yr with hardening at the same `beta_f` (alt8, lock8). Long-term shares 0.49 and 0.51. The
+   rest as above: while one fault dominates it takes 92% of the creep at 16 km and of the root's
+   shear; the fabric factor is 46-50 at 10-30 yr after an earthquake; the geodetic share follows the
+   root's with r = 0.996. *fab10* (fabric alone, `beta_f = 10`; finished on 2026-10-06 at 08:20
+   after 485,024 steps): the strongest clustering, 0.88 of consecutive earthquakes on the same
+   fault, runs of up to eleven (about 2500 yr on one fault), one fault over 75% of the slip for 67%
+   of the time and a root keeping the deep motion for 925 yr; yet six switches in 12,000 yr, so even
+   the strongest fabric does not lock in. Long-term shares 0.52 and 0.48. While one fault dominates
+   it takes 95% of the creep and of the root's shear; the fabric factor reaches 71 at 10-30 yr after
+   an earthquake; each earthquake costs the quiet fault about 230 yr of loading; the geodetic share
+   follows the root's with r = 0.998. Scripts and figures: `data/stage5_batch2/`
+   (`analyze_batch2.py`, `plot_*.py`, `figs/`).
 11. Viscous anisotropy (4.7), as the directional fabric. **Done** (2026-10-05): `fabric_anisotropic = 1`
    puts the fabric's factor on fault-parallel shear only (two viscosities, the Mühlhaus form below);
    tests in the commit message.
