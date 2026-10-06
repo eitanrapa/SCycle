@@ -1171,8 +1171,13 @@ reverted alone.
 
 ## 8. Out of scope, and why
 
-- Mineral reactions and phase changes (W1, W9, S4, S5, S10): no mineralogy, and the paper itself
-  rejects them as irreversible or needing a change of depth.
+- Mineral reactions and phase changes (W1, W9, S4, S5): no mineralogy, and the paper itself
+  rejects them as irreversible at constant depth (its Tables 1 and 2). Phase segregation (S10) was
+  listed here by mistake until 2026-10-05: the paper rates it reversible and strengthening while
+  fast (quartz and mica separating into bands during pressure solution lose the quartz-mica
+  boundaries along which pressure solution is fastest; Schmidt & Platt 2022). It needs no
+  mineralogy: a state field slowing pressure-solution creep, grown by its strain and remixed in
+  time, fits the framework of section 3, in roots where pressure solution carries the creep.
 - Fluid flow through the bulk (W5 porosity as a weak phase, S2 in the bulk, porosity waves, creep
   cavitation): the pore pressure is one-dimensional along each fault; a two-phase bulk model is a
   different code. The water field of 4.2 is the phenomenological stand-in.
