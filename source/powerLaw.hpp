@@ -71,12 +71,15 @@ class PowerLaw
     Vec                   _wetChi;      // the wetness of the mix (WaterState), NULL: wetDist
     std::map<std::string,Vec> _strengthFactors; // stress factors on every creep mechanism (fabric, cement), by name
     // directional fabric (fabric_anisotropic = 1, with fabric_type on; read here for the checkpoint):
-    // stress factors on fault-parallel shear (sxy) only, by name; sxy then sees the viscosity effViscXY
-    // and sxz keeps effVisc. dgVwork, dgVwork_disl = (sxy dgVxy + sxz dgVxz)/sdev, the strain rates whose
-    // product with sdev is the dissipation (stress and strain rate are no longer parallel)
+    // stress factors F on fault-parallel shear (sxy) only, by name, in Hill's form: a mechanism of stress
+    // exponent n creeps at the equivalent stress s_e = sqrt(q sxy^2 + sxz^2), q = F^(-2n/(n+1)), with sxy's
+    // strain rate q times sxz's (associated flow; pure fault-parallel shear F^-n times faster, pure sxz
+    // unchanged). sxy sees the viscosity effViscXY, sxz effVisc. dgVwork, dgVwork_disl = (sxy dgVxy +
+    // sxz dgVxz)/sdev, the strain rates whose product with sdev is the dissipation
     bool                  _xyAnisotropic;
     std::map<std::string,Vec> _xyStrengthFactors;
-    Vec                   _effViscXY,_dgVwork,_dgVwork_disl; // NULL unless _xyAnisotropic
+    Vec                   _effViscXY,_dgVwork,_dgVwork_disl,_sEq; // NULL unless _xyAnisotropic; _sEq: work
+    std::vector<PetscScalar> _qDisl,_qDisl2,_qDP,_qDiff; // Hill's q per node of each mechanism
     // phase segregation (seg_type on, read here for the checkpoint): rate factors on pressure solution, by
     // name, and its own strain rate (1e-3/s; NULL unless seg_type is on with wDissPrecCreep = yes)
     bool                  _dpRateNeeded;
@@ -164,8 +167,8 @@ class PowerLaw
     // the directional form (fabric_anisotropic = 1): F acts on fault-parallel shear (sxy) only, whose strain
     // rate at a given stress is divided by F^n for each creep mechanism; sxz is unchanged
     PetscErrorCode setXYStrengthFactor(const std::string& name, const Vec& F);
-    PetscErrorCode xyFactor(std::vector<PetscScalar>& f, const Vec* n); // product of the sxy factors, F^-n (n = 1 if NULL)
-    PetscErrorCode addXYScaled(Vec& out, const Vec& invEffVisc, const Vec* n); // out += invEffVisc * xyFactor
+    PetscErrorCode hillStress(std::vector<PetscScalar>& q, const Vec* n); // q of exponent n (1 if NULL), _sEq from it
+    PetscErrorCode addQScaled(Vec& out, const Vec& invEffVisc, const std::vector<PetscScalar>& q); // out += q invEffVisc
     PetscErrorCode computeEffViscXY(); // after the sum of computeViscosity
     // phase segregation: a factor f on pressure solution's strain rate at a given stress, kept under its name
     PetscErrorCode setDPRateFactor(const std::string& name, const Vec& f);

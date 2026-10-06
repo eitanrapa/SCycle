@@ -32,7 +32,7 @@ PowerLaw::PowerLaw(Domain& D,std::string bcRType,std::string bcTType,std::string
   _wetMix = "log";
   _wetChi = NULL;
   _xyAnisotropic = false;
-  _effViscXY = NULL; _dgVwork = NULL; _dgVwork_disl = NULL;
+  _effViscXY = NULL; _dgVwork = NULL; _dgVwork_disl = NULL; _sEq = NULL;
   _dpRateNeeded = false; _dgVdev_dp = NULL;
   _ptPhi = NULL; _ptD = NULL;
   loadSettings(_file);
@@ -80,7 +80,7 @@ PowerLaw::~PowerLaw()
   VecDestroy(&_wetChi);
   for (std::map<std::string,Vec>::iterator it = _strengthFactors.begin(); it != _strengthFactors.end(); it++) { VecDestroy(&it->second); }
   for (std::map<std::string,Vec>::iterator it = _xyStrengthFactors.begin(); it != _xyStrengthFactors.end(); it++) { VecDestroy(&it->second); }
-  VecDestroy(&_effViscXY); VecDestroy(&_dgVwork); VecDestroy(&_dgVwork_disl);
+  VecDestroy(&_effViscXY); VecDestroy(&_dgVwork); VecDestroy(&_dgVwork_disl); VecDestroy(&_sEq);
   for (std::map<std::string,Vec>::iterator it = _dpRateFactors.begin(); it != _dpRateFactors.end(); it++) { VecDestroy(&it->second); }
   VecDestroy(&_dgVdev_dp);
   VecDestroy(&_ptPhi); VecDestroy(&_ptD);
@@ -320,6 +320,7 @@ PetscErrorCode PowerLaw::allocateFields()
     VecDuplicate(_u,&_effViscXY);    VecSet(_effViscXY,0.0);    PetscObjectSetName((PetscObject) _effViscXY, "effViscXY");
     VecDuplicate(_u,&_dgVwork);      VecSet(_dgVwork,0.0);      PetscObjectSetName((PetscObject) _dgVwork, "dgVwork");
     VecDuplicate(_u,&_dgVwork_disl); VecSet(_dgVwork_disl,0.0); PetscObjectSetName((PetscObject) _dgVwork_disl, "dgVwork_disl");
+    VecDuplicate(_u,&_sEq);          VecSet(_sEq,0.0);
   }
 
   VecDuplicate(_u,&_T);           VecSet(_T,0.0);           PetscObjectSetName((PetscObject) _T, "T");
@@ -1032,17 +1033,30 @@ PetscErrorCode PowerLaw::computeViscosity(const PetscScalar viscCap)
 
   // estimate 1 / (effective viscosity) based on strain rate
   if (_wPlasticity.compare("yes")==0) { _plastic->computeInvEffVisc(_dgVdev); }
-  if (_wDissPrecCreep.compare("yes")==0) { _dp->computeInvEffVisc(_T,_sdev,_grainSize,_wetDist); }
+  // (directional fabric: each mechanism at its equivalent stress, Hill's form)
+  if (_wDissPrecCreep.compare("yes")==0) {
+    if (_xyAnisotropic) { ierr = hillStress(_qDP,NULL); CHKERRQ(ierr); }
+    _dp->computeInvEffVisc(_T,_xyAnisotropic ? _sEq : _sdev,_grainSize,_wetDist);
+  }
   if (_wDissPrecCreep.compare("yes")==0 && !_dpRateFactors.empty()) { ierr = applyDPRateFactors(); CHKERRQ(ierr); } // phase segregation
   if (_wDissPrecCreep.compare("yes")==0 && _ptPhi != NULL) { ierr = applyMeltProducts(_dp->_invEffVisc,_dp->_m); CHKERRQ(ierr); } // pseudotachylite
-  if (_wDislCreep.compare("yes")==0) { _disl->computeInvEffVisc(_T,_sdev); }
-  if (_wDislCreep2.compare("yes")==0) { _disl2->computeInvEffVisc(_T,_sdev); }
+  if (_wDislCreep.compare("yes")==0) {
+    if (_xyAnisotropic) { ierr = hillStress(_qDisl,&_disl->_n); CHKERRQ(ierr); }
+    _disl->computeInvEffVisc(_T,_xyAnisotropic ? _sEq : _sdev);
+  }
+  if (_wDislCreep2.compare("yes")==0) {
+    if (_xyAnisotropic) { ierr = hillStress(_qDisl2,&_disl2->_n); CHKERRQ(ierr); }
+    _disl2->computeInvEffVisc(_T,_xyAnisotropic ? _sEq : _sdev);
+  }
   if (_hardH != NULL) { // strain hardening: the dislocation strain rate at a given stress is divided by H^n
     if (_wDislCreep.compare("yes")==0) { ierr = applyHardening(_disl->_invEffVisc,_disl->_n,true); CHKERRQ(ierr); }
     if (_wDislCreep2.compare("yes")==0) { ierr = applyHardening(_disl2->_invEffVisc,_disl2->_n,true); CHKERRQ(ierr); }
   }
   if (_wDislWetDry == "yes") { ierr = mixWetDry(); CHKERRQ(ierr); }
-  if (_wDiffCreep.compare("yes")==0) { _diff->computeInvEffVisc(_T,_sdev,_grainSize); }
+  if (_wDiffCreep.compare("yes")==0) {
+    if (_xyAnisotropic) { ierr = hillStress(_qDiff,&_diff->_n); CHKERRQ(ierr); }
+    _diff->computeInvEffVisc(_T,_xyAnisotropic ? _sEq : _sdev,_grainSize);
+  }
   if (_wDiffCreep.compare("yes")==0 && _ptPhi != NULL) { ierr = applyMeltProducts(_diff->_invEffVisc,_diff->_m); CHKERRQ(ierr); } // pseudotachylite
   if (!_strengthFactors.empty()) { // fabric and cement: every creep mechanism at a given stress / F^n
     if (_wDissPrecCreep.compare("yes")==0) { ierr = applyStrengthFactors(_dp->_invEffVisc,NULL,true); CHKERRQ(ierr); }
@@ -1069,20 +1083,21 @@ PetscErrorCode PowerLaw::computeViscosity(const PetscScalar viscCap)
 }
 
 
-// Directional fabric: the viscosity of fault-parallel shear, 1/effViscXY = 1/cap + the plastic part +
-// each creep mechanism's 1/effVisc times its directional factors F^-n (n = 1 for pressure solution), so
-// the fabric weakens sxy alone. This is the transversely isotropic viscous law of Muehlhaus et al. (2002)
-// and Lev & Hager (2008) with the foliation parallel to the fault, which in antiplane strain is two
-// viscosities (sxy on the foliation, sxz across it), the power law taken in the isotropic invariant.
+// Directional fabric: the viscosity of fault-parallel shear, 1/effViscXY = 1/cap + the plastic part + each
+// creep mechanism's 1/effVisc (at its equivalent stress) times its q. Hill's form of a transversely
+// isotropic power law with the foliation parallel to the fault (plan section 4.7): in antiplane strain
+// two viscosities, sxy on the foliation and sxz across it. Taking the power law in the isotropic
+// invariant instead (Muehlhaus et al. 2002) lets a large sxz soften sxy by the full F^-n, which made the
+// Maxwell time, and the steps, a few hundred times shorter where the fabric was strong.
 PetscErrorCode PowerLaw::computeEffViscXY()
 {
   PetscErrorCode ierr = 0;
   ierr = VecSet(_effViscXY,1.0/_effViscCap); CHKERRQ(ierr);
   if (_wPlasticity.compare("yes")==0) { ierr = VecAXPY(_effViscXY,1.0,_plastic->_invEffVisc); CHKERRQ(ierr); } // a yield cap, not scaled
-  if (_wDissPrecCreep.compare("yes")==0) { ierr = addXYScaled(_effViscXY,_dp->_invEffVisc,NULL); CHKERRQ(ierr); }
-  if (_wDislCreep.compare("yes")==0) { ierr = addXYScaled(_effViscXY,_disl->_invEffVisc,&_disl->_n); CHKERRQ(ierr); }
-  if (_wDislCreep2.compare("yes")==0) { ierr = addXYScaled(_effViscXY,_disl2->_invEffVisc,&_disl2->_n); CHKERRQ(ierr); }
-  if (_wDiffCreep.compare("yes")==0) { ierr = addXYScaled(_effViscXY,_diff->_invEffVisc,&_diff->_n); CHKERRQ(ierr); }
+  if (_wDissPrecCreep.compare("yes")==0) { ierr = addQScaled(_effViscXY,_dp->_invEffVisc,_qDP); CHKERRQ(ierr); }
+  if (_wDislCreep.compare("yes")==0) { ierr = addQScaled(_effViscXY,_disl->_invEffVisc,_qDisl); CHKERRQ(ierr); }
+  if (_wDislCreep2.compare("yes")==0) { ierr = addQScaled(_effViscXY,_disl2->_invEffVisc,_qDisl2); CHKERRQ(ierr); }
+  if (_wDiffCreep.compare("yes")==0) { ierr = addQScaled(_effViscXY,_diff->_invEffVisc,_qDiff); CHKERRQ(ierr); }
   ierr = VecReciprocal(_effViscXY); CHKERRQ(ierr);
   return ierr;
 }
@@ -1316,37 +1331,52 @@ PetscErrorCode PowerLaw::setXYStrengthFactor(const std::string& name, const Vec&
 }
 
 
-// f = the product of the directional factors at a given stress, F^-n (n = 1 when not given), per node
-PetscErrorCode PowerLaw::xyFactor(std::vector<PetscScalar>& f, const Vec* n)
+// Hill's form for a mechanism of stress exponent n (1 when not given): q = F^(-2n/(n+1)) per node from the
+// product F of the directional factors, and _sEq = sqrt(q sxy^2 + sxz^2), the stress it creeps at
+PetscErrorCode PowerLaw::hillStress(std::vector<PetscScalar>& q, const Vec* n)
 {
   PetscErrorCode ierr = 0;
   PetscInt Istart, Iend;
   ierr = VecGetOwnershipRange(_u,&Istart,&Iend); CHKERRQ(ierr);
-  f.assign(Iend - Istart,1.0);
-  const PetscScalar *nn = NULL;
-  if (n != NULL) { ierr = VecGetArrayRead(*n,&nn); CHKERRQ(ierr); }
+  const PetscInt len = Iend - Istart;
+  std::vector<PetscScalar> F(len,1.0);
   for (std::map<std::string,Vec>::iterator it = _xyStrengthFactors.begin(); it != _xyStrengthFactors.end(); it++) {
-    const PetscScalar *F;
-    ierr = VecGetArrayRead(it->second,&F); CHKERRQ(ierr);
-    for (PetscInt Jj = 0; Jj < Iend - Istart; Jj++) { f[Jj] *= pow(F[Jj], (nn != NULL) ? -nn[Jj] : -1.0); }
-    ierr = VecRestoreArrayRead(it->second,&F); CHKERRQ(ierr);
+    const PetscScalar *f;
+    ierr = VecGetArrayRead(it->second,&f); CHKERRQ(ierr);
+    for (PetscInt Jj = 0; Jj < len; Jj++) { F[Jj] *= f[Jj]; }
+    ierr = VecRestoreArrayRead(it->second,&f); CHKERRQ(ierr);
+  }
+  q.assign(len,1.0);
+  const PetscScalar *nn = NULL, *sxy, *sxz;
+  PetscScalar *se;
+  if (n != NULL) { ierr = VecGetArrayRead(*n,&nn); CHKERRQ(ierr); }
+  ierr = VecGetArrayRead(_sxy,&sxy); CHKERRQ(ierr);
+  ierr = VecGetArrayRead(_sxz,&sxz); CHKERRQ(ierr);
+  ierr = VecGetArray(_sEq,&se); CHKERRQ(ierr);
+  for (PetscInt Jj = 0; Jj < len; Jj++) {
+    const PetscScalar e = (nn != NULL) ? nn[Jj] : 1.0;
+    q[Jj] = pow(F[Jj], -2.0*e/(e + 1.0));
+    se[Jj] = sqrt(q[Jj]*sxy[Jj]*sxy[Jj] + sxz[Jj]*sxz[Jj]);
   }
   if (n != NULL) { ierr = VecRestoreArrayRead(*n,&nn); CHKERRQ(ierr); }
+  ierr = VecRestoreArrayRead(_sxy,&sxy); CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(_sxz,&sxz); CHKERRQ(ierr);
+  ierr = VecRestoreArray(_sEq,&se); CHKERRQ(ierr);
   return ierr;
 }
 
 
-// out += invEffVisc times the directional factors at exponent n (n = 1 when not given)
-PetscErrorCode PowerLaw::addXYScaled(Vec& out, const Vec& invEffVisc, const Vec* n)
+// out += q invEffVisc (q empty: before any viscosity, as 1)
+PetscErrorCode PowerLaw::addQScaled(Vec& out, const Vec& invEffVisc, const std::vector<PetscScalar>& q)
 {
   PetscErrorCode ierr = 0;
-  std::vector<PetscScalar> f;
-  ierr = xyFactor(f,n); CHKERRQ(ierr);
+  PetscInt Istart, Iend;
+  ierr = VecGetOwnershipRange(out,&Istart,&Iend); CHKERRQ(ierr);
   PetscScalar *o;
   const PetscScalar *v;
   ierr = VecGetArray(out,&o); CHKERRQ(ierr);
   ierr = VecGetArrayRead(invEffVisc,&v); CHKERRQ(ierr);
-  for (size_t Jj = 0; Jj < f.size(); Jj++) { o[Jj] += v[Jj]*f[Jj]; }
+  for (PetscInt Jj = 0; Jj < Iend - Istart; Jj++) { o[Jj] += v[Jj]*(q.empty() ? 1.0 : q[Jj]); }
   ierr = VecRestoreArray(out,&o); CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(invEffVisc,&v); CHKERRQ(ierr);
   return ierr;
@@ -1555,10 +1585,7 @@ PetscErrorCode PowerLaw::computeDevViscStrainRates()
 
   // compute deviatoric strain rate from dislocation creep only (both mechanisms if disl2 is on)
   if (_wDislCreep.compare("yes")==0 && _xyAnisotropic) {
-    // directional fabric: sxy sees each law's directional factors at its exponent
-    std::vector<PetscScalar> f1, f2;
-    ierr = xyFactor(f1,&_disl->_n); CHKERRQ(ierr);
-    if (_wDislCreep2.compare("yes")==0) { ierr = xyFactor(f2,&_disl2->_n); CHKERRQ(ierr); }
+    // directional fabric: sxy's strain rate is q times sxz's, for each law at its exponent
     PetscScalar const *inv1,*inv2 = NULL,*sxy,*sxz,*s;
     PetscScalar *dgVdev,*work;
     VecGetArrayRead(_disl->_invEffVisc,&inv1);
@@ -1571,8 +1598,8 @@ PetscErrorCode PowerLaw::computeDevViscStrainRates()
     PetscInt Istart,Iend;
     VecGetOwnershipRange(_dgVdev_disl,&Istart,&Iend);
     for (PetscInt Jj = 0; Jj < Iend - Istart; Jj++) {
-      PetscScalar invXY = inv1[Jj]*f1[Jj], invXZ = inv1[Jj];
-      if (inv2 != NULL) { invXY += inv2[Jj]*f2[Jj]; invXZ += inv2[Jj]; }
+      PetscScalar invXY = inv1[Jj]*(_qDisl.empty() ? 1.0 : _qDisl[Jj]), invXZ = inv1[Jj];
+      if (inv2 != NULL) { invXY += inv2[Jj]*(_qDisl2.empty() ? 1.0 : _qDisl2[Jj]); invXZ += inv2[Jj]; }
       const PetscScalar dgVxy = sxy[Jj]*invXY, dgVxz = sxz[Jj]*invXZ;
       dgVdev[Jj] = sqrt(dgVxy*dgVxy + dgVxz*dgVxz);
       work[Jj] = (s[Jj] > 0) ? (sxy[Jj]*dgVxy + sxz[Jj]*dgVxz)/s[Jj] : 0.0;
@@ -1611,18 +1638,19 @@ PetscErrorCode PowerLaw::computeDevViscStrainRates()
     VecRestoreArray(_dgVdev_disl,&dgVdev);
   }
 
-  // pressure solution's own strain rate (phase segregation), sxy with the directional factors if any
+  // pressure solution's own strain rate (phase segregation), sxy times q with a directional fabric
   if (_dgVdev_dp != NULL) {
-    std::vector<PetscScalar> f;
-    ierr = xyFactor(f,NULL); CHKERRQ(ierr);
+    PetscInt Istart, Iend;
+    VecGetOwnershipRange(_dgVdev_dp,&Istart,&Iend);
+    const bool useQ = _xyAnisotropic && !_qDP.empty();
     PetscScalar const *inv,*sxy,*sxz;
     PetscScalar *dgVdev;
     VecGetArrayRead(_dp->_invEffVisc,&inv);
     VecGetArrayRead(_sxy,&sxy);
     VecGetArrayRead(_sxz,&sxz);
     VecGetArray(_dgVdev_dp,&dgVdev);
-    for (size_t Jj = 0; Jj < f.size(); Jj++) {
-      const PetscScalar dgVxy = sxy[Jj]*inv[Jj]*f[Jj], dgVxz = sxz[Jj]*inv[Jj];
+    for (PetscInt Jj = 0; Jj < Iend - Istart; Jj++) {
+      const PetscScalar dgVxy = sxy[Jj]*inv[Jj]*(useQ ? _qDP[Jj] : 1.0), dgVxz = sxz[Jj]*inv[Jj];
       dgVdev[Jj] = sqrt(dgVxy*dgVxy + dgVxz*dgVxz);
     }
     VecRestoreArrayRead(_dp->_invEffVisc,&inv);

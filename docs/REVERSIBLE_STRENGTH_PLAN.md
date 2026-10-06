@@ -922,18 +922,24 @@ can be tested in the elastic model, so it is included as an option (`cohesionRes
 
 ### 4.7 Fixed viscous anisotropy (W12), optional
 
-**Built (2026-10-05) as the directional fabric**, in the Mühlhaus form rather than the Hill form
-below: `fabric_anisotropic = 1` applies the fabric's factor `1/(1 + beta_f Phi)` to fault-parallel
-shear only, so `sxy` sees `effViscXY` (each creep mechanism's inverse viscosity times its factors
-`F^-n`, plasticity unscaled) and `sxz` keeps `effVisc`, the power law taken in the isotropic invariant.
-Pure fault-parallel shear then behaves as the isotropic fabric, shear across the foliation keeps its
-strength, and the strength ratio of the two directions is `1 + beta_f Phi`. In antiplane strain the
+**Built (2026-10-05) as the directional fabric, in the Hill form below** (since 2026-10-06):
+`fabric_anisotropic = 1` turns the fabric's factor `F = 1/(1 + beta_f Phi)` into a direction. A creep
+mechanism of stress exponent `n` creeps at the equivalent stress `s_e = sqrt(q sxy^2 + sxz^2)` with
+`q = F^(-2n/(n+1))`, and the strain rate of `sxy` is `q` times that of `sxz` at a given `s_e` (associated
+flow): pure fault-parallel shear is `F^-n` times faster, as with the isotropic fabric, pure `sxz` is
+unchanged, and the strength ratio of the two directions at equal strain rate is `1 + beta_f Phi`;
+`sxy` sees `effViscXY`, `sxz` `effVisc`, plasticity is unscaled. The first version took the power law
+in the isotropic invariant (Mühlhaus et al. 2002; Lev & Hager 2008). There a large `sxz` softens
+`sxy` by the full `F^-n`: in the hot crust beside f2 at 48-50 km, where the fabric reached 0.84 and
+`sxz` was 15-20 times `sxy`, the fault-parallel Maxwell time fell to 2e4 s, and the explicit steps
+with it (`m01_aniso8`, about 150 steps per year against 20 for the isotropic fab8). Hill's form
+weights the invariant by direction and keeps the steps of the isotropic run. In antiplane strain the
 planes that contain the strike never rotate, so the orientation is fixed while the strength of the
 anisotropy evolves with `Phi` (W12's CPO growth); `fabric_type = constant` gives the fixed anisotropy
-of this section. Stress and strain rate are no longer parallel, so shear heating and the wattmeter
-use the work-conjugate rates `(sxy dgVxy + sxz dgVxz)/sdev` (`dgVwork`, `dgVwork_disl`); the time
-step takes the Maxwell time of the weaker direction; `effViscXY` is written to `data_2D.h5` and the
-root probes. Not with `systemEvolutionType = steadyStateIts`; the steady-state guess stays isotropic.
+of this section. Stress and strain rate are not parallel, so shear heating and the wattmeter use the
+work-conjugate rates `(sxy dgVxy + sxz dgVxz)/sdev` (`dgVwork`, `dgVwork_disl`); the time step takes
+the Maxwell time of the weaker direction; `effViscXY` is written to `data_2D.h5` and the root probes.
+Not with `systemEvolutionType = steadyStateIts`; the steady-state guess stays isotropic.
 
 **Law.** The transversely isotropic viscous rheology of Mühlhaus, Moresi, Hobbs & Dufour (2002) and
 Lev & Hager (2008), with the director normal to the foliation, reduces in antiplane strain with a
@@ -1221,7 +1227,7 @@ message says why not.
    follows the root's with r = 0.998. Scripts and figures: `data/stage5_batch2/`
    (`analyze_batch2.py`, `plot_*.py`, `figs/`).
 11. Viscous anisotropy (4.7), as the directional fabric. **Done** (2026-10-05): `fabric_anisotropic = 1`
-   puts the fabric's factor on fault-parallel shear only (two viscosities, the Mühlhaus form below);
+   puts the fabric's factor on fault-parallel shear only (two viscosities, Hill's form, 4.7);
    tests in the commit message.
 12. Phase segregation (4.8). **Done** (2026-10-05): `SegregationState` (`seg_`); tests in the commit message.
 13. Pseudotachylite products (4.9). **Done** (2026-10-05): `PseudotachyliteState` (`pt_`); tests in the

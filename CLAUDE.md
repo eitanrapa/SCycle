@@ -149,7 +149,8 @@ mpirun -n 4 ./source/main examples/ex2.in
   law, or pressure solution); each writes `/<name>` to data_2D.h5, joins a non-empty
   `timeIntInds`, and `<prefix>eTest` drives it with a prescribed strain rate for tests.
   `fabric_anisotropic = 1` makes the fabric directional (W12): its factor acts on fault-parallel shear
-  (`sxy`, viscosity `effViscXY`) only, `sxz` keeps `effVisc`. Phase segregation `seg_` (S10, needs
+  (`sxy`, viscosity `effViscXY`) only, `sxz` keeps `effVisc` (Hill's form: each mechanism creeps at
+  `sqrt(q sxy^2 + sxz^2)`, `q = F^(-2n/(n+1))`). Phase segregation `seg_` (S10, needs
   `wDissPrecCreep = yes`) grows with pressure solution's own strain rate (`dgVdev_dp`), remixes in time
   and with dislocation creep, and divides pressure solution's rate by `1 + seg_betaS Xi`.
   Pseudotachylite products `pt_` (W7, needs `wDiffCreep` or `wDissPrecCreep` and `wVals > 0`): a volume

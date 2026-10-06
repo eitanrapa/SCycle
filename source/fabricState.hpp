@@ -15,8 +15,8 @@
  * Phi_ss = x/(1 + x), x = e tau_c/gamma_f.
  *
  * fabric_anisotropic = 1 makes it directional (W12, viscous anisotropy; plan section 4.7): the factor
- * acts on fault-parallel shear sxy only (PowerLaw::setXYStrengthFactor), sxz keeps its strength, as for
- * a foliation parallel to the fault. In antiplane strain planes containing the strike never rotate, so
+ * acts on fault-parallel shear sxy only (PowerLaw::setXYStrengthFactor, Hill's form), sxz keeps its
+ * strength, as for a foliation parallel to the fault. In antiplane strain planes containing the strike never rotate, so
  * the orientation is fixed while the strength of the anisotropy evolves with Phi; fabric_type =
  * constant gives a fixed anisotropy, a strength ratio 1 + beta_f Phi between the two directions.
  *
