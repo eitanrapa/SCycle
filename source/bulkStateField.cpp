@@ -228,7 +228,7 @@ PetscErrorCode BulkStateField::loadCheckpoint()
 PetscErrorCode refuseBulkStates(const char* file, const string& delim, const string& mediator)
 {
   PetscErrorCode ierr = 0;
-  const char* prefixes[] = {"hard_", "water_", "fabric_", "cement_", "seg_"};
+  const char* prefixes[] = {"hard_", "water_", "fabric_", "cement_", "seg_", "pt_"};
   ifstream infile(file);
   string line;
   while (getline(infile, line)) {

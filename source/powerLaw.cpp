@@ -34,6 +34,7 @@ PowerLaw::PowerLaw(Domain& D,std::string bcRType,std::string bcTType,std::string
   _xyAnisotropic = false;
   _effViscXY = NULL; _dgVwork = NULL; _dgVwork_disl = NULL;
   _dpRateNeeded = false; _dgVdev_dp = NULL;
+  _ptPhi = NULL; _ptD = NULL;
   loadSettings(_file);
   checkInput();
   allocateFields(); // initialize fields
@@ -82,6 +83,7 @@ PowerLaw::~PowerLaw()
   VecDestroy(&_effViscXY); VecDestroy(&_dgVwork); VecDestroy(&_dgVwork_disl);
   for (std::map<std::string,Vec>::iterator it = _dpRateFactors.begin(); it != _dpRateFactors.end(); it++) { VecDestroy(&it->second); }
   VecDestroy(&_dgVdev_dp);
+  VecDestroy(&_ptPhi); VecDestroy(&_ptD);
   #if VERBOSE > 1
     string funcName = "PowerLaw::~PowerLaw";
     PetscPrintf(PETSC_COMM_WORLD,"Starting %s in %s\n",funcName.c_str(),FILENAME);
@@ -1032,6 +1034,7 @@ PetscErrorCode PowerLaw::computeViscosity(const PetscScalar viscCap)
   if (_wPlasticity.compare("yes")==0) { _plastic->computeInvEffVisc(_dgVdev); }
   if (_wDissPrecCreep.compare("yes")==0) { _dp->computeInvEffVisc(_T,_sdev,_grainSize,_wetDist); }
   if (_wDissPrecCreep.compare("yes")==0 && !_dpRateFactors.empty()) { ierr = applyDPRateFactors(); CHKERRQ(ierr); } // phase segregation
+  if (_wDissPrecCreep.compare("yes")==0 && _ptPhi != NULL) { ierr = applyMeltProducts(_dp->_invEffVisc,_dp->_m); CHKERRQ(ierr); } // pseudotachylite
   if (_wDislCreep.compare("yes")==0) { _disl->computeInvEffVisc(_T,_sdev); }
   if (_wDislCreep2.compare("yes")==0) { _disl2->computeInvEffVisc(_T,_sdev); }
   if (_hardH != NULL) { // strain hardening: the dislocation strain rate at a given stress is divided by H^n
@@ -1040,6 +1043,7 @@ PetscErrorCode PowerLaw::computeViscosity(const PetscScalar viscCap)
   }
   if (_wDislWetDry == "yes") { ierr = mixWetDry(); CHKERRQ(ierr); }
   if (_wDiffCreep.compare("yes")==0) { _diff->computeInvEffVisc(_T,_sdev,_grainSize); }
+  if (_wDiffCreep.compare("yes")==0 && _ptPhi != NULL) { ierr = applyMeltProducts(_diff->_invEffVisc,_diff->_m); CHKERRQ(ierr); } // pseudotachylite
   if (!_strengthFactors.empty()) { // fabric and cement: every creep mechanism at a given stress / F^n
     if (_wDissPrecCreep.compare("yes")==0) { ierr = applyStrengthFactors(_dp->_invEffVisc,NULL,true); CHKERRQ(ierr); }
     if (_wDislCreep.compare("yes")==0) { ierr = applyStrengthFactors(_disl->_invEffVisc,&_disl->_n,true); CHKERRQ(ierr); }
@@ -1374,6 +1378,44 @@ PetscErrorCode PowerLaw::applyDPRateFactors()
 }
 
 
+// pseudotachylite products (PseudotachyliteState): keep their volume fraction and grain size
+PetscErrorCode PowerLaw::setMeltProducts(const Vec& phi, const Vec& dMelt)
+{
+  PetscErrorCode ierr = 0;
+  if (_ptPhi == NULL) {
+    ierr = VecDuplicate(phi,&_ptPhi); CHKERRQ(ierr);
+    ierr = VecDuplicate(dMelt,&_ptD); CHKERRQ(ierr);
+  }
+  ierr = VecCopy(phi,_ptPhi); CHKERRQ(ierr);
+  ierr = VecCopy(dMelt,_ptD); CHKERRQ(ierr);
+  return ierr;
+}
+
+
+// invEffVisc *= (1 - phi) + phi (d/dMelt)^m: host grains d and products dMelt creeping as a mixture,
+// d_eff^-m = (1 - phi) d^-m + phi dMelt^-m, for a mechanism whose rate goes as d^-m
+PetscErrorCode PowerLaw::applyMeltProducts(Vec& invEffVisc, const Vec& m)
+{
+  PetscErrorCode ierr = 0;
+  PetscInt Istart, Iend;
+  ierr = VecGetOwnershipRange(invEffVisc,&Istart,&Iend); CHKERRQ(ierr);
+  PetscScalar *v;
+  const PetscScalar *phi, *dm, *d, *mm;
+  ierr = VecGetArray(invEffVisc,&v); CHKERRQ(ierr);
+  ierr = VecGetArrayRead(_ptPhi,&phi); CHKERRQ(ierr);
+  ierr = VecGetArrayRead(_ptD,&dm); CHKERRQ(ierr);
+  ierr = VecGetArrayRead(_grainSize,&d); CHKERRQ(ierr);
+  ierr = VecGetArrayRead(m,&mm); CHKERRQ(ierr);
+  for (PetscInt Jj = 0; Jj < Iend - Istart; Jj++) { v[Jj] *= (1.0 - phi[Jj]) + phi[Jj]*pow(d[Jj]/dm[Jj],mm[Jj]); }
+  ierr = VecRestoreArray(invEffVisc,&v); CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(_ptPhi,&phi); CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(_ptD,&dm); CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(_grainSize,&d); CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(m,&mm); CHKERRQ(ierr);
+  return ierr;
+}
+
+
 // strain hardening (HardeningState): keep H(S) for computeViscosity and guessSteadyStateEffVisc
 PetscErrorCode PowerLaw::updateHardening(const Vec& H)
 {
@@ -1694,6 +1736,7 @@ PetscErrorCode PowerLaw::guessSteadyStateEffVisc(const PetscScalar strainRate)
   }
   if (_wDislWetDry == "yes") { ierr = mixWetDry(); CHKERRQ(ierr); } // the same mix of the two guesses
   if (_wDiffCreep.compare("yes")==0) { _diff->guessInvEffVisc(_T,strainRate,_grainSize); }
+  if (_wDiffCreep.compare("yes")==0 && _ptPhi != NULL) { ierr = applyMeltProducts(_diff->_invEffVisc,_diff->_m); CHKERRQ(ierr); } // linear: the same factor
   if (!_strengthFactors.empty()) { // fabric and cement: at a given strain rate the stress is F times larger
     if (_wDislCreep.compare("yes")==0) { ierr = applyStrengthFactors(_disl->_invEffVisc,&_disl->_n,false); CHKERRQ(ierr); }
     if (_wDislCreep2.compare("yes")==0) { ierr = applyStrengthFactors(_disl2->_invEffVisc,&_disl2->_n,false); CHKERRQ(ierr); }

@@ -148,7 +148,10 @@ mpirun -n 4 ./source/main examples/ex2.in
   `fabric_anisotropic = 1` makes the fabric directional (W12): its factor acts on fault-parallel shear
   (`sxy`, viscosity `effViscXY`) only, `sxz` keeps `effVisc`. Phase segregation `seg_` (S10, needs
   `wDissPrecCreep = yes`) grows with pressure solution's own strain rate (`dgVdev_dp`), remixes in time
-  and with dislocation creep, and divides pressure solution's rate by `1 + seg_betaS Xi`. Grain size:
+  and with dislocation creep, and divides pressure solution's rate by `1 + seg_betaS Xi`.
+  Pseudotachylite products `pt_` (W7, needs `wDiffCreep` or `wDissPrecCreep` and `wVals > 0`): a volume
+  fraction grown by the faults' work at `|V| >= pt_vMelt`, annealed over `pt_tauA0`; grain-size-sensitive
+  creep runs as the mixture of host grains and products of size `pt_dMeltVals`. Grain size:
   the cataclastic sink `grainSizeEv_fCatVals` (a fraction of the faults' work spread over the
   frictional-heat kernel, so it needs `wVals > 0`; the heat equation gets the rest) and the Zener
   cap `grainSizeEv_dZVals`. Pore pressure (every fault's `PressureEq`): `bcB_q0` prescribes the

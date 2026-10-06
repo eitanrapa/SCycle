@@ -32,7 +32,8 @@ surface-velocity field looks like in each period. The assessment of 2026-10-01 s
 | friction-side healing (paper's introduction allows upper-crustal strength change) | cohesion exists, static | evolving cohesion (4.6), a control |
 | W12 viscous anisotropy | no | the directional fabric (4.7, `fabric_anisotropic`): fixed orientation, evolving strength |
 | S10 phase segregation | no | a state slowing pressure solution (4.8) |
-| W1, W9, S4, S5 reactions; W5 bulk porosity; W7 melt; W15, W16, S8, S11, W17 geometry | no | out of reach (section 8): no mineralogy, bulk flow or melt; geometry not in 2D antiplane strain |
+| W7 pseudotachylite | flash heating (coseismic friction) only | its products, a state on grain-size-sensitive creep (4.9) |
+| W1, W9, S4, S5 reactions; W5 bulk porosity; W15, W16, S8, S11, W17 geometry | no | out of reach (section 8): no mineralogy or bulk flow; geometry not in 2D antiplane strain |
 
 ## 2. What alternation needs: a two-root reduction
 
@@ -980,6 +981,25 @@ solution), the counterpart of hardening for pressure-solution roots.
 (K), `seg_TRef` (K), `seg_gammaM` (default 0), `seg_eMixTest` (tests), initial `seg_XiVals/Depths`;
 needs `wDissPrecCreep = yes`. **Built** 2026-10-05; tests in the commit message.
 
+### 4.9 Pseudotachylite products (W7)
+
+**Law.** Frictional work done at seismic slip rates melts thin layers that quench to ultrafine or glassy
+products, weak by grain-size-sensitive creep, which later devitrify and coarsen (the paper rates W7
+reversible, weakening while fast). Folding the products into the cell's grain size is stiff (a melt
+fraction of 1e-6 at a hundredfold grain-size contrast lowers the cell grain size by a fifth), so the
+products are their own volume fraction `phi`, a bulk state:
+
+    dphi/dt = (Q_melt/e_melt)(1 - phi) - phi/tau_a(T),   tau_a(T) = tau_a0 exp(Q_a (1/T - 1/T_ref)),
+
+with `Q_melt` the faults' work done where `|V| >= v_melt` (default 0.1 m/s) spread over the
+frictional-heat kernels (as the cataclastic sink and the cement), `e_melt` the heat to bring a unit
+volume to melting and melt it (default 3.6e6 kJ/m^3), and annealing over `tau_a`. Grain-size-sensitive
+creep (diffusion, pressure solution) runs as the mixture `d_eff^-m = (1 - phi) d^-m + phi d_melt^-m`:
+at a given stress times `(1 - phi) + phi (d/d_melt)^m` with each mechanism's `m`; the host grain size
+and its evolution are untouched. **Keys** `pt_type`, `pt_dMeltVals/Depths`, `pt_eMelt`, `pt_vMelt`,
+`pt_tauA0`, `pt_QA`, `pt_TRef`, `pt_QTest` (tests), initial `pt_phiPTVals/Depths`; needs `wDiffCreep`
+or `wDissPrecCreep` and `wVals > 0`. **Built** 2026-10-05; tests in the commit message.
+
 ## 5. Run matrix and diagnostics
 
 **Baseline (Stage 4 deliverable).** The two-fault power-law model: the grid of
@@ -1180,6 +1200,8 @@ message says why not.
    puts the fabric's factor on fault-parallel shear only (two viscosities, the Mühlhaus form below);
    tests in the commit message.
 12. Phase segregation (4.8). **Done** (2026-10-05): `SegregationState` (`seg_`); tests in the commit message.
+13. Pseudotachylite products (4.9). **Done** (2026-10-05): `PseudotachyliteState` (`pt_`); tests in the
+   commit message.
 
 Each physics commit is marked as altering published behaviour only when it is on, so it can be
 reverted alone.
@@ -1219,7 +1241,8 @@ reverted alone.
 - Fluid flow through the bulk (W5 porosity as a weak phase, S2 in the bulk, porosity waves, creep
   cavitation): the pore pressure is one-dimensional along each fault; a two-phase bulk model is a
   different code. The water field of 4.2 is the phenomenological stand-in.
-- Melt rheology (W7 as a persistent weak layer): flash heating gives the coseismic weakening only.
+- Melt rheology: flash heating gives the coseismic weakening; the lasting effect of W7, its ultrafine
+  products, is the state of 4.9. A molten layer's own viscosity is not represented.
 - Geometry (W15, W16, S8, S11, W17): planar vertical faults in antiplane strain carry no
   along-strike structure, fold geometry or fabric rotation. A fixed anisotropy (4.7) is the most
   that can be represented.

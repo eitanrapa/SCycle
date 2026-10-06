@@ -27,6 +27,7 @@
 #include "fabricState.hpp"
 #include "cementState.hpp"
 #include "segregationState.hpp"
+#include "pseudotachyliteState.hpp"
 #include "pressureEq.hpp"
 #include "heatEquation.hpp"
 #include "powerLaw.hpp"
@@ -152,6 +153,9 @@ public:
   Vec                             _Qfault;    // the faults' work spread into the body (kW/m^3): interior faults' heat source, cataclastic sink's input
   Vec                             _tauV;      // the boundary fault's tau V (fault size), for _Qfault
   PetscErrorCode computeFaultWork();          // _Qfault from the faults' current tau and V
+  PetscErrorCode computeFaultWork(Vec& Q, const PetscScalar vMin); // into Q, only where |V| >= vMin
+  Vec                             _Qmelt;     // the faults' work at |V| >= _meltSlipRate (pseudotachylite), NULL if off
+  PetscScalar                     _meltSlipRate;
   void setUpFaultWork(Domain& D, const std::string& who); // allocate _Qfault and its kernels, once
   PetscErrorCode grainSizeRates(const map<string,Vec>& varEx, map<string,Vec>& dvarEx); // after the faults' rates
 

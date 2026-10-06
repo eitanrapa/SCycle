@@ -83,6 +83,9 @@ public:
 // Wy the y-quadrature weights of the SBP norm, so the body integral of Q equals the faults' work
 // integrated over depth, whatever w is relative to the cell size. Units: tau (MPa) times V (m/s)
 // times Gw (1/km) gives kW/m^3, the unit of the heat equation's sources.
+// work = 0 where |V| < vMin (the faults' work done at seismic slip rates only)
+PetscErrorCode maskBelowSlipRate(Vec& work, const Vec& V, const PetscScalar vMin);
+
 class FaultWorkKernel
 {
 private:
@@ -101,8 +104,9 @@ public:
   // w: the width (km) at every body node, as HeatEquation::_w; sbp: the momentum balance's operators (for the norm)
   PetscErrorCode setup(Domain& D, SbpOps* sbp, const Vec& w, const std::vector<Fault_qd*>& faults,
     const std::vector<InteriorFaultLift*>& lifts);
-  // Q = sum over interior faults of MapV(tau_k V_k) .* Gw_k, with tau_k = tauP and V_k = slipVel
-  PetscErrorCode spread(const std::vector<Fault_qd*>& faults, Vec& Q);
+  // Q = sum over interior faults of MapV(tau_k V_k) .* Gw_k, with tau_k = tauP and V_k = slipVel; with
+  // vMin > 0 only the work done where |V_k| >= vMin (pseudotachylite: seismic slip)
+  PetscErrorCode spread(const std::vector<Fault_qd*>& faults, Vec& Q, const PetscScalar vMin = 0.0);
   // each kernel as dataset Gw in its fault's group of data_context.h5
   PetscErrorCode writeContext(PetscViewer& viewer, const std::vector<Fault_qd*>& faults);
 };

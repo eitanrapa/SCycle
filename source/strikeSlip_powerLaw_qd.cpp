@@ -33,7 +33,7 @@ StrikeSlip_PowerLaw_qd::StrikeSlip_PowerLaw_qd(Domain&D)
     _quadEx(NULL),_quadImex(NULL),
     _fault(NULL),_interiorFaultKinkLift(1),_interiorFaultKinkSource(0),
     _computeSurfVel(-1),_strideSeries(-1),_vel(NULL),_rhsVel(NULL),_surfVel(NULL),_viscSourceRate(NULL),
-    _bcLRate(NULL),_bcRRate(NULL),_bcTRate(NULL),_bcBRate(NULL),_Qfault(NULL),_tauV(NULL),
+    _bcLRate(NULL),_bcRRate(NULL),_bcTRate(NULL),_bcBRate(NULL),_Qfault(NULL),_tauV(NULL),_Qmelt(NULL),_meltSlipRate(-1.0),
     _material(NULL),_he(NULL),_p(NULL),_grainDist(NULL)
 {
   #if VERBOSE > 1
@@ -126,6 +126,8 @@ StrikeSlip_PowerLaw_qd::StrikeSlip_PowerLaw_qd(Domain&D)
     if (cem->_type == "off") { delete cem; } else { _bulkStates.push_back(cem); }
     SegregationState *seg = new SegregationState(D);
     if (seg->_type == "off") { delete seg; } else { _bulkStates.push_back(seg); }
+    PseudotachyliteState *pt = new PseudotachyliteState(D);
+    if (pt->_type == "off") { delete pt; } else { _bulkStates.push_back(pt); }
   }
   if (!_bulkStates.empty()) {
     if (_material->_wLinearMaxwell == "yes" || _isMMS) {
@@ -151,6 +153,16 @@ StrikeSlip_PowerLaw_qd::StrikeSlip_PowerLaw_qd(Domain&D)
         assert(0);
       }
       if (_bulkStates[i]->needsFaultWork()) { setUpFaultWork(D,"the cement state (cement_type)"); }
+      if (_bulkStates[i]->meltSlipRate() >= 0) {
+        if (_material->_wDiffCreep != "yes" && _material->_wDissPrecCreep != "yes") {
+          PetscPrintf(PETSC_COMM_WORLD,"Error: pseudotachylite products (pt_type) act on grain-size-sensitive creep: they need wDiffCreep = yes\n"
+            "       or wDissPrecCreep = yes.\n");
+          assert(0);
+        }
+        setUpFaultWork(D,"pseudotachylite products (pt_type)");
+        if (_Qmelt == NULL) { VecDuplicate(D._y,&_Qmelt); VecSet(_Qmelt,0.0); }
+        _meltSlipRate = _bulkStates[i]->meltSlipRate();
+      }
       _bulkStates[i]->addErrorControl(_timeIntInds,_scale);
       _bulkStates[i]->pushToMaterial(*_material);
     }
@@ -247,6 +259,7 @@ StrikeSlip_PowerLaw_qd::~StrikeSlip_PowerLaw_qd()
   VecDestroy(&_bcTRate);
   VecDestroy(&_bcBRate);
   VecDestroy(&_Qfault);
+  VecDestroy(&_Qmelt);
   VecDestroy(&_tauV);
   delete _he;          _he = NULL;
   for (size_t i = 0; i < _pressures.size(); i++) { delete _pressures[i]; }
@@ -1344,6 +1357,7 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::d_dt(const PetscScalar time,const map<str
     for (size_t i = 0; i < _bulkStates.size(); i++) {
       if (_bulkStates[i]->needsFaultWork()) { ierr = computeFaultWork(); CHKERRQ(ierr); break; }
     }
+    if (_Qmelt != NULL) { ierr = computeFaultWork(_Qmelt,_meltSlipRate); CHKERRQ(ierr); } // pseudotachylite
     const BulkInputs in = bulkInputs(time);
     for (size_t i = 0; i < _bulkStates.size(); i++) { ierr = _bulkStates[i]->d_dt(in,dvarEx); CHKERRQ(ierr); }
   }
@@ -1449,6 +1463,7 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::d_dt(const PetscScalar time,const map<str
     for (size_t i = 0; i < _bulkStates.size(); i++) {
       if (_bulkStates[i]->needsFaultWork()) { ierr = computeFaultWork(); CHKERRQ(ierr); break; }
     }
+    if (_Qmelt != NULL) { ierr = computeFaultWork(_Qmelt,_meltSlipRate); CHKERRQ(ierr); } // pseudotachylite
     const BulkInputs in = bulkInputs(time);
     for (size_t i = 0; i < _bulkStates.size(); i++) { ierr = _bulkStates[i]->d_dt(in,dvarEx); CHKERRQ(ierr); }
   }
@@ -1647,13 +1662,21 @@ void StrikeSlip_PowerLaw_qd::setUpFaultWork(Domain& D, const std::string& who)
 // Gaussian, as its frictional heat; interior faults' over their kernels (FaultWorkKernel)
 PetscErrorCode StrikeSlip_PowerLaw_qd::computeFaultWork()
 {
+  return computeFaultWork(_Qfault,0.0);
+}
+
+
+// the same into Q, counting only the work done where |V| >= vMin (vMin > 0; pseudotachylite)
+PetscErrorCode StrikeSlip_PowerLaw_qd::computeFaultWork(Vec& Q, const PetscScalar vMin)
+{
   PetscErrorCode ierr = 0;
   if (_fault != NULL) {
     ierr = VecPointwiseMult(_tauV,_fault->_tauP,_fault->_slipVel); CHKERRQ(ierr);
-    ierr = MatMult(_he->_MapV,_tauV,_Qfault); CHKERRQ(ierr);
-    ierr = VecPointwiseMult(_Qfault,_Qfault,_he->_Gw); CHKERRQ(ierr);
+    if (vMin > 0) { ierr = maskBelowSlipRate(_tauV,_fault->_slipVel,vMin); CHKERRQ(ierr); }
+    ierr = MatMult(_he->_MapV,_tauV,Q); CHKERRQ(ierr);
+    ierr = VecPointwiseMult(Q,Q,_he->_Gw); CHKERRQ(ierr);
   }
-  else { ierr = _faultWork.spread(_faults,_Qfault); CHKERRQ(ierr); }
+  else { ierr = _faultWork.spread(_faults,Q,vMin); CHKERRQ(ierr); }
   return ierr;
 }
 
@@ -1696,6 +1719,7 @@ BulkInputs StrikeSlip_PowerLaw_qd::bulkInputs(const PetscScalar time) const
   in.dgVdev_dp = _material->_dgVdev_dp;
   in.T = _material->_T;
   in.Qfault = _Qfault;
+  in.Qmelt = _Qmelt;
   return in;
 }
 

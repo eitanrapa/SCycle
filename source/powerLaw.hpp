@@ -82,6 +82,8 @@ class PowerLaw
     bool                  _dpRateNeeded;
     std::map<std::string,Vec> _dpRateFactors;
     Vec                   _dgVdev_dp;
+    // pseudotachylite products (PseudotachyliteState): their volume fraction and grain size, NULL when off
+    Vec                   _ptPhi,_ptD;
     Vec                   _gTxz,_gVxz,_dgVxz; // total strain, viscous strain, and viscous strain rate
     Vec                   _dgVdev,_dgVdev_disl; // deviatoric strain rate
 
@@ -168,6 +170,10 @@ class PowerLaw
     // phase segregation: a factor f on pressure solution's strain rate at a given stress, kept under its name
     PetscErrorCode setDPRateFactor(const std::string& name, const Vec& f);
     PetscErrorCode applyDPRateFactors(); // _dp->_invEffVisc times the stored factors
+    // pseudotachylite products: grain-size-sensitive creep (exponent m) at a given stress times the mixture
+    // factor (1 - phi) + phi (d/dMelt)^m, d the grain size
+    PetscErrorCode setMeltProducts(const Vec& phi, const Vec& dMelt);
+    PetscErrorCode applyMeltProducts(Vec& invEffVisc, const Vec& m);
     PetscErrorCode computeStresses();
     PetscErrorCode computeSDev();
     PetscErrorCode computeDevViscStrainRates(); // deviatoric strains and strain rates

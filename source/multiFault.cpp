@@ -376,13 +376,31 @@ PetscErrorCode FaultWorkKernel::setup(Domain& D, SbpOps* sbp, const Vec& w, cons
 }
 
 
-PetscErrorCode FaultWorkKernel::spread(const vector<Fault_qd*>& faults, Vec& Q)
+// work = 0 where |V| < vMin
+PetscErrorCode maskBelowSlipRate(Vec& work, const Vec& V, const PetscScalar vMin)
+{
+  PetscErrorCode ierr = 0;
+  PetscInt Istart, Iend;
+  ierr = VecGetOwnershipRange(work,&Istart,&Iend); CHKERRQ(ierr);
+  PetscScalar *w;
+  const PetscScalar *v;
+  ierr = VecGetArray(work,&w); CHKERRQ(ierr);
+  ierr = VecGetArrayRead(V,&v); CHKERRQ(ierr);
+  for (PetscInt Jj = 0; Jj < Iend - Istart; Jj++) { if (fabs(v[Jj]) < vMin) { w[Jj] = 0.0; } }
+  ierr = VecRestoreArray(work,&w); CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(V,&v); CHKERRQ(ierr);
+  return ierr;
+}
+
+
+PetscErrorCode FaultWorkKernel::spread(const vector<Fault_qd*>& faults, Vec& Q, const PetscScalar vMin)
 {
   PetscErrorCode ierr = 0;
   ierr = VecSet(Q,0.0); CHKERRQ(ierr);
   for (size_t k = 0; k < faults.size(); k++) {
     if (_Gw[k] == NULL) { continue; }
     ierr = VecPointwiseMult(_workFault,faults[k]->_tauP,faults[k]->_slipVel); CHKERRQ(ierr);
+    if (vMin > 0) { ierr = maskBelowSlipRate(_workFault,faults[k]->_slipVel,vMin); CHKERRQ(ierr); }
     ierr = VecScatterBegin(_lifts[k]->_fault2body,_workFault,_work,INSERT_VALUES,SCATTER_FORWARD); CHKERRQ(ierr);
     ierr = VecScatterEnd(_lifts[k]->_fault2body,_workFault,_work,INSERT_VALUES,SCATTER_FORWARD); CHKERRQ(ierr);
     ierr = VecPointwiseMult(_work,_work,_Gw[k]); CHKERRQ(ierr);
