@@ -1041,6 +1041,22 @@ history of each root is available without 2D output; and a `switches.csv` from t
 series (times at which the dominant fault changes, period, slip per period). The 20-25 m criterion
 is then read directly as slip per period.
 
+**The matrix, phase 1** (`examples/two_faults/stage5_matrix.py`, started 2026-10-05 in
+`data/stage5_matrix`, at most two runs at a time, the user's limit). Every mechanism that can act on the
+roots of the second batch's geometry, alone and together, at two strengths where it matters, 12,000 yr
+each, with the second batch as reference: the directional fabric (W12) at `beta_f` 8 and 10, alone and
+with hardening; the water memory (W2, W3 against S1, S2, the paper's first pair) in a wet-dry band
+(`--band-wet-dry R`, R = 10 and 30), alone and with fabric; phase segregation (S10) in a band where
+pressure solution carries half the weakening at 2 MPa (`--band-dp 0.5`), alone and with fabric, with
+its no-state references; fabric with two memories; and all of them together. Memories are scaled as
+the second batch's hardening (`e_full tau/gamma = 2.5`, `tau` = 1000 yr). Shear heating is on in all.
+**Phase 2** needs set-up first: the cement state (S6, S9), the pseudotachylite products (W7) and the
+cataclastic sink (W6) take the faults' work, done above 20 km where the faults slip, so they cannot
+reach these roots (a geometry whose brittle-ductile transition lies inside the slipping zone, or the
+fault work spread below the fault's base, would let them); pore-pressure pulses (W4) and cohesion
+healing act on friction, as controls; grain size (W8, S3, W10) needs a band weak by its fine grain
+(diffusion creep with the wattmeter) rather than by a prefactor.
+
 **Cost.** Stage 4 must measure the step count per cycle and the time per step of the baseline;
 until then assume several thousand steps per cycle and hours per run in the optimized build on a
 few ranks, so the library is tens of runs, not hundreds, and the 0D screen is what keeps the

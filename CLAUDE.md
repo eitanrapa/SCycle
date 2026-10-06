@@ -123,7 +123,10 @@ mpirun -n 4 ./source/main examples/ex2.in
   `examples/interior_fault/make_inputs.py` writes one interior fault and its half-space twin;
   `examples/two_faults/make_inputs.py` two faults (seismic, creeping or locked second fault) on a
   grid refined around both, each fault exactly midway between two rows; `--rheology powerlaw` gives
-  the stage 4 baseline (ex4's creep and geotherm to 60 km, coupled heat, optional grain size).
+  the stage 4 baseline (ex4's creep and geotherm to 60 km, coupled heat, optional grain size);
+  `--weak-band` gives each fault a weak root, `--band-wet-dry R` makes it the wet end-member of a
+  wet-dry pair (water state), `--band-dp W` lets pressure solution carry the share W of it (phase
+  segregation). `examples/two_faults/stage5_matrix.py` writes the stage 5 run matrix.
 - With interior faults, two outputs are on by default (off otherwise): `computeSurfVel = 1` writes
   the instantaneous surface velocity `/momBal/surfVel` (m/s) with each 1D output, and
   `strideSeries = N` appends per-fault max slip rate, its depth, potency rate and potency to

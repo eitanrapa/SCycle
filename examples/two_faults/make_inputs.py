@@ -145,6 +145,14 @@ def main():
     p.add_argument('--weak-bottom', type=float, default=30.0, help='bottom of the band (km): deeper, the hot mantle is weak already and\n'
                    'a weaker band shortens the Maxwell time that caps the steps')
     p.add_argument('--weak-taper', type=float, default=0.5, help='width of the band edges (km)')
+    p.add_argument('--band-wet-dry', type=float, default=None, metavar='R',
+                   help='with --weak-band: the band law is the wet end-member (disl2_, ic/disl2_A) of a wet-dry mix whose\n'
+                   'dry end-member (disl_, ic/disl_A) creeps R times slower at equal stress; for the water state')
+    p.add_argument('--band-dp', type=float, default=None, metavar='W',
+                   help='with --weak-band: pressure solution (ic/dp_c) carries the share W of the band\'s weakening at the\n'
+                   'stress --dp-sref and the initial geotherm, dislocation creep the rest; for phase segregation')
+    p.add_argument('--dp-sref', type=float, default=2.0, help='reference stress of --band-dp (MPa; the bands creep near 2 MPa)')
+    p.add_argument('--dp-grain', type=float, default=100.0, help='grain size of --band-dp, in the units its constants imply')
     p.add_argument('--mantle-zone', type=float, default=None, metavar='W',
                    help='with --weak-band: a mantle shear zone W km wide below the bands, centred between the faults\n'
                    '(--base-center), weakened like the bands from --weak-bottom to --mantle-bottom')
@@ -273,7 +281,35 @@ def main():
             myz = ramp((0.5*args.mantle_zone + Tm - np.abs(y - yc))/Tm)
             mzz = ramp((z - (args.weak_bottom - T))/T)*ramp((args.mantle_bottom + Tm - z)/Tm)
             m = np.maximum(m, myz[:, None]*mzz[None, :])
-        write_vec(os.path.join(d, 'ic', 'disl_A'), (A0*args.weak_factor**m).ravel())  # index iy*Nz + iz
+        Aband = A0*args.weak_factor**m  # index iy*Nz + iz
+        if args.band_dp is not None:  # pressure solution takes the share W of the band's excess over A0 at (sref, T)
+            W = args.band_dp
+            if not 0 < W < 1: raise SystemExit('--band-dp needs 0 < W < 1')
+            n0 = float([l for l in lines if l.startswith('disl_nVals')][0].split('[')[1].split()[0])
+            QR0 = float([l for l in lines if l.startswith('disl_QRVals')][0].split('[')[1].split()[0])
+            vals = lambda key: [float(v) for v in [l for l in lines if l.split(' ')[0] == key][0].split('[')[1].split(']')[0].split()]
+            Tz = np.interp(z, vals('TDepths'), vals('TVals'))  # the initial geotherm
+            s0, Vs, R, dg, mg = args.dp_sref, 2.27e-5, 8.3144e-3, args.dp_grain, 3.0
+            excess = 1e3*(Aband - A0)*s0**(n0 - 1)*np.exp(-QR0/Tz)[None, :]  # the band's extra inverse viscosity at s0
+            k = 3*np.sqrt(3)*1e3*Vs/(R*Tz)
+            per_c = 1e3*2*np.sqrt(3)*Vs*dg**-mg*(np.expm1(k*s0)/s0)  # pressure solution's inverse viscosity per unit c (B = D = 1)
+            write_vec(os.path.join(d, 'ic', 'dp_c'), (W*excess/per_c[None, :]).ravel())
+            Aband = Aband - W*(Aband - A0)
+            lines += ['wDissPrecCreep = yes # pressure solution in the bands only (ic/dp_c), calibrated by --band-dp',
+                      'dp_BVals = [1 1]', 'dp_BDepths = [0 500]', 'dp_DVals = [1 1]', 'dp_DDepths = [0 500]',
+                      'dp_cVals = [0 0] # replaced by ic/dp_c', 'dp_cDepths = [0 500]', 'dp_VsVals = [%g %g] # (m^3/mol) quartz' % (Vs, Vs),
+                      'dp_VsDepths = [0 500]', 'dp_mVals = [3 3]', 'dp_mDepths = [0 500]',
+                      'grainSizeEv_grainSizeVals = [%g %g]' % (dg, dg), 'grainSizeEv_grainSizeDepths = [0 500]',
+                      '# band: pressure solution carries %g of the band\'s weakening at %g MPa and the initial geotherm' % (W, s0)]
+        if args.band_wet_dry is not None:  # wet end-member: the band law; dry: R times slower at equal stress
+            write_vec(os.path.join(d, 'ic', 'disl2_A'), Aband.ravel())
+            write_vec(os.path.join(d, 'ic', 'disl_A'), (Aband/args.band_wet_dry).ravel())
+            copy = [l for l in lines if l.split(' ')[0] in ('disl_AVals', 'disl_ADepths', 'disl_QRVals', 'disl_QRDepths', 'disl_nVals', 'disl_nDepths')]
+            lines += ['wDislCreep2 = yes', 'wDislWetDry = yes # disl_ the dry, disl2_ the wet end-member, mixed by the water state']
+            lines += [l.replace('disl_', 'disl2_', 1) for l in copy]
+            lines.append('# band: wet law ic/disl2_A, dry ic/disl_A %g times slower at equal stress' % args.band_wet_dry)
+        else:
+            write_vec(os.path.join(d, 'ic', 'disl_A'), Aband.ravel())
         lines.append('# weak band: ic/disl_A is %g x the prefactor within %g km of each fault from %g to %g km (tapers %g km)'
                      % (args.weak_factor, 0.5*args.weak_band, top, args.weak_bottom, T))
         if args.mantle_zone is not None:
