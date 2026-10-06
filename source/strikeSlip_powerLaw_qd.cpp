@@ -124,6 +124,8 @@ StrikeSlip_PowerLaw_qd::StrikeSlip_PowerLaw_qd(Domain&D)
     if (fab->_type == "off") { delete fab; } else { _bulkStates.push_back(fab); }
     CementState *cem = new CementState(D);
     if (cem->_type == "off") { delete cem; } else { _bulkStates.push_back(cem); }
+    SegregationState *seg = new SegregationState(D);
+    if (seg->_type == "off") { delete seg; } else { _bulkStates.push_back(seg); }
   }
   if (!_bulkStates.empty()) {
     if (_material->_wLinearMaxwell == "yes" || _isMMS) {
@@ -142,6 +144,10 @@ StrikeSlip_PowerLaw_qd::StrikeSlip_PowerLaw_qd(Domain&D)
       if (_bulkStates[i]->_name == "water" && _material->_wDislWetDry != "yes" && _material->_wDissPrecCreep != "yes") {
         PetscPrintf(PETSC_COMM_WORLD,"Error: water content (water_type) acts through the wet-dry mix of dislocation creep (wDislWetDry = yes)\n"
           "       or pressure solution (wDissPrecCreep = yes); neither is on.\n");
+        assert(0);
+      }
+      if (_bulkStates[i]->_name == "segregation" && _material->_wDissPrecCreep != "yes") {
+        PetscPrintf(PETSC_COMM_WORLD,"Error: phase segregation (seg_type) slows pressure solution: it needs wDissPrecCreep = yes.\n");
         assert(0);
       }
       if (_bulkStates[i]->needsFaultWork()) { setUpFaultWork(D,"the cement state (cement_type)"); }
@@ -1687,6 +1693,7 @@ BulkInputs StrikeSlip_PowerLaw_qd::bulkInputs(const PetscScalar time) const
   in.sdev = _material->_sdev;
   in.dgVdev = _material->_dgVdev;
   in.dgVdev_disl = _material->_dgVdev_disl;
+  in.dgVdev_dp = _material->_dgVdev_dp;
   in.T = _material->_T;
   in.Qfault = _Qfault;
   return in;

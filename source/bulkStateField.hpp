@@ -14,7 +14,8 @@ class PowerLaw;
 /*
  * A scalar state field on the body (Ny x Nz) that evolves with the deformation of the bulk and
  * feeds back into the power-law viscosity (docs/REVERSIBLE_STRENGTH_PLAN.md, section 3.1): strain
- * hardening (hard_), water content (water_), ... Each field is an explicit integrand, varEx[<name>],
+ * hardening (hard_), water content (water_), fabric (fabric_), cement (cement_), phase segregation
+ * (seg_). Each field is an explicit integrand, varEx[<name>],
  * written to the group /<name> of data_2D.h5 and the checkpoint, with its keys <prefix><key> and the
  * context file <name>.txt. A derived class supplies the law (computeRate), its effect on the power
  * law (pushToMaterial) and a time-step bound; this class does the rest.
@@ -22,7 +23,7 @@ class PowerLaw;
  * Common keys: <prefix>type = off | transient | constant (held at its initial value); the initial
  * value <prefix><symbol>Vals/Depths or the file <prefix><symbol> in inputDir; and a test hook,
  * <prefix>eTest (1/s, off when negative): the law is driven by the prescribed strain rate
- * eTest (1 + eTestAmp sin(2 pi t/eTestPeriod)) instead of the dislocation strain rate, for the
+ * eTest (1 + eTestAmp sin(2 pi t/eTestPeriod)) instead of its driving strain rate (drivingRate), for the
  * analytic unit tests.
  */
 
@@ -33,6 +34,7 @@ struct BulkInputs
   Vec sdev;        // deviatoric stress (MPa)
   Vec dgVdev;      // viscous strain rate (1e-3/s, engineering shear)
   Vec dgVdev_disl; // its dislocation-creep part (1e-3/s)
+  Vec dgVdev_dp;   // its pressure-solution part (1e-3/s), NULL unless a state needs it (PowerLaw::_dgVdev_dp)
   Vec T;           // temperature (K)
   Vec Qfault;      // the faults' work spread into the body (kW/m^3), NULL where the mediator has none
 };
@@ -71,6 +73,8 @@ public:
   virtual PetscErrorCode initialDefault(Vec& state);
   // the law is driven by the total viscous strain rate rather than its dislocation-creep part
   virtual bool usesTotalViscousRate() const { return false; }
+  // the strain rate (1e-3/s) that drives the law: by default the dislocation part, or the total one
+  virtual Vec drivingRate(const BulkInputs& in) const { return usesTotalViscousRate() ? in.dgVdev : in.dgVdev_disl; }
   // the law needs BulkInputs::Qfault (the mediator then spreads the faults' work before its rate)
   virtual bool needsFaultWork() const { return false; }
 
@@ -91,7 +95,7 @@ protected:
   void readLines(std::vector<std::string>& vars, std::vector<std::string>& rhss, std::vector<std::string>& rhsFulls) const;
   // allocate the fields and set the initial state (keys, file or checkpoint); after the settings
   PetscErrorCode setup();
-  // _e = dgVdev_disl * 1e-3 (1/s), or the test rate
+  // _e = drivingRate * 1e-3 (1/s), or the test rate
   PetscErrorCode drivingStrainRate(const BulkInputs& in);
 };
 

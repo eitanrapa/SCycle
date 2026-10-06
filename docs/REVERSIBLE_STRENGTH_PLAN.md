@@ -31,7 +31,8 @@ surface-velocity field looks like in each period. The assessment of 2026-10-01 s
 | W11-W13 fabric vs S6, S9 cementation | no | two proxy state fields, fabric and cement (4.5), last |
 | friction-side healing (paper's introduction allows upper-crustal strength change) | cohesion exists, static | evolving cohesion (4.6), a control |
 | W12 viscous anisotropy | no | the directional fabric (4.7, `fabric_anisotropic`): fixed orientation, evolving strength |
-| W1, W9, S4, S5, S10 reactions; W5 bulk porosity; W7 melt; W15, W16, S8, S11, W17 geometry | no | out of reach in 2D antiplane strain (section 8) |
+| S10 phase segregation | no | a state slowing pressure solution (4.8) |
+| W1, W9, S4, S5 reactions; W5 bulk porosity; W7 melt; W15, W16, S8, S11, W17 geometry | no | out of reach (section 8): no mineralogy, bulk flow or melt; geometry not in 2D antiplane strain |
 
 ## 2. What alternation needs: a two-root reduction
 
@@ -958,6 +959,27 @@ of a root and its localisation, not the trading dynamics; build it only if a pai
 weaker fault-parallel direction to localise. The evolution of the fabric orientation (the paper's
 W12, S8) remains out of reach.
 
+### 4.8 Phase segregation (S10)
+
+**Law.** In quartz-mica rocks deforming by pressure solution, quartz dissolves at high-stress sites and
+precipitates in low-stress ones, separating the rock into quartz- and mica-rich bands; pressure
+solution is fastest along quartz-mica boundaries, which segregation removes, so it slows (Schmidt &
+Platt 2022; the paper's section 4.4, rated reversible and strengthening while fast). One state `Xi`
+in [0, 1] per node (0 mixed, 1 segregated):
+
+    dXi/dt = (e_dp/gamma_s)(1 - Xi) - Xi (1/tau_m(T) + e_disl/gamma_m),   tau_m(T) = tau_m0 exp(Q_m (1/T - 1/T_ref)),
+
+with `e_dp` the pressure-solution strain rate (its own, `dgVdev_dp`), which segregates over the strain
+`gamma_s`, and remixing in time over `tau_m` and by dislocation creep over `gamma_m` (0: none). At a
+given stress the pressure-solution strain rate is divided by `1 + beta_s Xi`; the other mechanisms are
+unchanged. Steady state `Xi_ss = x/(1 + x + y)`, `x = e_dp tau_m/gamma_s`, `y = e_disl tau_m/gamma_m`.
+It is a memory of the sign the paper asks for (strengthening the fault that creeps fast by pressure
+solution), the counterpart of hardening for pressure-solution roots.
+
+**Keys.** `seg_type`, `seg_betaS` (default 1), `seg_gammaSVals/Depths`, `seg_tauM0` (s), `seg_QM`
+(K), `seg_TRef` (K), `seg_gammaM` (default 0), `seg_eMixTest` (tests), initial `seg_XiVals/Depths`;
+needs `wDissPrecCreep = yes`. **Built** 2026-10-05; tests in the commit message.
+
 ## 5. Run matrix and diagnostics
 
 **Baseline (Stage 4 deliverable).** The two-fault power-law model: the grid of
@@ -1157,6 +1179,7 @@ message says why not.
 11. Viscous anisotropy (4.7), as the directional fabric. **Done** (2026-10-05): `fabric_anisotropic = 1`
    puts the fabric's factor on fault-parallel shear only (two viscosities, the Mühlhaus form below);
    tests in the commit message.
+12. Phase segregation (4.8). **Done** (2026-10-05): `SegregationState` (`seg_`); tests in the commit message.
 
 Each physics commit is marked as altering published behaviour only when it is on, so it can be
 reverted alone.

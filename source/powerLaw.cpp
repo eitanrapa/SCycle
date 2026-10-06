@@ -33,6 +33,7 @@ PowerLaw::PowerLaw(Domain& D,std::string bcRType,std::string bcTType,std::string
   _wetChi = NULL;
   _xyAnisotropic = false;
   _effViscXY = NULL; _dgVwork = NULL; _dgVwork_disl = NULL;
+  _dpRateNeeded = false; _dgVdev_dp = NULL;
   loadSettings(_file);
   checkInput();
   allocateFields(); // initialize fields
@@ -79,6 +80,8 @@ PowerLaw::~PowerLaw()
   for (std::map<std::string,Vec>::iterator it = _strengthFactors.begin(); it != _strengthFactors.end(); it++) { VecDestroy(&it->second); }
   for (std::map<std::string,Vec>::iterator it = _xyStrengthFactors.begin(); it != _xyStrengthFactors.end(); it++) { VecDestroy(&it->second); }
   VecDestroy(&_effViscXY); VecDestroy(&_dgVwork); VecDestroy(&_dgVwork_disl);
+  for (std::map<std::string,Vec>::iterator it = _dpRateFactors.begin(); it != _dpRateFactors.end(); it++) { VecDestroy(&it->second); }
+  VecDestroy(&_dgVdev_dp);
   #if VERBOSE > 1
     string funcName = "PowerLaw::~PowerLaw";
     PetscPrintf(PETSC_COMM_WORLD,"Starting %s in %s\n",funcName.c_str(),FILENAME);
@@ -141,6 +144,7 @@ PetscErrorCode PowerLaw::loadSettings(const char *file)
   ifstream infile( file );
   string line, var, rhs, rhsFull;
   string fabricType = "off"; // directional fabric: FabricState reads the same keys
+  string segType = "off";    // phase segregation (SegregationState) needs pressure solution's own strain rate
   int fabricAnisotropic = 0;
   size_t pos = 0;
   while (getline(infile, line))
@@ -160,6 +164,7 @@ PetscErrorCode PowerLaw::loadSettings(const char *file)
 
     if (var.compare("fabric_type")==0) { fabricType = rhs; }
     else if (var.compare("fabric_anisotropic")==0) { fabricAnisotropic = atoi( rhs.c_str() ); }
+    else if (var.compare("seg_type")==0) { segType = rhs; }
 
     if (var.compare("linSolverSS")==0) { _linSolverSS = rhs; }
     if (var.compare("linSolverTrans")==0) { _linSolverTrans = rhs; }
@@ -193,6 +198,7 @@ PetscErrorCode PowerLaw::loadSettings(const char *file)
 
   }
   _xyAnisotropic = (fabricType != "off" && fabricAnisotropic == 1);
+  _dpRateNeeded = (segType != "off");
 
   #if VERBOSE > 1
     ierr = PetscPrintf(PETSC_COMM_WORLD,"Ending %s in %s\n",funcName.c_str(),FILENAME);
@@ -305,6 +311,9 @@ PetscErrorCode PowerLaw::allocateFields()
   VecDuplicate(_u,&_gTxz);        VecSet(_gTxz,0.0);        PetscObjectSetName((PetscObject) _gTxz, "gTxz");
   VecDuplicate(_u,&_dgVdev);      VecSet(_dgVdev,0.0);      PetscObjectSetName((PetscObject) _dgVdev, "dgVdev");
   VecDuplicate(_u,&_dgVdev_disl); VecSet(_dgVdev_disl,0.0); PetscObjectSetName((PetscObject) _dgVdev_disl, "dgVdev_disl");
+  if (_dpRateNeeded && _wDissPrecCreep == "yes") {
+    VecDuplicate(_u,&_dgVdev_dp);    VecSet(_dgVdev_dp,0.0);    PetscObjectSetName((PetscObject) _dgVdev_dp, "dgVdev_dp");
+  }
   if (_xyAnisotropic) {
     VecDuplicate(_u,&_effViscXY);    VecSet(_effViscXY,0.0);    PetscObjectSetName((PetscObject) _effViscXY, "effViscXY");
     VecDuplicate(_u,&_dgVwork);      VecSet(_dgVwork,0.0);      PetscObjectSetName((PetscObject) _dgVwork, "dgVwork");
@@ -1022,6 +1031,7 @@ PetscErrorCode PowerLaw::computeViscosity(const PetscScalar viscCap)
   // estimate 1 / (effective viscosity) based on strain rate
   if (_wPlasticity.compare("yes")==0) { _plastic->computeInvEffVisc(_dgVdev); }
   if (_wDissPrecCreep.compare("yes")==0) { _dp->computeInvEffVisc(_T,_sdev,_grainSize,_wetDist); }
+  if (_wDissPrecCreep.compare("yes")==0 && !_dpRateFactors.empty()) { ierr = applyDPRateFactors(); CHKERRQ(ierr); } // phase segregation
   if (_wDislCreep.compare("yes")==0) { _disl->computeInvEffVisc(_T,_sdev); }
   if (_wDislCreep2.compare("yes")==0) { _disl2->computeInvEffVisc(_T,_sdev); }
   if (_hardH != NULL) { // strain hardening: the dislocation strain rate at a given stress is divided by H^n
@@ -1339,6 +1349,31 @@ PetscErrorCode PowerLaw::addXYScaled(Vec& out, const Vec& invEffVisc, const Vec*
 }
 
 
+// phase segregation (SegregationState): keep its factor on pressure solution's strain rate under its name
+PetscErrorCode PowerLaw::setDPRateFactor(const std::string& name, const Vec& f)
+{
+  PetscErrorCode ierr = 0;
+  if (_dpRateFactors.find(name) == _dpRateFactors.end()) {
+    Vec g;
+    ierr = VecDuplicate(f,&g); CHKERRQ(ierr);
+    _dpRateFactors[name] = g;
+  }
+  ierr = VecCopy(f,_dpRateFactors[name]); CHKERRQ(ierr);
+  return ierr;
+}
+
+
+// pressure solution's inverse viscosity times the stored rate factors
+PetscErrorCode PowerLaw::applyDPRateFactors()
+{
+  PetscErrorCode ierr = 0;
+  for (std::map<std::string,Vec>::iterator it = _dpRateFactors.begin(); it != _dpRateFactors.end(); it++) {
+    ierr = VecPointwiseMult(_dp->_invEffVisc,_dp->_invEffVisc,it->second); CHKERRQ(ierr);
+  }
+  return ierr;
+}
+
+
 // strain hardening (HardeningState): keep H(S) for computeViscosity and guessSteadyStateEffVisc
 PetscErrorCode PowerLaw::updateHardening(const Vec& H)
 {
@@ -1532,6 +1567,26 @@ PetscErrorCode PowerLaw::computeDevViscStrainRates()
     VecRestoreArrayRead(_sxy,&sxy);
     VecRestoreArrayRead(_sxz,&sxz);
     VecRestoreArray(_dgVdev_disl,&dgVdev);
+  }
+
+  // pressure solution's own strain rate (phase segregation), sxy with the directional factors if any
+  if (_dgVdev_dp != NULL) {
+    std::vector<PetscScalar> f;
+    ierr = xyFactor(f,NULL); CHKERRQ(ierr);
+    PetscScalar const *inv,*sxy,*sxz;
+    PetscScalar *dgVdev;
+    VecGetArrayRead(_dp->_invEffVisc,&inv);
+    VecGetArrayRead(_sxy,&sxy);
+    VecGetArrayRead(_sxz,&sxz);
+    VecGetArray(_dgVdev_dp,&dgVdev);
+    for (size_t Jj = 0; Jj < f.size(); Jj++) {
+      const PetscScalar dgVxy = sxy[Jj]*inv[Jj]*f[Jj], dgVxz = sxz[Jj]*inv[Jj];
+      dgVdev[Jj] = sqrt(dgVxy*dgVxy + dgVxz*dgVxz);
+    }
+    VecRestoreArrayRead(_dp->_invEffVisc,&inv);
+    VecRestoreArrayRead(_sxy,&sxy);
+    VecRestoreArrayRead(_sxz,&sxz);
+    VecRestoreArray(_dgVdev_dp,&dgVdev);
   }
 
   // directional fabric: the total strain rate whose product with sdev is the dissipation
@@ -2004,6 +2059,7 @@ double startTime = MPI_Wtime();
   if (_wDissPrecCreep.compare("yes")==0) {
     ierr = PetscViewerHDF5PushGroup(viewer, "/momBal/dissolutionPrecipitationCreep");CHKERRQ(ierr);
     ierr = VecView(_dp->_invEffVisc,viewer);                          CHKERRQ(ierr);
+    if (_dgVdev_dp != NULL) { ierr = VecView(_dgVdev_dp,viewer); CHKERRQ(ierr); } // phase segregation
     ierr = PetscViewerHDF5PopGroup(viewer);                             CHKERRQ(ierr);
   }
   if (_wDislCreep.compare("yes")==0) {
@@ -2082,6 +2138,7 @@ double startTime = MPI_Wtime();
     _dp->writeContext(viewer);
     ierr = PetscViewerHDF5PushGroup(viewer, "/momBal/dissolutionPrecipitationCreep");CHKERRQ(ierr);
     ierr = VecView(_dp->_invEffVisc,viewer);                          CHKERRQ(ierr);
+    if (_dgVdev_dp != NULL) { ierr = VecView(_dgVdev_dp,viewer); CHKERRQ(ierr); } // phase segregation
     ierr = PetscViewerHDF5PopGroup(viewer);                             CHKERRQ(ierr);
   }
   if (_wDislCreep.compare("yes")==0) {
@@ -2168,6 +2225,7 @@ double startTime = MPI_Wtime();
     _dp->loadCheckpoint(viewer);
     ierr = PetscViewerHDF5PushGroup(viewer, "/momBal/dissolutionPrecipitationCreep");CHKERRQ(ierr);
     ierr = VecLoad(_dp->_invEffVisc,viewer);                          CHKERRQ(ierr);
+    if (_dgVdev_dp != NULL) { ierr = VecLoad(_dgVdev_dp,viewer); CHKERRQ(ierr); } // phase segregation
     ierr = PetscViewerHDF5PopGroup(viewer);                             CHKERRQ(ierr);
   }
   if (_wDislCreep.compare("yes")==0) {

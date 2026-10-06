@@ -77,6 +77,11 @@ class PowerLaw
     bool                  _xyAnisotropic;
     std::map<std::string,Vec> _xyStrengthFactors;
     Vec                   _effViscXY,_dgVwork,_dgVwork_disl; // NULL unless _xyAnisotropic
+    // phase segregation (seg_type on, read here for the checkpoint): rate factors on pressure solution, by
+    // name, and its own strain rate (1e-3/s; NULL unless seg_type is on with wDissPrecCreep = yes)
+    bool                  _dpRateNeeded;
+    std::map<std::string,Vec> _dpRateFactors;
+    Vec                   _dgVdev_dp;
     Vec                   _gTxz,_gVxz,_dgVxz; // total strain, viscous strain, and viscous strain rate
     Vec                   _dgVdev,_dgVdev_disl; // deviatoric strain rate
 
@@ -160,6 +165,9 @@ class PowerLaw
     PetscErrorCode xyFactor(std::vector<PetscScalar>& f, const Vec* n); // product of the sxy factors, F^-n (n = 1 if NULL)
     PetscErrorCode addXYScaled(Vec& out, const Vec& invEffVisc, const Vec* n); // out += invEffVisc * xyFactor
     PetscErrorCode computeEffViscXY(); // after the sum of computeViscosity
+    // phase segregation: a factor f on pressure solution's strain rate at a given stress, kept under its name
+    PetscErrorCode setDPRateFactor(const std::string& name, const Vec& f);
+    PetscErrorCode applyDPRateFactors(); // _dp->_invEffVisc times the stored factors
     PetscErrorCode computeStresses();
     PetscErrorCode computeSDev();
     PetscErrorCode computeDevViscStrainRates(); // deviatoric strains and strain rates

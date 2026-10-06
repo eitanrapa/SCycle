@@ -107,7 +107,9 @@ PetscErrorCode BulkStateField::drivingStrainRate(const BulkInputs& in)
     ierr = VecSet(_e,e); CHKERRQ(ierr);
   }
   else {
-    ierr = VecCopy(usesTotalViscousRate() ? in.dgVdev : in.dgVdev_disl,_e); CHKERRQ(ierr);
+    const Vec rate = drivingRate(in);
+    if (rate == NULL) { SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_ARG_NULL,"%s: its driving strain rate is not computed",_name.c_str()); }
+    ierr = VecCopy(rate,_e); CHKERRQ(ierr);
     ierr = VecScale(_e,1e-3); CHKERRQ(ierr); // 1e-3/s -> 1/s
   }
   return ierr;
@@ -226,7 +228,7 @@ PetscErrorCode BulkStateField::loadCheckpoint()
 PetscErrorCode refuseBulkStates(const char* file, const string& delim, const string& mediator)
 {
   PetscErrorCode ierr = 0;
-  const char* prefixes[] = {"hard_", "water_", "fabric_", "cement_"};
+  const char* prefixes[] = {"hard_", "water_", "fabric_", "cement_", "seg_"};
   ifstream infile(file);
   string line;
   while (getline(infile, line)) {

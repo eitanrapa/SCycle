@@ -26,6 +26,7 @@
 #include "waterState.hpp"
 #include "fabricState.hpp"
 #include "cementState.hpp"
+#include "segregationState.hpp"
 #include "pressureEq.hpp"
 #include "heatEquation.hpp"
 #include "powerLaw.hpp"
