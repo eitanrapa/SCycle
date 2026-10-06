@@ -144,7 +144,9 @@ mpirun -n 4 ./source/main examples/ex2.in
   transient | constant` with strain hardening `hard_` (needs `wDislCreep = yes`) and water content
   `water_` (through `wDislWetDry = yes`, which mixes `disl_` as the dry and `disl2_` as the wet
   law, or pressure solution); each writes `/<name>` to data_2D.h5, joins a non-empty
-  `timeIntInds`, and `<prefix>eTest` drives it with a prescribed strain rate for tests. Grain size:
+  `timeIntInds`, and `<prefix>eTest` drives it with a prescribed strain rate for tests.
+  `fabric_anisotropic = 1` makes the fabric directional (W12): its factor acts on fault-parallel shear
+  (`sxy`, viscosity `effViscXY`) only, `sxz` keeps `effVisc`. Grain size:
   the cataclastic sink `grainSizeEv_fCatVals` (a fraction of the faults' work spread over the
   frictional-heat kernel, so it needs `wVals > 0`; the heat equation gets the rest) and the Zener
   cap `grainSizeEv_dZVals`. Pore pressure (every fault's `PressureEq`): `bcB_q0` prescribes the

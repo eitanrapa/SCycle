@@ -158,6 +158,7 @@ public:
   // hardening, ...; owned
   std::vector<BulkStateField*> _bulkStates;
   BulkInputs bulkInputs(const PetscScalar time) const; // the current stress, strain rates and temperature
+  const Vec& dislWorkRate() const; // the dislocation strain rate conjugate to sdev in its work rate
 
   PowerLaw               *_material; // power-law viscoelastic off-fault material properties
   HeatEquation           *_he;

@@ -130,6 +130,10 @@ StrikeSlip_PowerLaw_qd::StrikeSlip_PowerLaw_qd(Domain&D)
       PetscPrintf(PETSC_COMM_WORLD,"Error: bulk state fields (hard_type, ...) need a power law whose viscosity is recomputed: not with wLinearMaxwell = yes or isMMS.\n");
       assert(0);
     }
+    if (_material->_xyAnisotropic && _D->_systemEvolutionType == "steadyStateIts") {
+      PetscPrintf(PETSC_COMM_WORLD,"Error: fabric_anisotropic = 1 (two viscosities) is not in the steady-state solver: not with systemEvolutionType = steadyStateIts.\n");
+      assert(0);
+    }
     for (size_t i = 0; i < _bulkStates.size(); i++) {
       if (_bulkStates[i]->_name == "hard" && _material->_wDislCreep != "yes") {
         PetscPrintf(PETSC_COMM_WORLD,"Error: strain hardening (hard_type) acts on dislocation creep: it needs wDislCreep = yes.\n");
@@ -183,6 +187,7 @@ StrikeSlip_PowerLaw_qd::StrikeSlip_PowerLaw_qd(Domain&D)
     if (_seriesDepth >= 0) { // the strength of each root at one depth: viscosity, temperature, state fields
       _series.setProbes(D,_faults,_lifts,_seriesDepth,_seriesWidth);
       _series.addProbe("effVisc","(GPa*s)",&_material->_effVisc);
+      if (_material->_xyAnisotropic) { _series.addProbe("effViscXY","(GPa*s)",&_material->_effViscXY); }
       _series.addProbe("dgVdev","(1e-3/s)",&_material->_dgVdev);
       _series.addProbe("T","(K)",&_material->_T);
       if (_grainDist != NULL && _grainSizeEvCoupling != "no") { _series.addProbe("grainSize","",&_grainDist->_d); }
@@ -792,7 +797,7 @@ double startTime = MPI_Wtime();
 
   if (_evolveGrainSize == 1 && _grainDist->_grainSizeEvType == "transient") {
     PetscScalar maxDeltaT_grainSizeEv = 0;
-    ierr =  _grainDist->computeMaxTimeStep(maxDeltaT_grainSizeEv,_material->_sdev,_material->_dgVdev_disl,_material->_T,
+    ierr =  _grainDist->computeMaxTimeStep(maxDeltaT_grainSizeEv,_material->_sdev,dislWorkRate(),_material->_T,
       _grainDist->_fCat != NULL ? &_Qfault : NULL); CHKERRQ(ierr);
     maxTimeStep_tot = min(maxTimeStep_tot,0.9*maxDeltaT_grainSizeEv); // keep the Maxwell-time limit too
   }
@@ -1459,17 +1464,19 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::d_dt(const PetscScalar time,const map<str
     if (_fault != NULL) { V = dvarEx.find(_fault->_slipKey)->second; tau = _fault->_tauP; }
     if (_Qfault != NULL) { ierr = computeFaultWork(); CHKERRQ(ierr); }
 
-    // compute viscous strain rate that contributes to viscous shear heating:
+    // compute viscous strain rate that contributes to viscous shear heating (with a directional
+    // fabric the work-conjugate rates, whose product with sdev is the dissipation):
+    const Vec& dgVdevW = _material->_xyAnisotropic ? _material->_dgVwork : _material->_dgVdev;
     Vec dgV_sh;
     VecDuplicate(_material->_dgVdev,&dgV_sh);
     if ( _grainSizeEvCoupling!="no") {
       // relevant visc strain rate = (total) - (portion contributing to grain size reduction)
-      ierr = VecPointwiseMult(dgV_sh,_grainDist->_f,_material->_dgVdev_disl);CHKERRQ(ierr);
+      ierr = VecPointwiseMult(dgV_sh,_grainDist->_f,dislWorkRate());CHKERRQ(ierr);
       ierr = VecScale(dgV_sh,-1.0);CHKERRQ(ierr);
-      ierr = VecAXPY(dgV_sh,1.0,_material->_dgVdev);CHKERRQ(ierr);
+      ierr = VecAXPY(dgV_sh,1.0,dgVdevW);CHKERRQ(ierr);
     }
     else {
-      ierr = VecCopy(_material->_dgVdev,dgV_sh);CHKERRQ(ierr);
+      ierr = VecCopy(dgVdevW,dgV_sh);CHKERRQ(ierr);
     }
 
     Vec Told = varImo.find("Temp")->second;
@@ -1653,15 +1660,23 @@ PetscErrorCode StrikeSlip_PowerLaw_qd::grainSizeRates(const map<string,Vec>& var
   if ( _grainSizeEvCoupling!="no" && varEx.find("grainSize") != varEx.end() && _grainDist->_grainSizeEvType != "steadyState" && _grainDist->_grainSizeEvType != "piezometer") {
     const Vec *Q = NULL;
     if (_grainDist->_fCat != NULL) { ierr = computeFaultWork(); CHKERRQ(ierr); Q = &_Qfault; }
-    ierr = _grainDist->d_dt(dvarEx["grainSize"],varEx.find("grainSize")->second,_material->_sdev,_material->_dgVdev_disl,_material->_T,Q); CHKERRQ(ierr);
+    ierr = _grainDist->d_dt(dvarEx["grainSize"],varEx.find("grainSize")->second,_material->_sdev,dislWorkRate(),_material->_T,Q); CHKERRQ(ierr);
   }
   else if ( _grainSizeEvCoupling!="no" && _grainDist->_grainSizeEvType == "piezometer") {
-    _grainDist->computeGrainSizeFromPiez(_material->_sdev, _material->_dgVdev_disl, _material->_T);
+    _grainDist->computeGrainSizeFromPiez(_material->_sdev, dislWorkRate(), _material->_T);
   }
   else if ( _grainSizeEvCoupling!="no" && _grainDist->_grainSizeEvType == "steadyState") {
-    _grainDist->computeSteadyStateGrainSize(_material->_sdev, _material->_dgVdev_disl, _material->_T);
+    _grainDist->computeSteadyStateGrainSize(_material->_sdev, dislWorkRate(), _material->_T);
   }
   return ierr;
+}
+
+
+// the dislocation strain rate whose product with sdev is its work rate (wattmeter, shear heating): its
+// invariant, or with a directional fabric its work-conjugate part
+const Vec& StrikeSlip_PowerLaw_qd::dislWorkRate() const
+{
+  return _material->_xyAnisotropic ? _material->_dgVwork_disl : _material->_dgVdev_disl;
 }
 
 

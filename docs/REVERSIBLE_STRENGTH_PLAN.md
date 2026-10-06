@@ -30,7 +30,7 @@ surface-velocity field looks like in each period. The assessment of 2026-10-01 s
 | W2, W3 hydration vs S1, S2 dehydration | static wetness field only | new bulk state field replacing it (4.2) |
 | W11-W13 fabric vs S6, S9 cementation | no | two proxy state fields, fabric and cement (4.5), last |
 | friction-side healing (paper's introduction allows upper-crustal strength change) | cohesion exists, static | evolving cohesion (4.6), a control |
-| W12 fixed viscous anisotropy | no | optional (4.7); its evolution is out of reach |
+| W12 viscous anisotropy | no | the directional fabric (4.7, `fabric_anisotropic`): fixed orientation, evolving strength |
 | W1, W9, S4, S5, S10 reactions; W5 bulk porosity; W7 melt; W15, W16, S8, S11, W17 geometry | no | out of reach in 2D antiplane strain (section 8) |
 
 ## 2. What alternation needs: a two-root reduction
@@ -920,6 +920,19 @@ can be tested in the elastic model, so it is included as an option (`cohesionRes
 
 ### 4.7 Fixed viscous anisotropy (W12), optional
 
+**Built (2026-10-05) as the directional fabric**, in the Mühlhaus form rather than the Hill form
+below: `fabric_anisotropic = 1` applies the fabric's factor `1/(1 + beta_f Phi)` to fault-parallel
+shear only, so `sxy` sees `effViscXY` (each creep mechanism's inverse viscosity times its factors
+`F^-n`, plasticity unscaled) and `sxz` keeps `effVisc`, the power law taken in the isotropic invariant.
+Pure fault-parallel shear then behaves as the isotropic fabric, shear across the foliation keeps its
+strength, and the strength ratio of the two directions is `1 + beta_f Phi`. In antiplane strain the
+planes that contain the strike never rotate, so the orientation is fixed while the strength of the
+anisotropy evolves with `Phi` (W12's CPO growth); `fabric_type = constant` gives the fixed anisotropy
+of this section. Stress and strain rate are no longer parallel, so shear heating and the wattmeter
+use the work-conjugate rates `(sxy dgVxy + sxz dgVxz)/sdev` (`dgVwork`, `dgVwork_disl`); the time
+step takes the Maxwell time of the weaker direction; `effViscXY` is written to `data_2D.h5` and the
+root probes. Not with `systemEvolutionType = steadyStateIts`; the steady-state guess stays isotropic.
+
 **Law.** The transversely isotropic viscous rheology of Mühlhaus, Moresi, Hobbs & Dufour (2002) and
 Lev & Hager (2008), with the director normal to the foliation, reduces in antiplane strain with a
 fault-parallel foliation to two uncoupled scalars: `sxy = 2 eta_S exy` on the foliation plane (easy)
@@ -1141,7 +1154,9 @@ message says why not.
    fault dominates it takes 92% of the creep at 16 km and of the root's shear; the fabric factor is
    46-50 at 10-30 yr after an earthquake; the geodetic share follows the root's with r = 0.996.
    Scripts and figures: `data/stage5_batch2/` (`analyze_batch2.py`, `plot_*.py`, `figs/`).
-11. Optional: fixed anisotropy (4.7).
+11. Viscous anisotropy (4.7), as the directional fabric. **Done** (2026-10-05): `fabric_anisotropic = 1`
+   puts the fabric's factor on fault-parallel shear only (two viscosities, the Mühlhaus form below);
+   tests in the commit message.
 
 Each physics commit is marked as altering published behaviour only when it is on, so it can be
 reverted alone.

@@ -70,6 +70,13 @@ class PowerLaw
     std::string           _wetMix;      // log (default) or arithmetic
     Vec                   _wetChi;      // the wetness of the mix (WaterState), NULL: wetDist
     std::map<std::string,Vec> _strengthFactors; // stress factors on every creep mechanism (fabric, cement), by name
+    // directional fabric (fabric_anisotropic = 1, with fabric_type on; read here for the checkpoint):
+    // stress factors on fault-parallel shear (sxy) only, by name; sxy then sees the viscosity effViscXY
+    // and sxz keeps effVisc. dgVwork, dgVwork_disl = (sxy dgVxy + sxz dgVxz)/sdev, the strain rates whose
+    // product with sdev is the dissipation (stress and strain rate are no longer parallel)
+    bool                  _xyAnisotropic;
+    std::map<std::string,Vec> _xyStrengthFactors;
+    Vec                   _effViscXY,_dgVwork,_dgVwork_disl; // NULL unless _xyAnisotropic
     Vec                   _gTxz,_gVxz,_dgVxz; // total strain, viscous strain, and viscous strain rate
     Vec                   _dgVdev,_dgVdev_disl; // deviatoric strain rate
 
@@ -147,6 +154,12 @@ class PowerLaw
     // rate its stress is multiplied by F; the factors of several names multiply
     PetscErrorCode setStrengthFactor(const std::string& name, const Vec& F);
     PetscErrorCode applyStrengthFactors(Vec& invEffVisc, const Vec* n, const bool atGivenStress);
+    // the directional form (fabric_anisotropic = 1): F acts on fault-parallel shear (sxy) only, whose strain
+    // rate at a given stress is divided by F^n for each creep mechanism; sxz is unchanged
+    PetscErrorCode setXYStrengthFactor(const std::string& name, const Vec& F);
+    PetscErrorCode xyFactor(std::vector<PetscScalar>& f, const Vec* n); // product of the sxy factors, F^-n (n = 1 if NULL)
+    PetscErrorCode addXYScaled(Vec& out, const Vec& invEffVisc, const Vec* n); // out += invEffVisc * xyFactor
+    PetscErrorCode computeEffViscXY(); // after the sum of computeViscosity
     PetscErrorCode computeStresses();
     PetscErrorCode computeSDev();
     PetscErrorCode computeDevViscStrainRates(); // deviatoric strains and strain rates

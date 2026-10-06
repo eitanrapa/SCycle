@@ -8,7 +8,7 @@ using namespace std;
 
 FabricState::FabricState(Domain& D)
 : BulkStateField(D,"fabric","fabric_","Phi"),
-  _betaF(4.0), _tauC0(-1), _QC(0), _TRef(273.15), _eCrit(0), _gammaF(NULL), _F(NULL)
+  _betaF(4.0), _tauC0(-1), _QC(0), _TRef(273.15), _eCrit(0), _anisotropic(0), _gammaF(NULL), _F(NULL)
 {
   vector<string> vars, rhss, rhsFulls;
   readLines(vars,rhss,rhsFulls);
@@ -22,6 +22,7 @@ FabricState::FabricState(Domain& D)
     else if (var == "fabric_QC") { _QC = atof(rhs.c_str()); }
     else if (var == "fabric_TRef") { _TRef = atof(rhs.c_str()); }
     else if (var == "fabric_eCrit") { _eCrit = atof(rhs.c_str()); }
+    else if (var == "fabric_anisotropic") { _anisotropic = atoi(rhs.c_str()); }
   }
   if (_type == "off") { return; }
 
@@ -31,6 +32,10 @@ FabricState::FabricState(Domain& D)
   }
   if (!(_tauC0 > 0) || !(_TRef > 0) || !(_betaF >= 0) || !(_eCrit >= 0)) {
     PetscPrintf(PETSC_COMM_WORLD,"Error: fabric needs fabric_tauC0 > 0 (s), fabric_TRef > 0 (K), fabric_betaF >= 0 and fabric_eCrit >= 0.\n");
+    assert(0);
+  }
+  if (_anisotropic != 0 && _anisotropic != 1) {
+    PetscPrintf(PETSC_COMM_WORLD,"Error: fabric_anisotropic must be 0 (every direction) or 1 (fault-parallel shear only).\n");
     assert(0);
   }
   PetscErrorCode ierr;
@@ -75,7 +80,8 @@ PetscErrorCode FabricState::computeRate(const BulkInputs& in)
 }
 
 
-// strength factor 1/(1 + beta_f Phi) on every creep mechanism
+// strength factor 1/(1 + beta_f Phi) on every creep mechanism, in every direction or (fabric_anisotropic)
+// on fault-parallel shear only
 PetscErrorCode FabricState::pushToMaterial(PowerLaw& material)
 {
   PetscErrorCode ierr = 0;
@@ -83,7 +89,8 @@ PetscErrorCode FabricState::pushToMaterial(PowerLaw& material)
   ierr = VecScale(_F,_betaF); CHKERRQ(ierr);
   ierr = VecShift(_F,1.0); CHKERRQ(ierr);
   ierr = VecReciprocal(_F); CHKERRQ(ierr);
-  ierr = material.setStrengthFactor(_name,_F); CHKERRQ(ierr);
+  if (_anisotropic == 1) { ierr = material.setXYStrengthFactor(_name,_F); CHKERRQ(ierr); }
+  else { ierr = material.setStrengthFactor(_name,_F); CHKERRQ(ierr); }
   return ierr;
 }
 
@@ -128,6 +135,7 @@ PetscErrorCode FabricState::writeContextExtra(PetscViewer& ascii, PetscViewer& v
   ierr = PetscViewerASCIIPrintf(ascii,"fabric_QC = %.15e # (K)\n",_QC); CHKERRQ(ierr);
   ierr = PetscViewerASCIIPrintf(ascii,"fabric_TRef = %.15e # (K)\n",_TRef); CHKERRQ(ierr);
   ierr = PetscViewerASCIIPrintf(ascii,"fabric_eCrit = %.15e # (1/s, 0: no gate)\n",_eCrit); CHKERRQ(ierr);
+  ierr = PetscViewerASCIIPrintf(ascii,"fabric_anisotropic = %i # (1: fault-parallel shear only)\n",_anisotropic); CHKERRQ(ierr);
   ierr = PetscViewerHDF5PushGroup(viewer,"/fabric"); CHKERRQ(ierr);
   ierr = VecView(_gammaF,viewer); CHKERRQ(ierr);
   ierr = PetscViewerHDF5PopGroup(viewer); CHKERRQ(ierr);
