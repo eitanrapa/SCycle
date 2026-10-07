@@ -28,9 +28,10 @@ for a single branch). `docs/REVERSIBLE_STRENGTH_PLAN.md` plans and tracks stage 
 ## Build
 
 Requires PETSc >= 3.14 (HDF5 timestepping API) with HDF5 and MUMPS, real scalars, 32-bit indices;
-HYPRE for the `AMG` and `CG_PCAMG` solver options. Since 2026-10-04 the work runs on a Mac Studio
-(M2 Ultra, 24 cores, 192 GB; before that an M4 Mac). PETSc 3.26.0 is built from source, both arches,
-by `~/opt/build-mpi-petsc.sh` (logs in `~/opt`), with the configure options of `docs/SERVER.md`:
+HYPRE for the `AMG` and `CG_PCAMG` solver options. Since 2026-10-06 the work runs on an Intel Mac
+mini (i7-8700B, 6 cores, 64 GB; before that a Mac Studio with an M2 Ultra, and an M4 Mac). Open
+MPI 5.0.11 and PETSc 3.26.0, both arches, are built from source into `~/opt` by
+`tools/build-mpi-petsc.sh` (logs in `~/opt`), with the configure options of `docs/SERVER.md`:
 
 ```bash
 export PETSC_DIR=$HOME/opt/petsc-3.26.0
@@ -42,18 +43,20 @@ make -C source DEBUG_MODULES=-DVERBOSE=2  # more tracing; VERBOSE=1 (default) pr
 make -C source clean                      # also after switching PETSC_ARCH (objects are per arch)
 ```
 
-Two traps on this machine. Homebrew (`/opt/homebrew`) belongs to another account, so `brew install`
-fails; Open MPI 5.0.11 is therefore built into `~/opt/openmpi-5.0.11`, and PETSc uses Homebrew's
-CMake 4.4.3 (`--with-cmake-exec`) instead of `--download-cmake`. And the Command Line Tools keep a
-stale `/Library/Developer/CommandLineTools/usr/include/c++/v1` (four files from 2020-22) that hides
-the SDK's libc++: plain `clang++` cannot compile `#include <vector>`. `mpicxx` passes the SDK's
-directory itself (`-stdlib++-isystem`, set in `~/opt/openmpi-5.0.11/share/openmpi/mpic++-wrapper-data.txt`),
-so builds through PETSc work; deleting that stale directory (sudo) would fix `clang++` for everyone.
-`h5diff`/`h5dump`/`h5ls` come from Homebrew `hdf5`, `gfortran` from Homebrew `gcc` (16).
+The machine has no Homebrew, and nothing needs an administrator. C and C++ are the Command Line
+Tools' Apple clang 17; gfortran 16 comes from conda-forge, in the Miniforge environment
+`~/miniforge3/envs/scycle-fortran`, and CMake and the HDF5 tools (`h5diff`, `h5dump`, `h5ls`) from
+`~/miniforge3/envs/scycle-build`. `tools/regress.sh` needs `h5diff`, so put that environment last on
+PATH: `export PATH=$PATH:$HOME/miniforge3/envs/scycle-build/bin`. Keep the Fortran environment: PETSc
+and SCycle load its `libgfortran` through an rpath. Its `lib` also holds conda's libc++, which C++
+links would take instead of the system's, because PETSc copies gfortran's library directories into
+its link lines; the build script hides that library's link-time names, and `otool -L source/main`
+must show `/usr/lib/libc++.1.dylib`. That gfortran assembles with the environment's clang, so
+compiling Fortran (PETSc's `make check`) needs `~/miniforge3/envs/scycle-fortran/bin` on PATH too.
 Linux servers: `docs/SERVER.md` (PETSc configure line, build, checks, batches). GCC builds the tree
 without warnings too (checked with g++ 16 against libstdc++).
 Python with numpy, h5py, scipy and matplotlib for the tools and loaders: `~/venvs/scycle/bin/python`.
-MATLAB R2023a is installed (its license not checked); the MATLAB loaders are untested.
+The MATLAB loaders are untested (there is no MATLAB on this machine).
 
 ## Run
 
@@ -248,19 +251,25 @@ python3 SEAS_benchmarks/BP1/createICs.py [--dz 0.1]   # BP1 grid and initial con
   with a tolerance. Debug and optimized builds differ slightly once adaptive steps diverge (ex1:
   2201 vs 2202 steps, event onsets within 0.02 yr over 4500 yr), so compare a build only with a
   baseline made by the same PETSC_ARCH, and different builds with `tools/compare_runs.py`.
-  Another machine is another build too: on the Mac Studio ex1 reproduces the M4 Mac's baseline bit
-  for bit, but ex2, ex4s and ex4g differ in the last digits (probably MUMPS through Accelerate's
+  Another machine is another build too: on the Mac Studio ex1 reproduced the M4 Mac's baseline bit
+  for bit, but ex2, ex4s and ex4g differed in the last digits (probably MUMPS through Accelerate's
   BLAS, which is tuned per chip) while agreeing in the physics (`tools/compare_runs.py`: the
-  same events, onsets within 1.5e-6 yr in ex2, 6.5e-5 yr in ex4s, 1.5e-4 yr in ex4g).
+  same events, onsets within 1.5e-6 yr in ex2, 6.5e-5 yr in ex4s, 1.5e-4 yr in ex4g). On the Intel
+  Mac mini every case differs from the Mac Studio's, ex1 too (x86_64 and arm64 round differently;
+  the grid coordinates already differ by one ulp), and agrees in the physics: the same events,
+  onsets within 0.026 yr in ex1 (2204 vs 2201 steps), 4e-8 yr in ex2, 5.7e-4 yr in ex4s, 3.2e-4 yr
+  in ex4g. ex4g's last two outputs fall inside its earthquake, so its last-output differences (2e-3
+  of the slip here) exceed those of the outputs before it (2.5e-4).
 - The baseline (debug build, 1 rank) is in `data/regress-baseline/` (ignored by git), made on the
-  Mac Studio at `64a5211` (`README.txt` there); the M4 Mac's is kept in `data/regress-baseline-m4/`
-  and the one from the end of the audit in `data/regress-baseline-35ba52f/`. Regenerate it after any
-  intended change of results and say so in the commit message.
-- With the debug build ex1 takes about 30 s, ex2 140 s, ex4s and ex4g 50 s each on the Mac Studio
-  while a batch runs (13, 70 and 30 s on the M4); the optimized build runs ex2 in about 65 s and
-  ex4s, ex4g in 5 s. ex4s and ex4g are short power-law runs (coupled heat with the
-  implicit-explicit integrator; grain size coupled to diffusion creep with the explicit one), the
-  only cases that exercise `StrikeSlip_PowerLaw_qd`.
+  Mac mini at `1d04ecd` (`README.txt` there); the Mac Studio's is kept in
+  `data/regress-baseline-macstudio/`, the M4 Mac's in `data/regress-baseline-m4/` and the one from
+  the end of the audit in `data/regress-baseline-35ba52f/`. Regenerate it after any intended change
+  of results and say so in the commit message.
+- With the debug build ex1 takes about 85 s, ex2 410 s, ex4s and ex4g 160 s each on the Mac mini
+  while a batch of four runs (30, 140 and 50 s on the Mac Studio, 13, 70 and 30 s on the M4); the
+  optimized build runs ex2 in about 160 s and ex4s, ex4g in 15 s. ex4s and ex4g are short power-law
+  runs (coupled heat with the implicit-explicit integrator; grain size coupled to diffusion creep
+  with the explicit one), the only cases that exercise `StrikeSlip_PowerLaw_qd`.
 
 ## Working agreements
 
