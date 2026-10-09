@@ -62,16 +62,18 @@ four-step spin-up).
 | `r3_ad21_nsh_zlab50_l0.37` | AD21 reference without shear heating | 7500 yr | the paper's data: 270-540 yr |
 | `r4a_ad18_le` ... `r4d_ad18_g30` | AD18 elastic, 20, 25, 30 K/km | 15000 yr | |
 | `r5_ad21_le_l0.37` | AD21 elastic | 2000 yr | the paper's data: the first cycle, event at 266.8 yr |
-| (to come) `ad21_w1` | AD21 transient heating, w = 1 m | one cycle | from the end of r1 just after an earthquake; also with the old viscous-heating factor |
+| (to come) `ad21_w1` | AD21 transient heating, w = 1 m | one cycle | from the end of r1 just after an earthquake (`tools/ckpt_to_ics.py`) |
 
 ## 4. What should differ, and why
 
 Fixes since the papers that touch these configurations (`docs/AUDIT.md`):
 
-- **A-31, viscous dissipation.** The paper's heat source was sqrt(2) times the dissipated work (41% too
-  much; the factor went in with `e9b1aa9`). It changes only runs that solve the heat equation: the
-  transient-heating cycle. The ssT and transient runs start from the paper's own steady-state anomaly,
-  which carries the old factor; the w1 run is repeated with the factor restored to measure the effect.
+- **A-31, viscous dissipation: no difference.** Upstream's code had 0.5 x the dissipated work from July 2019
+  and sqrt(2) x from the submission commit `e9b1aa9` on, but the paper's runs used neither: its published
+  results balance a source of exactly the dissipation (factor 0.998 in the viscous-only steady state, from
+  -k lap(dT) against the stored source; 0.999 in all 56 interseismic snapshot pairs of the transient run
+  with w = 0.3 m, from rho c dT/dt - k lap(dT) against sdev^2/effVisc). The fixed code does the same, so
+  no run with the old factor is needed (a build with sqrt(2) restored is in data/replication/build_sqrt2).
 - **A-50 and the step floor.** The paper's earthquakes ran at its 1 ms floor (the results' smallest
   steps), where steps are accepted whatever their error; A-50 made such steps consistent (time and
   state advance with the same step). Same floor here.
