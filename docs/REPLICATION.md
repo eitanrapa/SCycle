@@ -50,19 +50,35 @@ fixed, RK32 with P control at 1e-8 on slip and state, minDeltaT 1e-3 s, maxDelta
 inferred: the surface temperature (293 K), Ny (from the June 2017 input), the volume fraction (a tanh
 fit to Fig. 5).
 
-Both start from the code's steady state (`guessSteadyStateICs`, `computeSSMomBal`) and run until the
-earthquake cycle repeats (AD21 needed 50-100 cycles from its steady state; AD18 used its own
-four-step spin-up).
+**Spin-up.** AD21's published time series all start after long spin-ups: about 950 m (no shear
+heating), 1240 m (ssT) and 2250 m (elastic) of slip had accumulated at 5 km, some 110 to 270 cycles,
+with the clock reset on the way. From the code's steady state (`guessSteadyStateICs`,
+`computeSSMomBal`) our runs start with much shorter cycles (ssT: 234, 243, 252 yr; no heating: 77, 95
+yr) and would need weeks per case here. So AD21's checks start from the paper's own states instead
+(`examples/replication/seed_ad2021.py`): the heating cases from the first 2D snapshot of its w = 0.3 m
+run (158 s after its start, at the end of an earthquake; its w = 0.3 and 1 m runs start from the same
+state, slip within 3 mm) and the elastic case from the first output of its elastic run. Started from
+these states, the current code reproduces the paper's fault state: shear stress within 0.15 MPa
+(heating) and 0.02 MPa (elastic) at every depth, slip rates within 1-3% and 0.3% (our first output at
+1 ms, theirs at 147 and 921 s). Each check then runs one or two cycles. The case without shear
+heating has no published 2D state and is spun up from the steady state (to 30000 yr). AD18 starts
+from the steady state.
 
 ## 3. Runs
 
-| Run | Case | Length | Notes |
-|---|---|---|---|
-| `r1_ad21_ssT_zlab50_l0.37` | AD21 reference (LAB 50 km, lambda 0.37), anomaly held at steady state | 7500 yr | spin-up for the transient-heating cycle; the paper's ssT data are at 4843-5197 yr |
-| `r3_ad21_nsh_zlab50_l0.37` | AD21 reference without shear heating | 7500 yr | the paper's data: 270-540 yr |
-| `r4a_ad18_le` ... `r4d_ad18_g30` | AD18 elastic, 20, 25, 30 K/km | 15000 yr | |
-| `r5_ad21_le_l0.37` | AD21 elastic | 2000 yr | the paper's data: the first cycle, event at 266.8 yr |
-| (to come) `ad21_w1` | AD21 transient heating, w = 1 m | one cycle | from the end of r1 just after an earthquake (`tools/ckpt_to_ics.py`) |
+Two batches, one job each (the stage 5 matrix has the other two slots):
+
+| Batch | Run | Case | Length | Compare with |
+|---|---|---|---|---|
+| `data/replication/seeded` | `q1_ad21_seed_ssT` | AD21 reference (LAB 50 km, lambda 0.37), anomaly at steady state | 800 yr | the paper's ssT cycle (354.2 yr) |
+| | `q2_ad21_seed_le` | AD21 elastic | 600 yr | the paper's next earthquake at 266.81 yr |
+| | `q3_ad21_seed_w1` | AD21 transient shear heating, w = 1 m | 370 yr | the paper's w = 1 m cycle (earthquake at 352.84 yr, rise 321 K) |
+| | `q4a_ad18_le` ... `q4d_ad18_g30` | AD18 elastic, 20, 25, 30 K/km | 15000 yr | the paper's text and figures |
+| `data/replication/runs` | `r3_ad21_nsh_zlab50_l0.37` | AD21 reference without shear heating, from the steady state | 30000 yr | the paper's no-heating cycle (271.85 yr) |
+
+Set aside in `data/replication/runs` (inputs renamed, checkpoints kept): the ssT spin-up from the
+steady state (`r1`, stopped at 821 yr), the elastic spin-up with the paper's 2.5e5 s step cap (`r2`) and
+without it (`r5`).
 
 ## 4. What should differ, and why
 
