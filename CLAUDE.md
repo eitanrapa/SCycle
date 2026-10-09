@@ -2,7 +2,7 @@
 
 Guidance for working in this repository. Read `docs/AUDIT.md` for what was found and fixed, and
 `docs/TWO_FAULT_DESIGN.md` for the planned extension; `docs/CHANGES.md` indexes every change from
-upstream.
+upstream, and `docs/REPLICATION.md` tracks the replication of the papers the code was written for.
 
 ## What this is
 
