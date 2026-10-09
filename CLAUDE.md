@@ -1,7 +1,8 @@
 # CLAUDE.md
 
 Guidance for working in this repository. Read `docs/AUDIT.md` for what was found and fixed, and
-`docs/TWO_FAULT_DESIGN.md` for the planned extension.
+`docs/TWO_FAULT_DESIGN.md` for the planned extension; `docs/CHANGES.md` indexes every change from
+upstream.
 
 ## What this is
 
