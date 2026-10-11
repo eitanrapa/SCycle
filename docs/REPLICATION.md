@@ -80,6 +80,30 @@ Set aside in `data/replication/runs` (inputs renamed, checkpoints kept): the ssT
 steady state (`r1`, stopped at 821 yr), the elastic spin-up with the paper's 2.5e5 s step cap (`r2`) and
 without it (`r5`).
 
+## Results so far (2026-10-11)
+
+Measured with `examples/replication/events_ad2021.py`, which applies the paper's definitions to our
+runs and to its own time series alike (earthquake: maximum slip rate above 1 mm/s; down-dip limit: 98%
+of the coseismic potency):
+
+| | Recurrence (yr) | Nucleation (km) | Max slip (m) | Down-dip limit (km) | log10 M |
+|---|---|---|---|---|---|
+| Elastic, seeded (`q2`), 2nd event | 269.08 | 14.54 | 8.418 | 17.32 | 15.6554 |
+| Elastic, paper (data / spreadsheet) | 266.21 | 14.52 / 14.30 | 8.420 / 8.42 | 17.33 / 17.31 | 15.6548 / 15.654 |
+| ssT, seeded (`q1`), events 1 and 2 | 361.86 | 12.46, 12.49 | 11.288, 11.346 | 14.40, 14.39 | 15.7034, 15.7053 |
+| ssT, paper (data / spreadsheet) | 355.47 | 12.46 / 12.66 | 11.276 / 11.28 | 14.39 / 14.40 | 15.7031 / 15.703 |
+
+From the paper's own states, the current code gives the same ruptures: maximum slip, down-dip limit and
+moment within 0.1-0.6%, nucleation at the same depth. The recurrence intervals come out 1.1% (elastic)
+and 1.8% (ssT) longer; the first elastic earthquake after the seed comes 0.87 yr after the paper's
+(267.68 against 266.81 yr; its first event is also 1.3% smaller, the second matches). The elastic run
+did not cap its steps at 2.5e5 s as the paper's did, but the ssT run used the paper's step bounds and
+differs as much, so the cap is not the cause; candidates are the code changes since 2020 (section 4).
+
+Spin-up without shear heating (`r3`), from the steady state: recurrence 94.6, 136.8, 152.3, 161.2,
+167.2, 172.1, 176.3 yr over its first eight cycles (the paper's limit cycle: 271.85 yr), about 12,000
+steps per cycle.
+
 ## 4. What should differ, and why
 
 Fixes since the papers that touch these configurations (`docs/AUDIT.md`):
