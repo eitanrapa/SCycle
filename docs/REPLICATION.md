@@ -73,8 +73,16 @@ Two batches, one job each (the stage 5 matrix has the other two slots):
 | `data/replication/seeded` | `q1_ad21_seed_ssT` | AD21 reference (LAB 50 km, lambda 0.37), anomaly at steady state | 800 yr | the paper's ssT cycle (354.2 yr) |
 | | `q2_ad21_seed_le` | AD21 elastic | 600 yr | the paper's next earthquake at 266.81 yr |
 | | `q3_ad21_seed_w1` | AD21 transient shear heating, w = 1 m | 370 yr | the paper's w = 1 m cycle (earthquake at 352.84 yr, rise 321 K) |
-| | `q4a_ad18_le` ... `q4d_ad18_g30` | AD18 elastic, 20, 25, 30 K/km | 15000 yr | the paper's text and figures |
+| | `q4a_ad18_le`, then `q5a_ad18_g30`, `q5b_ad18_g25`, `q5c_ad18_g20` | AD18 elastic, then 30, 25, 20 K/km | until the recurrence converges (at most 15000 yr) | the paper's text and figures |
 | `data/replication/runs` | `r3_ad21_nsh_zlab50_l0.37` | AD21 reference without shear heating, from the steady state | 30000 yr | the paper's no-heating cycle (271.85 yr) |
+
+**Stopping rule for AD18** (agreed with the user 2026-10-17): each run stops once its recurrence
+interval changed by less than 0.5 yr over two consecutive cycles (`tools/converge_stop.py`, running
+detached, log `data/replication/seeded/converge_stop.log`), which marks it finished so the queue moves
+on; when the stage 5 matrix has finished it restarts the seeded batch with three jobs, so the
+viscoelastic cases run in parallel. Its earthquakes run at the 1 ms step floor of the 2017 input, about
+60,000 steps (7 hours) per cycle. The elastic run's recurrence by 5475 yr: 260.5, 293.7, 304.1, ...,
+333.3, 334.6, 335.8 yr, changing 1.2 yr per cycle (the paper: 366 yr).
 
 Set aside in `data/replication/runs` (inputs renamed, checkpoints kept): the ssT spin-up from the
 steady state (`r1`, stopped at 821 yr), the elastic spin-up with the paper's 2.5e5 s step cap (`r2`) and
