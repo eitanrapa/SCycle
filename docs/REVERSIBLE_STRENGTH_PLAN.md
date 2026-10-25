@@ -1095,6 +1095,29 @@ fault work spread below the fault's base, would let them); pore-pressure pulses 
 healing act on friction, as controls; grain size (W8, S3, W10) needs a band weak by its fine grain
 (diffusion creep with the wattmeter) rather than by a prefactor.
 
+**The lock-in search** (`examples/two_faults/stage5_lockin.py`, started 2026-10-24 in
+`data/stage5_lockin`). The two-root model with the implemented laws (2.2) puts the missing lock-in
+down to the fabric's settings. The second batch's fab10 (`beta_f` 10, `Xf` 0.5 with `e_full` = 5e-13
+1/s) locks in at a share of 0.985 there, so the quiet root keeps 1.5% of the creep (5% in 2D while
+one fault dominates), and its 30-yr memory fades within each earthquake cycle. At `Xf` = 2 the quiet
+root keeps 0.26% (`N_f` 1.25), and 0.04% at `beta_f` 20 (`N_f` 1.36). `gamma_f` sets the memory
+independently of `Xf`. Above `Xf` of about 3 equal sharing is stable: from about 5 a locked state
+exists beside it (separatrix near a share of 0.9), and at 50 (a 3000-yr memory at the batches'
+`gamma_f`) none is left, since the quiet root's own creep keeps it weak. Four runs, the second
+batch's fab10 apart from the fabric:
+
+| Run | `beta_f` | `tau_c` (yr) | `Xf` | `gamma_f` | Tests |
+|---|---|---|---|---|---|
+| k1_fab20_tau300_x2 | 20 | 300 | 2 | 2.36e-3 | memory and depth, stronger fabric |
+| k2_fab10_tau300_x2 | 10 | 300 | 2 | 2.36e-3 | memory and depth |
+| k3_fab10_tau300_x05 | 10 | 300 | 0.5 | 9.45e-3 | the memory alone |
+| k4_fab10_tau30_x2 | 10 | 30 | 2 | 2.36e-4 | the depth alone |
+
+k1 and k2 started on 2026-10-24; k3 and k4 wait in `data/stage5_lockin_b` for job slots
+(`tools/fill_slots.py`). Cohesion healing (4.6) waits. To tell the faults apart, its healing time
+must exceed the active fault's interval, and the quiet fault's locked patch must creep slower than
+`D_heal/tau_heal`. That needs the interseismic slip rates of a run first.
+
 **Cost.** Stage 4 must measure the step count per cycle and the time per step of the baseline;
 until then assume several thousand steps per cycle and hours per run in the optimized build on a
 few ranks, so the library is tens of runs, not hundreds, and the 0D screen is what keeps the

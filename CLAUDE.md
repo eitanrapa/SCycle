@@ -80,6 +80,8 @@ mpirun -n 4 ./source/main examples/ex2.in
   outright (`kill -9`, power loss) can leave its HDF5 output unreadable between checkpoints.
 - `tools/batch.sh start|status|stop <dir>` runs the inputs `<dir>/*.in` detached (outliving the
   shell), resumes them after a stop or reboot, and records each run's end in `<outputDir>run.exit`.
+  `tools/fill_slots.py <dir> ...` keeps the machine at `--jobs` runs, starting the batches' waiting
+  runs in the order given; each batch needs its `bin/main` first (a first start with `SCYCLE_BIN`).
 - The exit status is nonzero after a PETSc error. Input errors stop with a message and `assert(0)`
   (exit 134); asserts are always on (no `NDEBUG`).
 - Modes (`main.cpp`): `bulkDeformationType` = `linearElastic` | `powerLaw`; `momentumBalanceType`
@@ -130,7 +132,8 @@ mpirun -n 4 ./source/main examples/ex2.in
   the stage 4 baseline (ex4's creep and geotherm to 60 km, coupled heat, optional grain size);
   `--weak-band` gives each fault a weak root, `--band-wet-dry R` makes it the wet end-member of a
   wet-dry pair (water state), `--band-dp W` lets pressure solution carry the share W of it (phase
-  segregation). `examples/two_faults/stage5_matrix.py` writes the stage 5 run matrix.
+  segregation). `examples/two_faults/stage5_matrix.py` writes the stage 5 run matrix,
+  `stage5_lockin.py` the lock-in search.
 - With interior faults, two outputs are on by default (off otherwise): `computeSurfVel = 1` writes
   the instantaneous surface velocity `/momBal/surfVel` (m/s) with each 1D output, and
   `strideSeries = N` appends per-fault max slip rate, its depth, potency rate and potency to
