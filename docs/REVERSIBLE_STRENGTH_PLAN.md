@@ -1056,6 +1056,38 @@ with hardening; the water memory (W2, W3 against S1, S2, the paper's first pair)
 pressure solution carries half the weakening at 2 MPa (`--band-dp 0.5`), alone and with fabric, with
 its no-state references; fabric with two memories; and all of them together. Memories are scaled as
 the second batch's hardening (`e_full tau/gamma = 2.5`, `tau` = 1000 yr). Shear heating is on in all.
+
+**Phase 1, results** (m01-m12 finished by 2026-10-24, m13 running; `tools/trading_stats.py` with the
+second batch's definitions, after 2000 yr of spin-up, which reproduces the second batch's numbers;
+figure `data/stage5_matrix/figs/matrix_summary.png`). Fraction of consecutive earthquakes on the same
+fault, longest run, share of the time one fault takes over 75% of the slip at 10 km over 1000 yr, and
+how long a root keeps most of the deep creep after its earthquake (median):
+
+| Run | Memories | P(same) | Longest run | > 75% | Root kept (yr) | Against |
+|---|---|---|---|---|---|---|
+| m01_aniso8 | directional fabric 8 | 0.67 | 5 | 0.40 | 512 | fab8: 0.80, 8, 0.61, 838 |
+| m10_aniso10 | directional fabric 10 | 0.75 | 9 | 0.59 | 675 | fab10: 0.88, 11, 0.67, 925 |
+| m08_aniso8hard7 | directional 8, hardening 0.7 | 0.49 | 4 | 0.04 | 350 | alt8: 0.60, 6, 0.17, 500 |
+| m02_wet10 | water, R = 10 | 0.17 | 2 | 0.00 | 250 | null: 0.03, 2, 0.00, 250 |
+| m11_wet30 | water, R = 30 | 0.05 | 2 | 0.00 | 250 | null |
+| m05_fab8wet10 | fabric 8, water 10 | 0.62 | 4 | 0.16 | 475 | fab8 |
+| m12_fab10wet30 | fabric 10, water 30 | 0.66 | 5 | 0.23 | 500 | fab10 |
+| m03_dpnull | pressure-solution band | 0.02 | 2 | 0.00 | 250 | null |
+| m04_dpseg4 | segregation 4 | 0.16 | 2 | 0.00 | 250 | m03 |
+| m06_dpfab8 | fabric 8 in the band | 0.78 | 8 | 0.47 | 662 | fab8 |
+| m07_dpfab8seg4 | fabric 8, segregation 4 | 0.78 | 9 | 0.47 | 700 | m06 |
+| m09_all | directional 8, hardening, water, segregation | 0.29 | 2 | 0.01 | 300 | m08 |
+
+No run locks in (long-term shares 0.45-0.57, every run switches). Earthquakes cluster only with
+fabric. The directional fabric clusters less than the isotropic one at the same `beta_f` (0.67 and
+0.75 against 0.80 and 0.88), since its factor weakens fault-parallel shear only. The water memory acts
+as a strengthening memory, like hardening: after an earthquake its root creeps fast and dries
+(0.014-0.017 less water than the other root 100-200 yr later; 0.12 less with fabric, which strains the
+root more), and the dry law is R times slower. Alone it leaves the faults taking turns; with fabric it
+cuts the clustering as hardening does (0.80 to 0.62 at `beta_f` 8, 0.88 to 0.66 at 10). Pressure
+solution changes nothing with or without fabric (0.78 against 0.80), and segregation adds nothing
+measurable (0.78 against 0.78; its state differs by less than 0.005 between the roots at 25 km).
+Together (m09) the two strengthening memories almost cancel the directional fabric: runs of at most two.
 **Phase 2** needs set-up first: the cement state (S6, S9), the pseudotachylite products (W7) and the
 cataclastic sink (W6) take the faults' work, done above 20 km where the faults slip, so they cannot
 reach these roots (a geometry whose brittle-ductile transition lies inside the slipping zone, or the
