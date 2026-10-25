@@ -41,12 +41,19 @@ def load(path):
     return t, z, slip, V
 
 
-def events(t, z, slip, V, mu):
+def events(t, z, slip, V, mu, merge=YEAR):
+    """Earthquakes; rises through 1 mm/s less than `merge` seconds after the previous one join it."""
     vmax = np.abs(V).max(axis=1)
     on = np.where((vmax[1:] >= V_EQ) & (vmax[:-1] < V_EQ))[0] + 1
-    out = []
+    groups = []
     for i in on:
-        j = i
+        if groups and t[i] - t[groups[-1][-1]] < merge:
+            groups[-1].append(i)
+        else:
+            groups.append([i])
+    out = []
+    for g in groups:
+        i, j = g[0], g[-1]
         while j < t.size and vmax[j] >= V_EQ:
             j += 1
         if j >= t.size:

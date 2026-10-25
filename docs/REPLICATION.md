@@ -108,6 +108,15 @@ and 1.8% (ssT) longer; the first elastic earthquake after the seed comes 0.87 yr
 did not cap its steps at 2.5e5 s as the paper's did, but the ssT run used the paper's step bounds and
 differs as much, so the cap is not the cause; candidates are the code changes since 2020 (section 4).
 
+**AD18 elastic** (`q4a`, stopped by the convergence rule at 9223 yr after 28 earthquakes; recurrence
+342.78, 343.26, 343.70 yr): nucleation at 9.93 km (the paper: 10 km), maximum coseismic slip 10.98 m and
+10.06 m at the surface (about 10 m), 98% of the potency above 12.6 km (the paper: coseismic slip ends at
+14 km), recurrence 343.3 yr. The paper's text gives 366 yr, but its own figures point to shorter cycles
+(Fig. 7's slip per cycle and Figs. 9-10 give 349-357 yr); the reconstruction's normal stress (22.3
+MPa/km from the June 2017 input, against 23.4 MPa/km for one reading of its Eq. 16) also scales the
+recurrence. Its earthquakes cross 1 mm/s several times while they slip, so `events_ad2021.py` merges
+crossings less than a year apart.
+
 Spin-up without shear heating (`r3`), from the steady state: recurrence 94.6, 136.8, 152.3, 161.2,
 167.2, 172.1, 176.3 yr over its first eight cycles (the paper's limit cycle: 271.85 yr), about 12,000
 steps per cycle.
