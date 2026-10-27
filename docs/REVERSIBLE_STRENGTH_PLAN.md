@@ -1113,10 +1113,33 @@ batch's fab10 apart from the fabric:
 | k3_fab10_tau300_x05 | 10 | 300 | 0.5 | 9.45e-3 | the memory alone |
 | k4_fab10_tau30_x2 | 10 | 30 | 2 | 2.36e-4 | the depth alone |
 
-k1 and k2 started on 2026-10-24; k3 and k4 wait in `data/stage5_lockin_b` for job slots
-(`tools/fill_slots.py`). Cohesion healing (4.6) waits. To tell the faults apart, its healing time
-must exceed the active fault's interval, and the quiet fault's locked patch must creep slower than
-`D_heal/tau_heal`. That needs the interseismic slip rates of a run first.
+k1 and k2 started on 2026-10-24, k3 and k4 on 2026-10-26 as job slots freed (`tools/fill_slots.py`;
+their inputs are in `data/stage5_lockin_b`). **First look, 2026-10-26** (k2 at 3985 yr, k1 at 2119,
+k3 at 2586, k4 at 415). k2's second fault ruptured eleven times in a row while the first stayed
+silent for 2865 yr, which ties fab10's record (eleven in a row, 2863 yr). Its dominant root took
+97.3% of the creep at 25 km, against 95-96% in fab10's longest phases and 99.74% in the screen: in
+2D the quiet root keeps ten times what the screen says. The quiet fault kept loading at about 5% of
+the active fault's rate (0.07 against 1.3 MPa per century, mean shear stress over 2-18 km). Its
+stress has passed the level at which it last failed (30.6 against 30.0-30.3 MPa), and since 3000 yr
+slow slip has risen to 6-10 km, as it did 200-500 yr before fab10's quiet fault failed (at 31.2
+MPa). k1 passed from the first fault to the second at 1623 yr, after seven earthquakes. k3
+alternated strictly (ABABABABABA): it has k2's 300-yr memory, but its fabric needs four times the
+strain, too much to build up within one cycle. A fault that keeps loading fails in the end, so the
+fabric slows the quiet fault's loading without stopping it.
+
+Cohesion healing (4.6) can stop it, since it strengthens the quiet fault while it is quiet. k2 gives
+the slip rates it waited for: the quiet fault creeps at 1e-13 to 1e-12 m/s at 5-10 km between
+slow-slip episodes and at 1-2e-11 m/s on average, so the recommended 1 mm over 300 yr
+(`D_heal/tau_heal` = 1e-13 m/s) would hold it near 1% of `C_max`. **k5_fab10_tau300_x2_coh5** is k2
+with `C_max` 5 MPa down to 11 km, tapered to 0 at 12 km where `a - b` turns positive (near
+`D_heal/tau_heal` cohesion adds velocity weakening), `tau_heal` 1000 yr and `D_heal` 1 m
+(3.2e-11 m/s; an earthquake slips about 7 m and resets it). Both faults start without cohesion. The
+quiet fault should end about 2.5 MPa stronger than the active one, about 3500 yr of its loading; the
+risk is that the extra weakening turns its slow-slip episodes into earthquakes. A smoke test to 9.8
+yr (1675 steps) matched k2: the same opening earthquake in the same steps, then steps of k2's size
+at equal times (median difference 0.3%), so error control on cohesion costs no steps. Cohesion
+healed at the law's rate on both faults, and the earthquake's 7 m of slip reset it on the first.
+k5 takes k3's slot when k3 ends.
 
 **Cost.** Stage 4 must measure the step count per cycle and the time per step of the baseline;
 until then assume several thousand steps per cycle and hours per run in the optimized build on a
