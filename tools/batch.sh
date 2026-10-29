@@ -31,7 +31,8 @@
 #   MPIEXEC        MPI launcher for R > 1 (default: mpirun)
 #   MPIEXEC_FLAGS  extra launcher flags; with Open MPI and several multi-rank runs at once, use
 #                  "--bind-to none", or each run's ranks are bound to the same first cores
-#   OMP_NUM_THREADS, OPENBLAS_NUM_THREADS   default 1, so a threaded BLAS does not oversubscribe
+#   OMP_NUM_THREADS, OPENBLAS_NUM_THREADS, VECLIB_MAXIMUM_THREADS (Accelerate's, on macOS)
+#                  default 1, so a threaded BLAS does not oversubscribe
 
 self=$(cd "$(dirname "$0")" && pwd)/$(basename "$0")
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -208,7 +209,8 @@ run() {
   rm -f "${p}run.stopping"
   echo "== $(date '+%Y-%m-%d %H:%M:%S') start on $(uname -n): $dir/bin/main, $np rank(s)" >> "${p}run.log"
   off=$(wc -c < "${p}run.log")   # where this start's part of the log begins
-  export OMP_NUM_THREADS=${OMP_NUM_THREADS:-1} OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-1}
+  export OMP_NUM_THREADS=${OMP_NUM_THREADS:-1} OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-1} \
+         VECLIB_MAXIMUM_THREADS=${VECLIB_MAXIMUM_THREADS:-1}
   cd "$root" || return 0
   trap ':' TERM INT   # outlive a signal meant for the whole job, to record how the run ended
   if (( np > 1 )); then

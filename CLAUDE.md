@@ -252,7 +252,9 @@ python3 SEAS_benchmarks/BP1/createICs.py [--dz 0.1]   # BP1 grid and initial con
                                          # "all" only objects made by a Create call are listed)
 ```
 
-- Runs on 1 rank are bit-reproducible for a given build, also across a stop and restart. Runs on 2
+- Runs on 1 rank are bit-reproducible for a given build, also across a stop and restart, and for a
+  given number of BLAS threads: `tools/batch.sh` runs Accelerate on one thread, `tools/regress.sh`
+  with its default (a thread per logical CPU), and the two differ in the last digits. Runs on 2
   ranks are not: two identical 2-rank runs of ex2 differ by 2.6e-9 (relative, slip), so compare them
   with a tolerance. Debug and optimized builds differ slightly once adaptive steps diverge (ex1:
   2201 vs 2202 steps, event onsets within 0.02 yr over 4500 yr), so compare a build only with a
