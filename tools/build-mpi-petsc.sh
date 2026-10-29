@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Build Open MPI 5.0.11 and PETSc 3.26.0 (optimized and debug arches) for SCycle on a Mac without
-# Homebrew (the Intel Mac mini, since 2026-10-06). C and C++ come from the Command Line Tools (Apple
-# clang), Fortran from conda-forge: gfortran in its own environment ~/miniforge3/envs/scycle-fortran,
-# whose bin must be on PATH (its assembler runs clang) and whose lib ends up on SCycle's rpath (the
-# Fortran runtime); CMake from ~/miniforge3/envs/scycle-build. PETSc's configure options are those of
-# docs/SERVER.md. Logs in ~/opt: build-openmpi.log, build-petsc-<arch>.log, check-petsc-<arch>.log.
-# First, Miniforge and the two environments (no administrator needed):
+# Homebrew (the Intel Mac mini from 2026-10-06, the iMac Pro from 2026-10-28). C and C++ come from
+# the Command Line Tools (Apple clang), Fortran from conda-forge: gfortran in its own environment
+# ~/miniforge3/envs/scycle-fortran, whose bin must be on PATH (its assembler runs clang) and whose
+# lib ends up on SCycle's rpath (the Fortran runtime); CMake from ~/miniforge3/envs/scycle-build.
+# PETSc's configure options are those of docs/SERVER.md. Logs in ~/opt: build-openmpi.log,
+# build-petsc-<arch>.log, check-petsc-<arch>.log. On a new Mac, first the Command Line Tools
+# (xcode-select --install, the one step that needs an administrator), then Miniforge and the two
+# environments (to match another machine exactly, create each from its `conda list --explicit`):
 #   curl -fsSLO https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-x86_64.sh
 #   bash Miniforge3-MacOSX-x86_64.sh -b -p ~/miniforge3
 #   ~/miniforge3/bin/mamba create -y -p ~/miniforge3/envs/scycle-fortran -c conda-forge gfortran

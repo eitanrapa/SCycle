@@ -29,10 +29,11 @@ for a single branch). `docs/REVERSIBLE_STRENGTH_PLAN.md` plans and tracks stage 
 ## Build
 
 Requires PETSc >= 3.14 (HDF5 timestepping API) with HDF5 and MUMPS, real scalars, 32-bit indices;
-HYPRE for the `AMG` and `CG_PCAMG` solver options. Since 2026-10-06 the work runs on an Intel Mac
-mini (i7-8700B, 6 cores, 64 GB; before that a Mac Studio with an M2 Ultra, and an M4 Mac). Open
-MPI 5.0.11 and PETSc 3.26.0, both arches, are built from source into `~/opt` by
-`tools/build-mpi-petsc.sh` (logs in `~/opt`), with the configure options of `docs/SERVER.md`:
+HYPRE for the `AMG` and `CG_PCAMG` solver options. Since 2026-10-28 the work runs on an iMac Pro
+(Xeon W-2150B, 10 cores, 128 GB; before that an Intel Mac mini from 2026-10-06, a Mac Studio with
+an M2 Ultra, and an M4 Mac). Open MPI 5.0.11 and PETSc 3.26.0, both arches, are built from source
+into `~/opt` by `tools/build-mpi-petsc.sh` (logs in `~/opt`), with the configure options of
+`docs/SERVER.md`:
 
 ```bash
 export PETSC_DIR=$HOME/opt/petsc-3.26.0
@@ -44,16 +45,17 @@ make -C source DEBUG_MODULES=-DVERBOSE=2  # more tracing; VERBOSE=1 (default) pr
 make -C source clean                      # also after switching PETSC_ARCH (objects are per arch)
 ```
 
-The machine has no Homebrew, and nothing needs an administrator. C and C++ are the Command Line
-Tools' Apple clang 17; gfortran 16 comes from conda-forge, in the Miniforge environment
-`~/miniforge3/envs/scycle-fortran`, and CMake and the HDF5 tools (`h5diff`, `h5dump`, `h5ls`) from
-`~/miniforge3/envs/scycle-build`. `tools/regress.sh` needs `h5diff`, so put that environment last on
-PATH: `export PATH=$PATH:$HOME/miniforge3/envs/scycle-build/bin`. Keep the Fortran environment: PETSc
-and SCycle load its `libgfortran` through an rpath. Its `lib` also holds conda's libc++, which C++
-links would take instead of the system's, because PETSc copies gfortran's library directories into
-its link lines; the build script hides that library's link-time names, and `otool -L source/main`
-must show `/usr/lib/libc++.1.dylib`. That gfortran assembles with the environment's clang, so
-compiling Fortran (PETSc's `make check`) needs `~/miniforge3/envs/scycle-fortran/bin` on PATH too.
+The machine has no Homebrew, and only the Command Line Tools (`xcode-select --install`) need an
+administrator. C and C++ are their Apple clang 17; gfortran 16 comes from conda-forge, in the
+Miniforge environment `~/miniforge3/envs/scycle-fortran`, and CMake and the HDF5 tools (`h5diff`,
+`h5dump`, `h5ls`) from `~/miniforge3/envs/scycle-build`. `tools/regress.sh` needs `h5diff`, so put
+that environment last on PATH: `export PATH=$PATH:$HOME/miniforge3/envs/scycle-build/bin`. Keep the
+Fortran environment: PETSc and SCycle load its `libgfortran` through an rpath. Its `lib` also holds
+conda's libc++, which C++ links would take instead of the system's, because PETSc copies gfortran's
+library directories into its link lines; the build script hides that library's link-time names, and
+`otool -L source/main` must show `/usr/lib/libc++.1.dylib`. That gfortran assembles with the
+environment's clang, so compiling Fortran (PETSc's `make check`) needs
+`~/miniforge3/envs/scycle-fortran/bin` on PATH too.
 Linux servers: `docs/SERVER.md` (PETSc configure line, build, checks, batches). GCC builds the tree
 without warnings too (checked with g++ 16 against libstdc++).
 Python with numpy, h5py, scipy and matplotlib for the tools and loaders: `~/venvs/scycle/bin/python`.
@@ -263,15 +265,23 @@ python3 SEAS_benchmarks/BP1/createICs.py [--dz 0.1]   # BP1 grid and initial con
   the grid coordinates already differ by one ulp), and agrees in the physics: the same events,
   onsets within 0.026 yr in ex1 (2204 vs 2201 steps), 4e-8 yr in ex2, 5.7e-4 yr in ex4s, 3.2e-4 yr
   in ex4g. ex4g's last two outputs fall inside its earthquake, so its last-output differences (2e-3
-  of the slip here) exceed those of the outputs before it (2.5e-4).
+  of the slip here) exceed those of the outputs before it (2.5e-4). The iMac Pro has the Mac mini's
+  compiler and libraries, and its grid coordinates are identical, yet every case differs from the
+  Mac mini's, probably through Accelerate's BLAS kernels for its CPU, and agrees in the physics: the
+  same events, onsets within 0.022 yr in ex1 (2201 vs 2204 steps), 1.5e-6 yr in ex2, 2.6e-5 yr in
+  ex4s, 4.7e-5 yr in ex4g. A run can move between machines through its checkpoint: k2 of the lock-in
+  search, restarted on the iMac Pro, followed the Mac mini's steps after an earthquake to 1e-13 in
+  time over 400 steps.
 - The baseline (debug build, 1 rank) is in `data/regress-baseline/` (ignored by git), made on the
-  Mac mini at `1d04ecd` (`README.txt` there); the Mac Studio's is kept in
-  `data/regress-baseline-macstudio/`, the M4 Mac's in `data/regress-baseline-m4/` and the one from
-  the end of the audit in `data/regress-baseline-35ba52f/`. Regenerate it after any intended change
-  of results and say so in the commit message.
-- With the debug build ex1 takes about 85 s, ex2 410 s, ex4s and ex4g 160 s each on the Mac mini
-  while a batch of four runs (30, 140 and 50 s on the Mac Studio, 13, 70 and 30 s on the M4); the
-  optimized build runs ex2 in about 160 s and ex4s, ex4g in 15 s. ex4s and ex4g are short power-law
+  iMac Pro at `3db9319` (`README.txt` there); the Mac mini's is kept in
+  `data/regress-baseline-macmini/`, the Mac Studio's in `data/regress-baseline-macstudio/`, the M4
+  Mac's in `data/regress-baseline-m4/` and the one from the end of the audit in
+  `data/regress-baseline-35ba52f/`. Regenerate it after any intended change of results and say so in
+  the commit message.
+- With the debug build ex1 takes about 46 s, ex2 240 s, ex4s and ex4g 110 s each on the iMac Pro
+  with nothing else running (85, 410 and 160 s on the Mac mini while a batch of four runs, 30, 140
+  and 50 s on the Mac Studio, 13, 70 and 30 s on the M4); on the Mac mini the optimized build ran
+  ex2 in about 160 s and ex4s, ex4g in 15 s. ex4s and ex4g are short power-law
   runs (coupled heat with the implicit-explicit integrator; grain size coupled to diffusion creep
   with the explicit one), the only cases that exercise `StrikeSlip_PowerLaw_qd`.
 
