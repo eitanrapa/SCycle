@@ -1139,7 +1139,10 @@ risk is that the extra weakening turns its slow-slip episodes into earthquakes. 
 yr (1675 steps) matched k2: the same opening earthquake in the same steps, then steps of k2's size
 at equal times (median difference 0.3%), so error control on cohesion costs no steps. Cohesion
 healed at the law's rate on both faults, and the earthquake's 7 m of slip reset it on the first.
-k5 takes k3's slot when k3 ends.
+On 2026-10-28 the runs moved to the iMac Pro, which runs all eight waiting runs at once (k1-k5 and
+the replication's q5b, q5c and r3), so k5 started then. k1-k4 continue from their checkpoints with
+its build (k1 at 4025 yr, k2 7668, k3 11669, k4 3296); a restart of k2 there followed the Mac mini's
+steps to 1e-13 in time.
 
 **Cost.** Stage 4 must measure the step count per cycle and the time per step of the baseline;
 until then assume several thousand steps per cycle and hours per run in the optimized build on a
