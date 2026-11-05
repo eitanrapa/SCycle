@@ -27,6 +27,8 @@ keys. --weak-band W gives each fault its own viscous root: a band W km wide bene
 times larger (the file
 ic/disl_A, which the power law reads as a body field; log-linear cosine tapers of --weak-taper km at
 the edges). Without one the flow beneath the faults is broad and the two roots merge.
+--weak-factor-f2 F gives f2's band its own factor (default --weak-factor; 1 leaves f2 without a
+band): a young second fault beside a mature first one.
 --mantle-zone W adds a mantle shear zone W km wide beneath both bands (centred between the faults),
 weak like them from --weak-bottom to --mantle-bottom and tapering into the asthenosphere below, so
 that the plate motion beneath the roots stays localized instead of spreading through the mantle.
@@ -141,6 +143,7 @@ def main():
     p.add_argument('--set', action='append', default=[], metavar='KEY=VALUE', help='append the input line "KEY = VALUE" (repeatable)')
     p.add_argument('--weak-band', type=float, default=None, help='power law: full width (km) of a weak creep band beneath each fault')
     p.add_argument('--weak-factor', type=float, default=1000.0, help='factor on the dislocation-creep prefactor in the band')
+    p.add_argument('--weak-factor-f2', type=float, default=None, help='factor in the band beneath f2 (default --weak-factor; 1: no band)')
     p.add_argument('--weak-top', type=float, default=None, help='top of the band (km; default the lock depth, else 20)')
     p.add_argument('--weak-bottom', type=float, default=30.0, help='bottom of the band (km): deeper, the hot mantle is weak already and\n'
                    'a weaker band shortens the Maxwell time that caps the steps')
@@ -272,16 +275,21 @@ def main():
         def ramp(x):  # 0 for x <= 0, 1 for x >= 1, cosine between
             x = np.clip(x, 0.0, 1.0); return 0.5*(1.0 - np.cos(np.pi*x))
         faults_y = [y1] if args.single else [y1, y2]
-        my = np.max([ramp((0.5*args.weak_band + T - np.abs(y - yk))/T) for yk in faults_y], axis=0)
+        F2 = args.weak_factor if args.weak_factor_f2 is None else args.weak_factor_f2
+        facs = [args.weak_factor] if args.single else [args.weak_factor, F2]
+        if min(facs) < 1: raise SystemExit('--weak-factor and --weak-factor-f2 must be at least 1')
         mz = ramp((z - (top - T))/T)*ramp((args.weak_bottom + T - z)/T)
-        m = my[:, None]*mz[None, :]
+        # each fault's band F^m (m from 0 to 1 across the tapers), the larger where two meet; with equal factors
+        # this is F^m of the largest m, bit for bit (F^m and m*mz increase with m)
+        fm = np.max([F**(ramp((0.5*args.weak_band + T - np.abs(y - yk))/T)[:, None]*mz[None, :])
+                     for yk, F in zip(faults_y, facs)], axis=0)
         if args.mantle_zone is not None:  # one zone below both bands: weak from where they end, tapering into the asthenosphere
             yc = args.base_center if args.base_center is not None else (y1 if args.single else 0.5*(y1 + y2))
             Tm = args.mantle_taper
             myz = ramp((0.5*args.mantle_zone + Tm - np.abs(y - yc))/Tm)
             mzz = ramp((z - (args.weak_bottom - T))/T)*ramp((args.mantle_bottom + Tm - z)/Tm)
-            m = np.maximum(m, myz[:, None]*mzz[None, :])
-        Aband = A0*args.weak_factor**m  # index iy*Nz + iz
+            fm = np.maximum(fm, args.weak_factor**(myz[:, None]*mzz[None, :]))
+        Aband = A0*fm  # index iy*Nz + iz
         if args.band_dp is not None:  # pressure solution takes the share W of the band's excess over A0 at (sref, T)
             W = args.band_dp
             if not 0 < W < 1: raise SystemExit('--band-dp needs 0 < W < 1')
@@ -310,8 +318,9 @@ def main():
             lines.append('# band: wet law ic/disl2_A, dry ic/disl_A %g times slower at equal stress' % args.band_wet_dry)
         else:
             write_vec(os.path.join(d, 'ic', 'disl_A'), Aband.ravel())
-        lines.append('# weak band: ic/disl_A is %g x the prefactor within %g km of each fault from %g to %g km (tapers %g km)'
-                     % (args.weak_factor, 0.5*args.weak_band, top, args.weak_bottom, T))
+        lines.append('# weak band: ic/disl_A is %s the prefactor within %g km of each fault from %g to %g km (tapers %g km)'
+                     % ('%g x' % args.weak_factor if len(set(facs)) == 1 else '%g x (fault) and %g x (f2)' % tuple(facs),
+                        0.5*args.weak_band, top, args.weak_bottom, T))
         if args.mantle_zone is not None:
             lines.append('# mantle zone: the same factor within %g km of y = %g km from %g to %g km (sides and bottom taper %g km)'
                          % (0.5*args.mantle_zone, yc, args.weak_bottom, args.mantle_bottom, Tm))
