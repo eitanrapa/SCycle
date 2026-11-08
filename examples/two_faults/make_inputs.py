@@ -3,7 +3,7 @@
 
 Writes an SCycle input with two interior faults a distance d apart, centred in y in [0, Ly], with
 the left side moving at -vL/2 and the right at +vL/2. The first fault, named fault, reads the plain
-keys; the second, named f2, inherits them and overrides some with f2_ keys (see CLAUDE.md).
+keys; the second, named f2, inherits them and overrides some with f2_ keys.
 
   --f2 rs      f2 has the same rate-and-state friction as fault (examples/ex2.in): two seismic faults
   --f2 vs      f2 is velocity strengthening everywhere (b = a - 0.004): it creeps
@@ -14,11 +14,10 @@ keys; the second, named f2, inherits them and overrides some with f2_ keys (see 
                deepened to --Lz (60 km) on a depth grid that is uniform (--dz) down to --zfine and
                grows geometrically below, temperature evolving with frictional heat (a Gaussian of
                width --w metres on each fault) and viscous heating, and the implicit-explicit
-               integrator. --grainsize adds the wattmeter grain-size law with the quartz constants
-               of docs/REVERSIBLE_STRENGTH_PLAN.md (section 4.3), uncoupled (no grain-size-sensitive
-               creep law yet).
+               integrator. --grainsize adds the wattmeter grain-size law with quartz constants,
+               uncoupled (no grain-size-sensitive creep law yet).
 
-Stage 5 (docs/REVERSIBLE_STRENGTH_PLAN.md): --lock-depth Z locks both faults below Z km, so that
+Stage 5: --lock-depth Z locks both faults below Z km, so that
 the plate motion beneath them flows viscously (without it the deep fault creeps and the viscous roots
 barely strain); --series-depth Z writes the root-strength probes at Z km to faultSeries.txt; and
 --set KEY=VALUE (repeatable) appends any input line, for the bulk state fields and the other stage 5
@@ -236,7 +235,7 @@ def main():
             lines += ['evolveGrainSize = 1', 'grainSizeEvCoupling = uncoupled # no grain-size-sensitive creep law yet',
                       'grainSizeEv_grainSizeEvType = transient',
                       'grainSizeEv_grainSizeVals = [1e-5 1e-5] # initial grain size', 'grainSizeEv_grainSizeDepths = [0 500]',
-                      'grainSizeEv_AVals = [1e-16 1e-16] # quartz, Tokle & Hirth (2021) (REVERSIBLE_STRENGTH_PLAN.md 4.3)',
+                      'grainSizeEv_AVals = [1e-16 1e-16] # quartz, Tokle & Hirth (2021)',
                       'grainSizeEv_ADepths = [0 500]', 'grainSizeEv_QRVals = [16100 16100]', 'grainSizeEv_QRDepths = [0 500]',
                       'grainSizeEv_pVals = [3 3]', 'grainSizeEv_pDepths = [0 500]',
                       'grainSizeEv_gammaVals = [1 1]', 'grainSizeEv_gammaDepths = [0 500]', 'grainSizeEv_c = 3.14159',

@@ -1085,7 +1085,7 @@ PetscErrorCode PowerLaw::computeViscosity(const PetscScalar viscCap)
 
 // Directional fabric: the viscosity of fault-parallel shear, 1/effViscXY = 1/cap + the plastic part + each
 // creep mechanism's 1/effVisc (at its equivalent stress) times its q. Hill's form of a transversely
-// isotropic power law with the foliation parallel to the fault (plan section 4.7): in antiplane strain
+// isotropic power law with the foliation parallel to the fault: in antiplane strain
 // two viscosities, sxy on the foliation and sxz across it. Taking the power law in the isotropic
 // invariant instead (Muehlhaus et al. 2002) lets a large sxz soften sxy by the full F^-n, which made the
 // Maxwell time, and the steps, a few hundred times shorter where the fabric was strong.

@@ -159,7 +159,7 @@ public:
   void setUpFaultWork(Domain& D, const std::string& who); // allocate _Qfault and its kernels, once
   PetscErrorCode grainSizeRates(const map<string,Vec>& varEx, map<string,Vec>& dvarEx); // after the faults' rates
 
-  // bulk state fields that feed back into the viscosity (docs/REVERSIBLE_STRENGTH_PLAN.md): strain
+  // bulk state fields that feed back into the viscosity: strain
   // hardening, ...; owned
   std::vector<BulkStateField*> _bulkStates;
   BulkInputs bulkInputs(const PetscScalar time) const; // the current stress, strain rates and temperature

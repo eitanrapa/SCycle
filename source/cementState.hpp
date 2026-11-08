@@ -4,7 +4,7 @@
 #include "bulkStateField.hpp"
 
 /*
- * Cement of the shear zone (docs/REVERSIBLE_STRENGTH_PLAN.md, 4.5), a memory driven by earthquakes.
+ * Cement of the shear zone, a memory driven by earthquakes.
  * Psi in [0, 1]:
  *
  *     dPsi/dt = (Q/E_c) (1 - Psi) - Psi (1/tau_Psi + e/gamma_Psi),

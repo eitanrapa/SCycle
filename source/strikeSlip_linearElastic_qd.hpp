@@ -122,7 +122,7 @@ public:
   Fault_qd               *_fault;
   std::vector<Fault_qd*>  _faults;
 
-  // Interior faults (docs/TWO_FAULT_DESIGN.md, Route B), declared by interiorFaults = [names] with
+  // Interior faults, declared by interiorFaults = [names] with
   // positions <name>_y (km). Each has a lift that adds its slip to the momentum balance through the
   // right-hand side; _lifts runs parallel to _faults, with NULL for the boundary fault.
   std::vector<string>             _interiorFaultNames;
@@ -130,7 +130,7 @@ public:
   std::vector<InteriorFaultLift*> _lifts;
   int                             _interiorFaultKinkLift; // 1 (default): B+, second-order fault traction
 
-  // Diagnostics for multi-fault models (docs/TWO_FAULT_DESIGN.md, section 6); both are on by default
+  // Diagnostics for multi-fault models; both are on by default
   // when interior faults are declared, off otherwise.
   // computeSurfVel = 1 writes /momBal/surfVel, the instantaneous surface velocity (m/s), with each
   // 1D output: the momentum balance is linear in the boundary data and the faults' slip, so the

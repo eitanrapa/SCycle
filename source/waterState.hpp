@@ -4,7 +4,7 @@
 #include "bulkStateField.hpp"
 
 /*
- * Water content of the shear zone (docs/REVERSIBLE_STRENGTH_PLAN.md, 4.2). chi in [chi_min, 1]:
+ * Water content of the shear zone. chi in [chi_min, 1]:
  *
  *     dchi/dt = (chi_sup - chi)/tau_hyd (1 + kappa (1 - chi)) - (e/gamma_dry) (chi - chi_min),
  *

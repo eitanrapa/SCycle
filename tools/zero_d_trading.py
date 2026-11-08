@@ -26,10 +26,10 @@ hardening bias b = n ln(H_fast/H_slow) up to b_c; the memory alternates the root
 builds there exceeds b_c, given a fast fabric (r of 0.03 or less).
 
   python3 tools/zero_d_trading.py --n 3 --beta 0.4 --Th 10 --TD 0.3 --R 10
-  python3 tools/zero_d_trading.py --scan      # the regime table of docs/REVERSIBLE_STRENGTH_PLAN.md
+  python3 tools/zero_d_trading.py --scan      # the regime table over N_loc and Th (n = 2, 3, 5)
   python3 tools/zero_d_trading.py --laws implemented --beta 8 --Xf 0.5 --a 0.7 --Xh 2.5 --r 0.03
   python3 tools/zero_d_trading.py --laws implemented --input data/stage5_batch2/alt8.in --efull 5e-13
-  python3 tools/zero_d_trading.py --laws implemented --scan    # the table of section 2.2
+  python3 tools/zero_d_trading.py --laws implemented --scan    # the regime table over beta, Xf, a, Xh and r
 """
 import argparse, itertools
 import numpy as np
@@ -186,7 +186,7 @@ def main_implemented(a):
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('--laws', choices=['linear', 'implemented'], default='linear',
-                   help='linear: the model of section 2; implemented: the saturating laws of the code')
+                   help='linear: the model S = (1 + h) exp(-beta D) described above; implemented: the saturating laws of the code')
     p.add_argument('--n', type=float, default=3.0); p.add_argument('--beta', type=float, default=0.4)
     p.add_argument('--Th', type=float, default=10.0); p.add_argument('--TD', type=float, default=0.3)
     p.add_argument('--R', type=float, default=10.0); p.add_argument('--T', type=float, default=None)

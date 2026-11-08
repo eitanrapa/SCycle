@@ -4,7 +4,7 @@
 #include "bulkStateField.hpp"
 
 /*
- * Strain hardening and recovery of dislocation creep (docs/REVERSIBLE_STRENGTH_PLAN.md, 4.1).
+ * Strain hardening and recovery of dislocation creep.
  * S in [0, 1] (0 recovered, 1 fully hardened):
  *
  *     dS/dt = (e/gamma_h) (1 - S) - S/tau_r(T),   tau_r(T) = tau_r0 exp(Q_r/R (1/T - 1/T_ref)),

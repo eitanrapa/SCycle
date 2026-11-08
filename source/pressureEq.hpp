@@ -72,7 +72,7 @@ private:
   PetscScalar _bcB_ratio;
   string _bcB_type;
 
-  // prescribed basal recharge (docs/REVERSIBLE_STRENGTH_PLAN.md 4.4): the imposed flux q_b(t) =
+  // prescribed basal recharge: the imposed flux q_b(t) =
   // q0 f(t), f(t) = 1 + sum_i A_i P((t - c_i - k T_i)/tau_i) over the repetitions k of the period
   // T_i (0: once), P a raised cosine (1 + cos(pi s))/2, a Gaussian exp(-s^2/2) or a box on |s| < 1.
   // It enters at the base, or with sourceDepth through a Gaussian source in depth (no imposed

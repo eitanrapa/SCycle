@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Second batch of the stage 5 run matrix (docs/REVERSIBLE_STRENGTH_PLAN.md, sections 2.2 and 5).
+"""Second batch of the stage 5 run matrix.
 
 The first batch (stage5_batch1.py) shared slip equally in all six runs. Screened with the laws as
 implemented (tools/zero_d_trading.py --laws implemented), that is what each of them predicts: the

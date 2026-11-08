@@ -5,7 +5,7 @@ No run of the first two batches or the matrix locks in. While one fault dominate
 82-95% of the deep creep (batch 2), and the quiet fault fails again within one to three thousand
 years. If the dominant fault took all the motion, the quiet fault's stress would have no secular
 trend and it would never fail. The two-root model with the implemented laws
-(docs/REVERSIBLE_STRENGTH_PLAN.md, 2.2) says how far the fabric can take it, with
+(tools/zero_d_trading.py --laws implemented) says how far the fabric can take it, with
 Xf = e_full tau_c/gamma_f and e_full = vL/w = 5e-13 1/s. The second batch's fabric (beta_f 10, Xf 0.5)
 locks in at a share of 0.985, so its quiet root keeps 1.5% of the creep, and its 30-yr memory fades
 within each earthquake cycle. Steady states (n = 3; equal sharing is unstable when N_f > 1):
@@ -30,11 +30,11 @@ A first look on 2026-10-26, with k2 at 3985 yr: its second fault ruptured eleven
 the first stayed silent for 2865 yr, which ties the second batch's fab10 (eleven in a row, 2863 yr).
 The dominant root took 97.3% of the creep at 25 km, against 95-96% in fab10's longest phases and
 99.74% in the screen, and the quiet fault kept loading at about 5% of the active fault's rate.
-k3 alternated strictly. A fault that keeps loading fails in the end, so k5 adds cohesion healing
-(plan 4.6), which strengthens the quiet fault while it is quiet and is reset on the active one by
+k3 alternated strictly. A fault that keeps loading fails in the end, so k5 adds cohesion healing,
+which strengthens the quiet fault while it is quiet and is reset on the active one by
 each earthquake (about 7 m of slip). Its settings come from k2's quiet fault, which creeps at 1e-13
 to 1e-12 m/s at 5-10 km between slow-slip episodes and at 1-2e-11 m/s on average. It heals only if
-D_heal/tau_heal exceeds that, so D_heal = 1 m and tau_heal = 1000 yr (3.2e-11 m/s; the plan's
+D_heal/tau_heal exceeds that, so D_heal = 1 m and tau_heal = 1000 yr (3.2e-11 m/s;
 1 mm over 300 yr would hold it near 1% of C_max at 7-10 km). C_max = 5 MPa down to 11 km, tapered
 to 0 at 12 km where a - b turns positive, because near D_heal/tau_heal cohesion adds velocity
 weakening. Both faults start without cohesion. Its input goes to OUTDIR_b as well.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""First batch of the stage 5 run matrix (docs/REVERSIBLE_STRENGTH_PLAN.md, section 5).
+"""First batch of the stage 5 run matrix.
 
 Two faults 20 km apart (the stage 4 power-law baseline), locked below 20 km, each with its own
 viscous root: a band 2 km wide from 20 to 30 km depth whose dislocation-creep prefactor is 1000 times
@@ -7,8 +7,8 @@ larger (make_inputs.py --weak-band). Measured in that model, the roots strain at
 between events, the crust between and beyond them at 1e-19 to 4e-15 /s; at the full plate rate a
 2 km root strains at e_full = vL/(2 km) = 5e-13 /s.
 
-The states pair a slow strengthening memory (strain hardening, 4.1) with a fast weakening feedback
-(the fabric state, 4.5), mapped onto the 0D model of section 2 (tools/zero_d_trading.py, n = 3) with
+The states pair a slow strengthening memory (strain hardening) with a fast weakening feedback
+(the fabric state), mapped onto the 0D model of tools/zero_d_trading.py (n = 3) with
 the time unit t0 = gamma'/e_full = 160 yr (gamma' = gamma_h/a, the strain that adds 1 to the
 strength): R = gamma'/gamma_f = 10, T_h = tau_r/t0 = 10, T_D = tau_c/t0 and beta = beta_f. These are
 cell-scale (root-averaged) strains, far below laboratory values: a core of width w_c inside the root

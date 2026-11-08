@@ -13,7 +13,7 @@ event nucleates within about ten hours, the same way in every run.
 
 By antisymmetry the two describe the same physics: the full domain's right half is the half
 space. With --ny 301 (and 602 rows in the full domain) the first event's onset, peak slip rate
-and final slip agree within 0.14%, 0.3% and 0.03% (docs/TWO_FAULT_DESIGN.md, stage 2).
+and final slip agree within 0.14%, 0.3% and 0.03%.
 
 Run from the repository root:
   python3 examples/interior_fault/make_inputs.py [--ny 151]

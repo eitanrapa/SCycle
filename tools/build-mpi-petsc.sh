@@ -4,7 +4,7 @@
 # the Command Line Tools (Apple clang), Fortran from conda-forge: gfortran in its own environment
 # ~/miniforge3/envs/scycle-fortran, whose bin must be on PATH (its assembler runs clang) and whose
 # lib ends up on SCycle's rpath (the Fortran runtime); CMake from ~/miniforge3/envs/scycle-build.
-# PETSc's configure options are those of docs/SERVER.md. Logs in ~/opt: build-openmpi.log,
+# Logs in ~/opt: build-openmpi.log,
 # build-petsc-<arch>.log, check-petsc-<arch>.log. On a new Mac, first the Command Line Tools
 # (xcode-select --install, the one step that needs an administrator), then Miniforge and the two
 # environments (to match another machine exactly, create each from its `conda list --explicit`):

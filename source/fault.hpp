@@ -86,7 +86,7 @@ public:
   vector<double>   _cohesionVals,_cohesionDepths,_rhoVals,_rhoDepths,_muVals,_muDepths;
   Vec              _cohesion,_mu,_rho;
 
-  // Evolving cohesion (docs/REVERSIBLE_STRENGTH_PLAN.md 4.6), on frictional nodes (0 on locked and
+  // Evolving cohesion, on frictional nodes (0 on locked and
   // creeping ones, which never consult it):  dC/dt = (Cmax - C)/tauHeal - C |V|/Dheal.
   // explicit: the integrand <prefix>cohesion; implicit: exact relaxation over each IMEX step with V at
   // its end (relaxCohesion, as PressureEq::relaxPermeability). With cohesionReseal = 1 the ceiling

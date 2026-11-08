@@ -13,9 +13,9 @@
 #include "sbpOps.hpp"
 
 /*
- * Helpers shared by the quasi-dynamic mediators for models with several faults
- * (docs/TWO_FAULT_DESIGN.md): creating interior faults, step-size control over every fault, the
- * per-step fault series, and the fault positions in the context files.
+ * Helpers shared by the quasi-dynamic mediators for models with several faults: creating interior
+ * faults, step-size control over every fault, the per-step fault series, and the fault positions
+ * in the context files.
  */
 
 // Creates the interior faults named in names, each midway between the two grid rows around its
@@ -78,11 +78,11 @@ public:
 };
 
 // Frictional work of the interior faults spread into the body, Q = sum_k MapV(tau_k V_k) .* Gw_k,
-// with Gw_k a Gaussian of width w(z) centred on fault k (docs/REVERSIBLE_STRENGTH_PLAN.md,
-// section 3.4). Each Gw_k is normalized on the grid, sum_i Wy_i Gw_k(y_i, z) = 1 at every depth with
-// Wy the y-quadrature weights of the SBP norm, so the body integral of Q equals the faults' work
-// integrated over depth, whatever w is relative to the cell size. Units: tau (MPa) times V (m/s)
-// times Gw (1/km) gives kW/m^3, the unit of the heat equation's sources.
+// with Gw_k a Gaussian of width w(z) centred on fault k. Each Gw_k is normalized on the grid,
+// sum_i Wy_i Gw_k(y_i, z) = 1 at every depth with Wy the y-quadrature weights of the SBP norm, so the
+// body integral of Q equals the faults' work integrated over depth, whatever w is relative to the
+// cell size. Units: tau (MPa) times V (m/s) times Gw (1/km) gives kW/m^3, the unit of the heat
+// equation's sources.
 // work = 0 where |V| < vMin (the faults' work done at seismic slip rates only)
 PetscErrorCode maskBelowSlipRate(Vec& work, const Vec& V, const PetscScalar vMin);
 

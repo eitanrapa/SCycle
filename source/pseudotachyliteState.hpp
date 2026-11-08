@@ -4,7 +4,7 @@
 #include "bulkStateField.hpp"
 
 /*
- * Pseudotachylite products (Cawood & Dolan 2024, W7; docs/REVERSIBLE_STRENGTH_PLAN.md 4.9), a weakening of
+ * Pseudotachylite products (Cawood & Dolan 2024, W7), a weakening of
  * the rock beside the faults by their seismic slip. Frictional work done at slip rates of at least v_melt
  * melts the volume Q_melt/e_melt per unit time (e_melt: the heat to bring a unit volume to melting and melt
  * it), which quenches to ultrafine grains of size d_melt; the products anneal (devitrify and coarsen into

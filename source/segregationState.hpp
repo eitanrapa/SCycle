@@ -4,7 +4,7 @@
 #include "bulkStateField.hpp"
 
 /*
- * Phase segregation of the shear zone (Cawood & Dolan 2024, S10; docs/REVERSIBLE_STRENGTH_PLAN.md),
+ * Phase segregation of the shear zone (Cawood & Dolan 2024, S10),
  * a strengthening memory of pressure solution. During dissolution-precipitation creep quartz dissolves at
  * high-stress sites and precipitates in low-stress ones, so a quartz-mica rock separates into quartz- and
  * mica-rich bands; pressure solution is fastest along quartz-mica grain boundaries, which segregation

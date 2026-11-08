@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stage 5 run matrix, phase 1 (docs/REVERSIBLE_STRENGTH_PLAN.md, section 5): every mechanism that acts on
+"""Stage 5 run matrix, phase 1: every mechanism that acts on
 the ductile roots, alone and together, at two strengths where it matters.
 
 The geometry is the second batch's (stage5_batch2.py): two faults 20 km apart, locked below 20 km, a weak
@@ -12,7 +12,7 @@ Memories are scaled as the second batch's hardening, e_full tau/gamma = 2.5 with
   HARD(a)    strain hardening (S7) with recovery (W14), gamma_h 6.3e-3; a = 0.7 as alt8
   WATER      drying with strain (S1, S2) against recharge (W2, W3) over tau_hyd, gamma_dry 6.3e-3,
              chi_min 0.3; with --band-wet-dry R the band is the wet end-member, the dry one R times
-             slower (R = 10, 30: the plan's 3-30)
+             slower (R = 10, 30)
   SEG(b)     phase segregation (S10) slowing pressure solution 1 + b Xi; the band's pressure solution
              (--band-dp 0.5: half the band's weakening at 2 MPa) strains at half e_full, so gamma_s is
              3.15e-3 for the same 2.5

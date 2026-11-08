@@ -1617,7 +1617,7 @@ PetscErrorCode HeatEquation::computeViscousShearHeating(const Vec& sdev, const V
   // viscous dissipation per unit volume: sigma_ij*epsdot_ij = sxy*gdot_xy + sxz*gdot_xz = sdev*dgdev,
   // with sdev = sqrt(sxy^2 + sxz^2), dgdev = sqrt(gdot_xy^2 + gdot_xz^2) (engineering shear strain rates)
   // and the viscous strain rate parallel to the stress. (Upstream scaled this by 0.5 from 2019 and by
-  // sqrt(2) from November 2020; the runs of Allison & Dunham 2021 used neither, see A-31.)
+  // sqrt(2) from November 2020; the runs of Allison & Dunham 2021 used neither.)
   VecSet(_Qvisc,0.0);
   VecPointwiseMult(_Qvisc,sdev,dgdev);
 

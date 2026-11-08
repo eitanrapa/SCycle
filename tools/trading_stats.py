@@ -19,7 +19,7 @@ after --spin years of spin-up:
   share            the first fault's share of all slip at --zref after the spin-up
 
 Usage: trading_stats.py [LABEL=]RUN_DIR ... [--spin 2000] [--csv out.csv]
-These are the definitions of the stage 5 second batch (docs/REVERSIBLE_STRENGTH_PLAN.md, item 10).
+These are the definitions of the stage 5 second batch.
 """
 import argparse
 import csv

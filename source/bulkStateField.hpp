@@ -13,7 +13,7 @@ class PowerLaw;
 
 /*
  * A scalar state field on the body (Ny x Nz) that evolves with the deformation of the bulk and
- * feeds back into the power-law viscosity (docs/REVERSIBLE_STRENGTH_PLAN.md, section 3.1): strain
+ * feeds back into the power-law viscosity: strain
  * hardening (hard_), water content (water_), fabric (fabric_), cement (cement_), phase segregation
  * (seg_), pseudotachylite products (pt_). Each field is an explicit integrand, varEx[<name>],
  * written to the group /<name> of data_2D.h5 and the checkpoint, with its keys <prefix><key> and the

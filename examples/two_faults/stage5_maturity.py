@@ -36,7 +36,7 @@ loading (the 3-8% above), which is what the runs measure:
   saturates, so the quiet fault comes back in the end, and the run says how long that takes. Healed
   over 300 yr (k3) a root loses its Phi before its next turn, and the faults alternate.
 
-Without bands there are no two roots to begin with (plan, section 6, item 10). Measured 384 yr after the
+Without bands there are no two roots to begin with. Measured 384 yr after the
 first earthquake in a trial of y3 with gamma_f 5 x k2's (Phi below 0.02): all the plate motion flows below
 30 km, nearly uniformly across the domain, at 8e-15 1/s under the fault that slipped, 6e-15 between the
 faults and under the other fault and 4.6e-15 at y = 160 km (vL/Ly = 5e-15), so the windows 85-95 and
@@ -44,7 +44,7 @@ faults and under the other fault and 4.6e-15 at y = 160 km (vL/Ly = 5e-15), so t
 22 km (half-width 2 km) and 2e-15 at 25 km (4 km). So y3 and y4 ask whether the fabric can make roots by
 itself and whether healing prevents it. At 6-8e-15 1/s k2's gamma_f has an e-folding time of about
 10000 yr (5 x k2's would leave Phi below 0.25 at the end of the run). Healed over 300 yr Phi stays near
-0.03 and the two-root gain N_f (plan 2.2) at that rate is about 0.7, below 1, so y4 should stay broad.
+0.03 and the two-root gain N_f at that rate is about 0.7, below 1, so y4 should stay broad.
 Unhealed, Phi keeps growing, and in the two-root model differences between the roots grow with an
 e-folding time of a few hundred years until Phi reaches 0.7. The fabric acts at every depth as in the
 lock-in runs.

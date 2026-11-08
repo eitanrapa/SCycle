@@ -19,7 +19,7 @@ Changes the current code needs:
 - evolveTemperature = 1 with transient heating (the 2020 code inferred it; since 2022 a coupled run
   must say so);
 - computeSSMomBal = 1, so that guessSteadyStateICs computes the steady-state momentum balance as the
-  2020 code always did (A-88);
+  2020 code always did;
 - the "ssT" runs, the spin-up with the temperature anomaly held at its steady state, use
   thermalCoupling = no: the power law then keeps the temperature of the case's T file, which holds the
   ambient geotherm plus the steady-state anomaly. The paper's ssT runs were coupled but used the

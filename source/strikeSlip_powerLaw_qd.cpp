@@ -172,7 +172,7 @@ StrikeSlip_PowerLaw_qd::StrikeSlip_PowerLaw_qd(Domain&D)
   if (_evolveGrainSize == 1 || _computeSSGrainSize == 1) { _grainDist = new GrainSizeEvolution(D); }
   if (_grainSizeEvCoupling == "coupled") { VecCopy(_grainDist->_d, _material->_grainSize); }
 
-  // cataclastic grain-size sink (docs/REVERSIBLE_STRENGTH_PLAN.md 4.3): the faults' work spread into
+  // cataclastic grain-size sink: the faults' work spread into
   // the body over the frictional-heat kernels; the heat equation receives the part not stored
   if (_grainDist != NULL && _grainDist->_fCat != NULL) {
     if (_grainSizeEvCoupling == "no") {

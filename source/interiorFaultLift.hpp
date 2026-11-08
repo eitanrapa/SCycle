@@ -6,8 +6,7 @@
 #include "sbpOps.hpp"
 
 /*
- * Interior fault in the elastic momentum balance by a jump-corrected right-hand side
- * ("Route B" of docs/TWO_FAULT_DESIGN.md).
+ * Interior fault in the elastic momentum balance by a jump-corrected right-hand side.
  *
  * The fault lies midway between grid rows iRow and iRow + 1, and its slip delta(z) is the jump of
  * the displacement u across it. With the step field U = delta(z) on rows > iRow (0 elsewhere) and

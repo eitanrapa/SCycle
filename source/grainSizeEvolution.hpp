@@ -46,7 +46,7 @@ class GrainSizeEvolution
     std::vector<double>   _piez_AVals,_piez_ADepths,_piez_nVals,_piez_nDepths; // optional piezometer parameters, d = A * sdev^n
     Vec                   _piez_A,_piez_n;
 
-    // cataclastic sink and Zener pinning (docs/REVERSIBLE_STRENGTH_PLAN.md 4.3), both optional:
+    // cataclastic sink and Zener pinning, both optional:
     //   dd/dt = growth max(0, 1 - (d/dZ)^q) - (f/(c gamma)) d^2 (sdev dgdev_disl) - d^2 Qcat/(c gamma),
     //   Qcat = fCat Qfault max(0, 1 - dMin/d)   (kW/m^3),
     // with Qfault the faults' work spread into the body (the frictional-heat kernels). Qcat is the
